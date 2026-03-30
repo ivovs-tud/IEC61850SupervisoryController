@@ -65,150 +65,174 @@ class IEC61850Manager
 {
 public:
     IEC61850Manager()  = default;
-
-    /// @brief Calls disconnectAll() on destruction.
     ~IEC61850Manager();
+    /** @brief Calls disconnectAll() on destruction. */
 
     IEC61850Manager(const IEC61850Manager&)            = delete;
     IEC61850Manager& operator=(const IEC61850Manager&) = delete;
 
     // ── Registration ────────────────────────────────────────────────────────
 
-    /// @brief Register a turbine without connecting yet.
-    /// @param id   Integer turbine ID ≥ 1 (ID 0 is reserved for the supercontroller).
-    /// @param ip   IP address of the turbine MMS server.
-    /// @param port MMS port (default 102).
     void addTurbine(int id, const std::string& ip, int port = 102);
+    /**
+     * @brief Register a turbine without connecting yet.
+     * @param id   Integer turbine ID >= 1 (ID 0 is reserved for the supercontroller).
+     * @param ip   IP address of the turbine MMS server.
+     * @param port MMS port (default 102).
+     */
 
-    /// @brief Register a turbine with logical-device metadata for MMS reference generation.
-    /// @param logicalDevice Logical Device name (e.g. "WTGLD1").
-    /// @param iedName Optional IED name prefix. If empty, buildRef() returns LD/LN.DO.DA.
     void addTurbine(int id,
                     const std::string& ip,
                     int port,
                     const std::string& logicalDevice,
                     const std::string& iedName = "");
+    /**
+     * @brief Register a turbine with logical-device metadata for MMS reference generation.
+     * @param logicalDevice Logical Device name (e.g. "WTGLD1").
+     * @param iedName Optional IED name prefix. If empty, buildRef() returns LD/LN.DO.DA.
+     */
 
     // ── Connection management ────────────────────────────────────────────────
 
-    /// @brief Establish a connection to a single turbine.
-    /// @return true on success.
     bool connectTurbine(int id);
+    /**
+     * @brief Establish a connection to a single turbine.
+     * @return true on success.
+     */
 
-    /// @brief Disconnect a single turbine.
     void disconnectTurbine(int id);
+    /** @brief Disconnect a single turbine. */
 
-    /// @brief Connect to all registered turbines.
     void connectAll();
+    /** @brief Connect to all registered turbines. */
 
-    /// @brief Disconnect from all registered turbines.
     void disconnectAll();
+    /** @brief Disconnect from all registered turbines. */
 
     // ── Read / Write ────────────────────────────────────────────────────────
 
-    /// @brief Read a float value from a turbine data attribute.
-    /// @param turbineId       Integer turbine ID (1-based).
-    /// @param daReference     IEC 61850 DA reference,
-    ///                        e.g. "WTUR/MMXU1.PhV.phsA.cVal.mag.f".
-    /// @param fc              Functional Constraint integer (IEC61850_FC_MX, etc.).
-    /// @return The float value, or std::nullopt on failure.
     std::optional<float> readFloat(int turbineId,
                                    const std::string& daReference,
                                    int fc);
+    /**
+     * @brief Read a float value from a turbine data attribute.
+     * @param turbineId   Integer turbine ID (1-based).
+     * @param daReference IEC 61850 DA reference.
+     * @param fc          Functional Constraint integer (IEC61850_FC_MX, etc.).
+     * @return The float value, or std::nullopt on failure.
+     */
 
-    /// @brief Write a float value to a turbine data attribute.
-    /// @return true on success, false on failure.
     bool writeFloat(int turbineId,
                     const std::string& daReference,
                     int fc,
                     float value);
+    /**
+     * @brief Write a float value to a turbine data attribute.
+     * @return true on success, false on failure.
+     */
 
-    /// @brief Write a control value using IEC 61850 control services.
-    ///
-    /// Uses ControlObjectClient with either:
-    /// - direct operate, or
-    /// - select-before-operate (SBO) followed by operate.
-    ///
-    /// For SBO, the method chooses select()/selectWithValue() based on the
-    /// server control model reported by the control object.
-    ///
-    /// @param controlObjectReference IEC 61850 control object reference.
-    /// @param value Float control value.
-    /// @param useSelectBeforeOperate true to perform SBO, false for direct operate.
-    /// @return true on success, false on failure.
     bool writeControlledFloat(int turbineId,
                               const std::string& controlObjectReference,
                               float value,
                               bool useSelectBeforeOperate);
+    /**
+     * @brief Write a control value using IEC 61850 control services.
+     *
+     * Uses ControlObjectClient with either direct operate or
+     * select-before-operate (SBO) followed by operate.
+     *
+     * For SBO, the method chooses select()/selectWithValue() based on the
+     * server control model reported by the control object.
+     *
+     * @param controlObjectReference IEC 61850 control object reference.
+     * @param value Float control value.
+     * @param useSelectBeforeOperate true to perform SBO, false for direct operate.
+     * @return true on success, false on failure.
+     */
 
-    /// @brief Read an integer value from a turbine data attribute.
-    /// @return The integer value, or std::nullopt on failure.
     std::optional<int> readInt(int turbineId,
                                const std::string& daReference,
                                int fc);
+    /**
+     * @brief Read an integer value from a turbine data attribute.
+     * @return The integer value, or std::nullopt on failure.
+     */
 
-    /// @brief Write an integer value to a turbine data attribute.
-    /// @return true on success, false on failure.
     bool writeInt(int turbineId,
                   const std::string& daReference,
                   int fc,
                   int value);
+    /**
+     * @brief Write an integer value to a turbine data attribute.
+     * @return true on success, false on failure.
+     */
 
-    /// @brief Read a string from a turbine data attribute.
     std::optional<std::string> readString(int turbineId,
                                           const std::string& daReference,
                                           int fc);
+    /** @brief Read a string from a turbine data attribute. */
 
-    /// @brief Build a full MMS reference from per-turbine IED/LD metadata.
-    ///
-    /// If daReference already starts with "IED/" or "LD/" it is returned unchanged.
-    /// Otherwise this prepends "IED/LD/" (when IED is configured) or "LD/".
     std::string buildRef(int turbineId, const std::string& daReference);
+    /**
+     * @brief Build a full MMS reference from per-turbine IED/LD metadata.
+     *
+     * If daReference already starts with "IED/" or "LD/" it is returned unchanged.
+     * Otherwise this prepends "IED/LD/" (when IED is configured) or "LD/".
+     */
 
     // ── Model interrogation ──────────────────────────────────────────────────
 
-    /// @brief Check whether a list of DA references are readable on a turbine.
-    ///
-    /// Each reference is probed with a single read.  A reference is reported
-    /// as supported if the server returns a value without an
-    /// OBJECT_REFERENCE_INVALID or OBJECT_DOES_NOT_EXIST error.  Access-denied
-    /// responses are treated as "supported" (the object exists on the server).
-    ///
-    /// @param turbineId  Integer turbine ID (1-based).
-    /// @param references List of DA references to probe,
-    ///                   e.g. {"WTUR/WSPC1.W.setMag.f", "WYAW/WYAW1.setMag.i"}.
-    /// @param fc         Functional Constraint to use for the probe reads.
-    /// @return Map of reference → supported (true/false).
-    ///         Returns an empty map if the turbine is not registered or not
-    ///         intentionally connected.
     std::map<std::string, bool> checkSupported(int turbineId,
                                                const std::vector<std::string>& references,
                                                int fc);
+    /**
+     * @brief Check whether a list of DA references are readable on a turbine.
+     *
+     * Each reference is probed with a single read. A reference is reported
+     * as supported if the server returns a value without an
+     * OBJECT_REFERENCE_INVALID or OBJECT_DOES_NOT_EXIST error. Access-denied
+     * responses are treated as "supported" (the object exists on the server).
+     *
+     * @param turbineId Integer turbine ID (1-based).
+     * @param references List of DA references to probe.
+     * @param fc Functional Constraint to use for the probe reads.
+     * @return Map of reference -> supported (true/false).
+     *         Returns an empty map if the turbine is not registered or not
+     *         intentionally connected.
+     */
 
-    /// @brief Retrieve a flattened list of full data attribute references available in the connected IED.
-    ///
-    /// References are returned in canonical server format (e.g. LD/LN.DO.DA...)
-    /// and deduplicated/sorted.
     std::vector<std::string> getDataModelReferences(int turbineId);
+    /**
+     * @brief Retrieve a flattened list of full data attribute references available in the connected IED.
+     *
+     * References are returned in canonical server format (e.g. LD/LN.DO.DA...)
+     * and deduplicated/sorted.
+     */
 
-    /// @brief Print up to maxEntries from the flattened IED data model list.
     void printDataModel(int turbineId, int maxEntries = 200);
+    /** @brief Print up to maxEntries from the flattened IED data model list. */
 
 private:
     // ── Internal helpers ────────────────────────────────────────────────────
 
-    /// @brief Check connection state and reconnect with exponential backoff if
-    ///        necessary.  Must be called with the turbine mutex already held.
-    /// @return true if the connection is ready after this call.
     bool ensureConnected(TurbineConnection& tc);
+    /**
+     * @brief Check connection state and reconnect with exponential backoff if
+     *        necessary. Must be called with the turbine mutex already held.
+     * @return true if the connection is ready after this call.
+     */
 
-    /// @brief Attempt a single connection attempt for the given turbine.
-    ///        Caller must hold the turbine mutex.
     bool doConnect(TurbineConnection& tc);
+    /**
+     * @brief Attempt a single connection attempt for the given turbine.
+     *        Caller must hold the turbine mutex.
+     */
 
-    /// @brief Close and nullify the IedConnection for the given turbine.
-    ///        Caller must hold the turbine mutex.
     void doDisconnect(TurbineConnection& tc);
+    /**
+     * @brief Close and nullify the IedConnection for the given turbine.
+     *        Caller must hold the turbine mutex.
+     */
 
     // Map from turbine ID → connection state.
     // The map itself is protected by mapMutex_ for insertions; individual
