@@ -1,0 +1,1 @@
+/usr/bin/g++ -g CMakeFiles/supervisory_controller.dir/main.cpp.o -o supervisory_controller  -Wl,-rpath,/home/ivovs/TestbedProjects/libiec61850/build/src tasks/libtasks.a communication/libcommunication.a -lzmq /home/ivovs/TestbedProjects/libiec61850/build/src/libiec61850.so -lpthread 

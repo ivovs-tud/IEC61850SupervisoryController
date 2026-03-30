@@ -1,0 +1,85 @@
+#pragma once
+
+#include "common/PeriodicTask.hpp"
+#include "common/GlobalDataStructure.hpp"
+#include "communication/libiec_wrapper.hpp"
+#include "communication/socket/SocketWrapper.hpp"
+
+
+typedef enum rc
+{
+    COMM_OK = 0,
+    COMM_ERROR = -1,
+} CommReturnCode;
+
+typedef enum cs
+{
+    COMM_DISCONNECTED = -1,
+    COMM_CONNECTING = 0,
+    COMM_CONNECTED = 1,
+} CommStatus;
+
+// ---------------------------------------------------------------------------
+// CommConfig – single-argument configuration for the entire communication
+// stack.  Each link has its own port and poll/update period so they can be
+// tuned independently.  All fields carry ready-to-use defaults.
+// ---------------------------------------------------------------------------
+struct CommConfig
+{
+    // ZeroMQ operator server (HMI → controller)
+    struct OperatorServer {
+        int                       port        {9001};
+        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
+    } operatorServer;
+
+    // ZeroMQ attack-interface server (test harness → controller)
+    struct AttackInterface {
+        int                       port        {9002};
+        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
+    } attackInterface;
+
+    // IEC 61850 MMS client
+    struct Mms {
+        std::vector<TurbineEndpoint>  turbines;   ///< one entry per turbine; IDs are 1-based
+        std::chrono::milliseconds     pollPeriod  {std::chrono::milliseconds(100)};
+    } mms;
+
+    // IEC 61850 GOOSE subscriber (future)
+    struct Goose {
+        std::string               networkInterface{"eth0"};
+        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(4)};
+    } goose;
+
+    // CommunicationTask orchestration loop cadence
+    std::chrono::milliseconds orchestrationPeriod{std::chrono::milliseconds(100)};
+};
+
+// ---------------------------------------------------------------------------
+// CommunicationTask – orchestrates IEC 61850 and TCP socket communications.
+// ---------------------------------------------------------------------------
+class CommunicationTask : public PeriodicTask
+{
+public:
+    explicit CommunicationTask(const CommConfig& config = CommConfig{});
+
+    void init();
+
+
+
+protected:
+    void onStart() override;  // starts socket servers before entering the loop
+    void execute() override;  // periodic comms polling
+    void onStop()  override;  // stops socket servers after the loop exits
+
+private:
+    struct CommunicationState
+    {
+        std::atomic<CommStatus> iec_status;
+        std::atomic<CommStatus> socket_status;
+        std::chrono::system_clock::time_point lastActivityTime;
+    } state;
+
+    CommConfig    config_;
+    libiec_wrapper iecWrapper_;
+    SocketWrapper socketWrapper;
+};

@@ -1,0 +1,56 @@
+[
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/communication -I/usr/include/pgm-5.3 -I/usr/include/libxml2 -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/supervisory_controller.dir/main.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/main.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/main.cpp",
+  "output": "CMakeFiles/supervisory_controller.dir/main.cpp.o"
+},
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build/tasks",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/tasks -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/tasks.dir/HmiTask.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/tasks/HmiTask.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/tasks/HmiTask.cpp",
+  "output": "tasks/CMakeFiles/tasks.dir/HmiTask.cpp.o"
+},
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build/tasks",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/tasks -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/tasks.dir/ControlTask.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/tasks/ControlTask.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/tasks/ControlTask.cpp",
+  "output": "tasks/CMakeFiles/tasks.dir/ControlTask.cpp.o"
+},
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build/tasks",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/tasks -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/tasks.dir/SignalProcessingTask.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/tasks/SignalProcessingTask.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/tasks/SignalProcessingTask.cpp",
+  "output": "tasks/CMakeFiles/tasks.dir/SignalProcessingTask.cpp.o"
+},
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build/tasks",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/tasks -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/tasks.dir/MonitoringTask.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/tasks/MonitoringTask.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/tasks/MonitoringTask.cpp",
+  "output": "tasks/CMakeFiles/tasks.dir/MonitoringTask.cpp.o"
+},
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build/communication",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/communication -I/usr/include/pgm-5.3 -I/usr/include/libxml2 -I/home/ivovs/TestbedProjects/supervisory_controller/communication/socket -isystem /home/ivovs/TestbedProjects/libiec61850/src/common/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/iec61850/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/mms/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/goose -isystem /home/ivovs/TestbedProjects/libiec61850/src/r_session -isystem /home/ivovs/TestbedProjects/libiec61850/hal/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/logging -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/communication.dir/CommunicationTask.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/communication/CommunicationTask.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/communication/CommunicationTask.cpp",
+  "output": "communication/CMakeFiles/communication.dir/CommunicationTask.cpp.o"
+},
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build/communication",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/communication -I/usr/include/pgm-5.3 -I/usr/include/libxml2 -I/home/ivovs/TestbedProjects/supervisory_controller/communication/socket -isystem /home/ivovs/TestbedProjects/libiec61850/src/common/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/iec61850/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/mms/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/goose -isystem /home/ivovs/TestbedProjects/libiec61850/src/r_session -isystem /home/ivovs/TestbedProjects/libiec61850/hal/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/logging -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/communication.dir/libiec_wrapper.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/communication/libiec_wrapper.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/communication/libiec_wrapper.cpp",
+  "output": "communication/CMakeFiles/communication.dir/libiec_wrapper.cpp.o"
+},
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build/communication",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/communication -I/usr/include/pgm-5.3 -I/usr/include/libxml2 -I/home/ivovs/TestbedProjects/supervisory_controller/communication/socket -isystem /home/ivovs/TestbedProjects/libiec61850/src/common/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/iec61850/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/mms/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/goose -isystem /home/ivovs/TestbedProjects/libiec61850/src/r_session -isystem /home/ivovs/TestbedProjects/libiec61850/hal/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/logging -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/communication.dir/IEC61850Manager.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/communication/IEC61850Manager.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/communication/IEC61850Manager.cpp",
+  "output": "communication/CMakeFiles/communication.dir/IEC61850Manager.cpp.o"
+},
+{
+  "directory": "/home/ivovs/TestbedProjects/supervisory_controller/build/communication",
+  "command": "/usr/bin/g++  -I/home/ivovs/TestbedProjects/supervisory_controller -I/home/ivovs/TestbedProjects/supervisory_controller/communication -I/usr/include/pgm-5.3 -I/usr/include/libxml2 -I/home/ivovs/TestbedProjects/supervisory_controller/communication/socket -isystem /home/ivovs/TestbedProjects/libiec61850/src/common/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/iec61850/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/mms/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/goose -isystem /home/ivovs/TestbedProjects/libiec61850/src/r_session -isystem /home/ivovs/TestbedProjects/libiec61850/hal/inc -isystem /home/ivovs/TestbedProjects/libiec61850/src/logging -g -std=c++17 -Wall -Wextra -Wpedantic -o CMakeFiles/communication.dir/socket/SocketWrapper.cpp.o -c /home/ivovs/TestbedProjects/supervisory_controller/communication/socket/SocketWrapper.cpp",
+  "file": "/home/ivovs/TestbedProjects/supervisory_controller/communication/socket/SocketWrapper.cpp",
+  "output": "communication/CMakeFiles/communication.dir/socket/SocketWrapper.cpp.o"
+}
+]
