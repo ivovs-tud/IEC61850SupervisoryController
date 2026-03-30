@@ -1,2 +1,0 @@
-/usr/bin/ar qc libtasks.a CMakeFiles/tasks.dir/HmiTask.cpp.o CMakeFiles/tasks.dir/ControlTask.cpp.o CMakeFiles/tasks.dir/SignalProcessingTask.cpp.o CMakeFiles/tasks.dir/MonitoringTask.cpp.o
-/usr/bin/ranlib libtasks.a

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libcommunication.a CMakeFiles/communication.dir/CommunicationTask.cpp.o CMakeFiles/communication.dir/libiec_wrapper.cpp.o CMakeFiles/communication.dir/IEC61850Manager.cpp.o CMakeFiles/communication.dir/socket/SocketWrapper.cpp.o
-/usr/bin/ranlib libcommunication.a
