@@ -83,4 +83,42 @@ private:
     libiec_wrapper iecWrapper_;
     SocketWrapper socketWrapper;
     AttackInterface::AttackInterface attackInterface;
+
+    // -----------------------------------------------------------------------
+    // Descriptor-driven per-turbine operation helpers called by execute().
+    //
+    // RxDescriptor: one float measurement to read from a turbine, eavesdrop
+    //   via AttackInterface, and store in GlobalDataStructure.
+    // TxDescriptor: one float setpoint to read from GlobalDataStructure,
+    //   eavesdrop/intercept via AttackInterface, and write to a turbine.
+    //
+    // To register a new measurement : append a row to RX_DESCRIPTORS in .cpp.
+    // To register a new setpoint    : append a row to TX_DESCRIPTORS in .cpp.
+    //
+    // turbineId is 1-based (IEC 61850 convention).
+    // idx       is 0-based (GlobalDataStructure array index).
+    // -----------------------------------------------------------------------
+    struct RxDescriptor {
+        const char*                              name;
+        const char*                              unit;
+        IECReturnCode (libiec_wrapper::*iecRead)(int, float&);
+        AttackInterface::TxDataType              txDataType;
+        std::vector<double> GlobalData::*        lastField;
+        TurbineHistory<double> GlobalData::*     historyField;
+    };
+
+    struct TxDescriptor {
+        const char*                                  name;
+        const char*                                  unit;
+        std::function<float(const GlobalData&, int)> gdsRead;
+        AttackInterface::TxDataType                  txDataType;
+        IECReturnCode (libiec_wrapper::*iecWrite)(int, float);
+    };
+
+    static const RxDescriptor RX_DESCRIPTORS[];
+    static const TxDescriptor TX_DESCRIPTORS[];
+
+    void doRxMeasurement(int turbineId, int idx, const RxDescriptor& desc);
+    void doTxSetpoint   (int turbineId, int idx, const TxDescriptor& desc);
+    void doRxSecret     (int turbineId);
 };

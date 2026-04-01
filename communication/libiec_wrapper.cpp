@@ -174,6 +174,16 @@ IECReturnCode libiec_wrapper::rxRotorSpeed(int turbineId, float& outRPM) {
     return IEC_ERROR;
 }
 
+IECReturnCode libiec_wrapper::txPowerSetpoint(int turbineId, float powerSetpoint) {
+    bool ok = manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_DmdWSpt), powerSetpoint, false);
+    return ok ? IEC_OK : IEC_ERROR;
+}
+
+IECReturnCode libiec_wrapper::txYawSetpoint(int turbineId, float yawSetpoint) {
+    bool ok = manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::XWYAW_YawSpt), yawSetpoint, false);
+    return ok ? IEC_OK : IEC_ERROR;
+}
+
 // ── checkTurbineSupport ──────────────────────────────────────────────────────
 
 std::map<std::string, bool> libiec_wrapper::checkTurbineSupport(

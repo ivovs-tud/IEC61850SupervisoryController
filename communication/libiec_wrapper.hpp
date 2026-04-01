@@ -160,6 +160,22 @@ public:
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 
+    IECReturnCode txPowerSetpoint(int turbineId, float powerSetpoint);
+    /**
+     * @brief Write only the active-power setpoint to a turbine.
+     * @param turbineId      Integer turbine ID (1-based).
+     * @param powerSetpoint  Active-power setpoint in watts.
+     * @return IEC_OK on success, IEC_ERROR on failure.
+     */
+
+    IECReturnCode txYawSetpoint(int turbineId, float yawSetpoint);
+    /**
+     * @brief Write only the yaw-angle setpoint to a turbine.
+     * @param turbineId    Integer turbine ID (1-based).
+     * @param yawSetpoint  Yaw-angle setpoint in degrees.
+     * @return IEC_OK on success, IEC_ERROR on failure.
+     */
+
     std::map<std::string, bool> checkTurbineSupport(int turbineId, const std::vector<std::string>& references, int fc = 2 /* IEC61850_FC_SP */);
     /**
      * @brief Check whether a list of DA references are supported by a turbine.
