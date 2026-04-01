@@ -113,7 +113,11 @@ void CommunicationTask::doTxSetpoint(int turbineId, int idx, const TxDescriptor&
 
     attackInterface.txData(turbineId, desc.txDataType, value);
 
-    // TODO: Before sending, potentially allow attackInterface to overwrite the setpoint
+    // Before storing, potentially allow attackInterface to overwrite the measurement
+    if(attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
+        std::cerr << "[CommunicationTask] Failed to get overwrite decision for " << desc.name
+                  << " from turbine " << turbineId << "\n";
+    }
 
     if ((iecWrapper_.*desc.iecWrite)(turbineId, value) != IEC_OK) {
         std::cerr << "[CommunicationTask] Failed to write " << desc.name
@@ -150,8 +154,11 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
     // Then potentially transmit this data to an eavesdropper over the attack interface
     attackInterface.txData(turbineId, desc.txDataType, value);
 
-    // TODO: Before sending, potentially allow attackInterface to overwrite the setpoint
-
+    // Before storing, potentially allow attackInterface to overwrite the measurement
+    if(attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
+        std::cerr << "[CommunicationTask] Failed to get overwrite decision for " << desc.name
+                  << " from turbine " << turbineId << "\n";
+    }
     std::cout << "Received " << desc.name << " from turbine " << turbineId
               << ": " << value << " " << desc.unit << "\n";
 
