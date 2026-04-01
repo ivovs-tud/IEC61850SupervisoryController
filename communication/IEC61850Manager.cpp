@@ -148,6 +148,32 @@ std::string IEC61850Manager::buildRef(int turbineId, const std::string& daRefere
     return tc.iedName + tc.logicalDevice + "/" + daReference;
 }
 
+std::string IEC61850Manager::buildGooseRef(int turbineId, const std::string& goCbRef)
+{
+    if (goCbRef.empty())
+        return goCbRef;
+
+    // Already absolute (contains '/')
+    if (goCbRef.find('/') != std::string::npos)
+        return goCbRef;
+
+    std::lock_guard<std::mutex> mapLock(mapMutex_);
+    auto it = turbines_.find(turbineId);
+    if (it == turbines_.end())
+        return goCbRef;
+
+    const TurbineConnection& tc = it->second;
+
+    if (tc.logicalDevice.empty())
+        return goCbRef;
+
+    // GOOSE format: IEDName/LDName$LN$FC$GoCbName
+    if (tc.iedName.empty())
+        return tc.logicalDevice + "$" + goCbRef;
+
+    return tc.iedName + "" + tc.logicalDevice + "/" + goCbRef;
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────
 
 bool IEC61850Manager::doConnect(TurbineConnection& tc)

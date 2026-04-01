@@ -65,6 +65,7 @@ SocketWrapper::AttackInterfaceServer::AttackInterfaceServer(std::chrono::millise
 
 void SocketWrapper::AttackInterfaceServer::setPort(int port) { port_ = port; }
 SocketStatus SocketWrapper::AttackInterfaceServer::status() const { return status_.load(); }
+void SocketWrapper::AttackInterfaceServer::setCallback(AttackCallback cb) { callback_ = std::move(cb); }
 
 void SocketWrapper::AttackInterfaceServer::onStart()
 {
@@ -90,6 +91,15 @@ void SocketWrapper::AttackInterfaceServer::execute()
     if (!result) return;
 
     std::cout << "[AT] Received a message of size " << message.size() << " bytes\n";
+
+    if (callback_) {
+        try {
+            std::cout << "[AT] Unpacked vector of size " << message.size() << "\n";
+            callback_(static_cast<const uint8_t*>(message.data()), message.size());
+        } catch (const std::exception& e) {
+            std::cerr << "[AT] Failed to unpack message: " << e.what() << "\n";
+        }
+    }
     // TODO: parse and handle attack / injection commands
 }
 
@@ -133,6 +143,11 @@ void SocketWrapper::AttachServerCallback(OperatorCallback callback)
     opServer_.setCallback(std::move(callback));
 }
 
+void SocketWrapper::AttachAttackInterfaceCallback(AttackCallback callback)
+{
+    attackServer_.setCallback(std::move(callback));
+}
+
 SocketStatus SocketWrapper::StartAttackInterfaceServer(int port)
 {
     if (attackServer_.status() >= SOCKET_CONNECTED) {
@@ -152,4 +167,14 @@ SocketStatus SocketWrapper::StopAttackInterfaceServer()
 {
     attackServer_.stop();
     return attackServer_.status();
+}
+
+void SocketWrapper::AttackInterfaceServer::txData(const std::shared_ptr<void>&data, size_t dataSize) {
+    zmq::message_t message(dataSize);
+    std::memcpy(message.data(), data.get(), dataSize);
+    socket_->send(message, zmq::send_flags::dontwait);
+}
+
+void  SocketWrapper::txAttackInterfaceData(const std::shared_ptr<void>&data, size_t dataSize) {
+    attackServer_.txData(data, dataSize);
 }

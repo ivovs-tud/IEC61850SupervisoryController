@@ -27,7 +27,6 @@ typedef enum r
     IEC_ERROR = -1,
 } IECReturnCode;
 
-
 using GooseCallback = std::function<void(const std::string&, void*)>;
 
 // typedef GooseCallback (*GooseCallback)(std::string& ref, void* value);
@@ -62,10 +61,13 @@ static constexpr const char* SECR_S     = "SECR1.S.stVal";        // Secret LN [
 static const std::vector<std::string> REQ_CMDS = {WTUR_DmdWSpt, XWYAW_YawSpt, WTUR_OP_CMD};
 static const std::vector<std::string> REQ_REFS = {POWER_MEAS, YAW_MEAS, WS_MEAS, WD_MEAS, RPM_MEAS, TOT_W, PITCH_VAL, SECR_S};
 
-static const std::vector<std::string> GOOSE_SUB_REFS = {
-    "WTUR1$GO$TurSt",  // GOOSE with turbine state changes
-    "WTUR1$GO$Alm",    // GOOSE with turbine alarms
-};
+
+/** GOOSE Subscription References
+ * IMPORTANT: These should match the definition in the server
+ */
+
+static constexpr const char* GOOSE_SUB_TurSt = "WTUR1$GO$TurSt";  // GOOSE with turbine state changes
+static constexpr const char* GOOSE_SUB_Alm   = "WTUR1$GO$Alm";    // GOOSE with turbine alarms
 };
 
 // Per-turbine MMS connection parameters.
@@ -79,9 +81,8 @@ struct TurbineEndpoint {
 
     // Goose Related
     // std::string networkIface  {"eth0"};    ///< Network interface for GOOSE. TODO: allow configuration
-    uint8_t     mac[6]        {0};         ///< Optional MAC address for GOOSE subscription filtering
+    // uint8_t     mac[6]        {0x00, 0x15, 0x5d, 0xb4, 0x81, 0xad};         ///< Optional MAC address for GOOSE subscription filtering
         
-    GooseReceiver gooseReceiver {nullptr};
     std::vector<std::string> gooseRefs {}; ///< List of GOOSE DA references to subscribe to on this turbine
     std::vector<GooseSubscriber> gooseSubscribers {};
     std::vector<GooseCallback> gooseCallbacks {};
@@ -107,6 +108,16 @@ public:
     /** @brief Disconnect from all registered turbines. */
 
     IECReturnCode startGooseSubscription(int turbineId, const std::string& daReference, GooseCallback callback);
+    /**
+     * @brief Starts GOOSE subscription to data attribute on the given turbine.
+     * 
+     * @param turbineId Turbine ID >= 1. 
+     * @param daReference Data attribute reference to subscribe to. Should contain IED + LD prefix.
+    * @param callback Callback function to handle GOOSE messages.
+    *                 The second argument is the decoded IEC value
+    *                 (first data-set element, int32-backed).
+     * @return IECReturnCode IEC_OK on success, IEC_ERROR on failure.
+     */
 
     IECReturnCode txSetpoint(int turbineId, float powerSetpoint, int yawSetpoint);
     /**
@@ -175,5 +186,6 @@ public:
 
 private:
     IEC61850Manager manager_;
+    GooseReceiver gooseReceiver {nullptr};
 };
 

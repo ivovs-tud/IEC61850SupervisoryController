@@ -21,10 +21,17 @@ IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines,
         manager_.addTurbine(i + 1, turbines[i].host, turbines[i].port, turbines[i].logicalDevice, turbines[i].iedName);
 
     // GOOSE Creation
-    for (int i = 0; i < static_cast<int>(turbines.size()); ++i) {
-        GooseReceiver receiver = GooseReceiver_create();
-        GooseReceiver_setInterfaceId(receiver, networkInterface.c_str());
-    }
+    gooseReceiver = GooseReceiver_create();
+    GooseReceiver_setInterfaceId(gooseReceiver, networkInterface.c_str());
+
+    // Subscribe to GOOSE messages for each turbine and reference
+    startGooseSubscription(1, IEC_STRINGS::GOOSE_SUB_TurSt, [](const std::string& ref, void* val) {
+        std::cout << "[libiec_wrapper] GOOSE callback for ref: " << ref
+                  << " enum=" << *((int32_t *)val) << "\n";
+    });
+
+    
+
 
     std::cout << "[libiec_wrapper] registered " << turbines.size() << " turbine(s)\n";
     return IEC_OK;
@@ -35,8 +42,91 @@ IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines,
 void libiec_wrapper::start() { 
     // manager_.connectAll(); 
     manager_.connectTurbine(1);
+
+    // GooseReceiver_start(gooseReceiver);
+    // if (!GooseReceiver_isRunning(gooseReceiver)) {
+    //     std::cerr << "[libiec_wrapper] Failed to start GooseReceiver\n";
+    //     stop();
+    // } else {
+    //     std::cout << "[libiec_wrapper] GooseReceiver started successfully\n";
+    // }
 }
-void libiec_wrapper::stop()  { manager_.disconnectAll(); }
+void libiec_wrapper::stop()  { 
+    GooseReceiver_stop(gooseReceiver);
+
+    GooseReceiver_destroy(gooseReceiver);
+    manager_.disconnectAll(); 
+}
+
+IECReturnCode libiec_wrapper::startGooseSubscription(int turbineId, const std::string& daReference, GooseCallback callback) {
+    // Build the full GOOSE reference: IEDName/LDName$LN$FC$GoCbName
+    std::string fullRef = manager_.buildGooseRef(turbineId, daReference);
+    char * daRef = const_cast<char *>(fullRef.c_str());
+    auto subscriber = GooseSubscriber_create(daRef, NULL);
+
+    // Set strict filters: multicast destination MAC + AppID
+    // GOOSE multicast MAC per IEC 61850 standard
+    uint8_t gooseMac[6] = {0x01, 0x0c, 0xcd, 0x01, 0x00, 0x01};
+    GooseSubscriber_setDstMac(subscriber, gooseMac);
+    GooseSubscriber_setAppId(subscriber, 1000);
+
+    // Bridge C callback (function pointer) to C++ callback (std::function)
+    // using a context struct passed through userData
+    struct CallbackContext {
+        GooseCallback userCallback;
+    };
+
+    auto* context = new CallbackContext{callback};
+    
+    GooseSubscriber_setListener(subscriber, [](GooseSubscriber subscriber, void* userData) {
+        if (!userData) return;
+        
+        auto* ctx = reinterpret_cast<CallbackContext*>(userData);
+        if (!ctx->userCallback) return;
+        
+        // printf("GOOSE event:\n");
+        // printf("  stNum: %u sqNum: %u\n", GooseSubscriber_getStNum(subscriber),
+        //         GooseSubscriber_getSqNum(subscriber));
+        // printf("  timeToLive: %u\n", GooseSubscriber_getTimeAllowedToLive(subscriber));
+
+        // uint64_t timestamp = GooseSubscriber_getTimestamp(subscriber);
+
+        // printf("  timestamp: %u.%u\n", (uint32_t) (timestamp / 1000), (uint32_t) (timestamp % 1000));
+        // printf("  message is %s\n", GooseSubscriber_isValid(subscriber) ? "valid" : "INVALID");
+
+        MmsValue* values = GooseSubscriber_getDataSetValues(subscriber);
+        
+        // Get the reference from the GOOSE message itself
+        const char* goCbRef = GooseSubscriber_getGoCbRef(subscriber);
+        std::string refStr = goCbRef ? std::string(goCbRef) : "";
+
+        // Decode first GOOSE dataset element as IEC enum (int32-backed).
+        // IECEnumValue enumValue = IECEnumValue::Unknown;
+        if (values) {
+            MmsValue* enumField = values;
+
+            MmsType dataSetType = MmsValue_getType(values);
+            if (dataSetType == MMS_ARRAY || dataSetType == MMS_STRUCTURE)
+                enumField = MmsValue_getElement(values, 0);
+
+            if (enumField) {
+                MmsType enumType = MmsValue_getType(enumField);
+                if (enumType == MMS_INTEGER || enumType == MMS_UNSIGNED) {
+                    // Invoke the C++ callback with decoded enum value.
+                    int32_t intValue = MmsValue_toInt32(enumField);
+                    ctx->userCallback(refStr, (void *) &intValue);
+                }
+            }
+        }
+
+    }, context);
+
+    GooseReceiver_addSubscriber(gooseReceiver, subscriber);
+
+    std::cout << "[libiec_wrapper] Started GOOSE subscription for turbine " << turbineId << ", ref: " << fullRef << "\n";
+
+    return IEC_OK;
+}
 
 // ── txSetpoint ───────────────────────────────────────────────────────────
 

@@ -1,14 +1,17 @@
 #pragma once
 
-#include "common/PeriodicTask.hpp"
-#include <zmq.hpp>
-#include <msgpack.hpp>
 #include <iostream>
 #include <mutex>
 #include <optional>
 #include <vector>
 #include <functional>
 #include <atomic>
+#include <memory>
+
+#include <zmq.hpp>
+#include <msgpack.hpp>
+
+#include "common/PeriodicTask.hpp"
 
 typedef enum rp { R_SOCKET_OK = 0, R_SOCKET_ALREADY_RUNNING = 0x01, R_SOCKET_ERROR = 0xFF } SocketReturnCode;
 
@@ -23,6 +26,7 @@ typedef enum p {
 } SocketStatus;
 
 using OperatorCallback = std::function<void(const std::vector<float>&)>;
+using AttackCallback = std::function<void(const uint8_t*, size_t)>;
 
 // ---------------------------------------------------------------------------
 // SocketWrapper – owns two PeriodicTask-based socket servers.
@@ -70,7 +74,9 @@ private:
     public:
         explicit AttackInterfaceServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
         void setPort(int port);
+        void setCallback(AttackCallback cb);
         SocketStatus status() const;
+        void txData(const std::shared_ptr<void>&data, size_t dataSize);
 
     protected:
         void onStart()  override;
@@ -81,6 +87,7 @@ private:
         int                          port_{9002};
         zmq::context_t               context_;
         std::optional<zmq::socket_t> socket_;
+        AttackCallback               callback_;
         std::atomic<SocketStatus>    status_{SOCKET_CLOSED};
     };
 
@@ -105,4 +112,6 @@ public:
 
     SocketStatus StartAttackInterfaceServer(int port);
     SocketStatus StopAttackInterfaceServer();
+    void         AttachAttackInterfaceCallback(AttackCallback callback);
+    void         txAttackInterfaceData(const std::shared_ptr<void>&data, size_t dataSize);
 };

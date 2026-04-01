@@ -4,7 +4,7 @@
 #include "common/GlobalDataStructure.hpp"
 #include "communication/libiec_wrapper.hpp"
 #include "communication/socket/SocketWrapper.hpp"
-
+#include "AttackInterface.hpp"
 
 typedef enum rc
 {
@@ -46,7 +46,7 @@ struct CommConfig
 
     // IEC 61850 GOOSE subscriber (future)
     struct Goose {
-        std::string               networkInterface{"eth0"};
+        std::string               networkInterface{"veth1"};
         std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(4)};
     } goose;
 
@@ -82,4 +82,5 @@ private:
     CommConfig    config_;
     libiec_wrapper iecWrapper_;
     SocketWrapper socketWrapper;
+    AttackInterface::AttackInterface attackInterface;
 };

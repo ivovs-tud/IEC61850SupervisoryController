@@ -1,15 +1,17 @@
 #include "CommunicationTask.hpp"
 #include "socket/SocketWrapper.hpp"
+#include "AttackInterface.hpp"
 
 CommunicationTask::CommunicationTask(const CommConfig& config)
     : PeriodicTask(config.orchestrationPeriod)
-    , config_(config)
+    , config_(config), attackInterface(config.mms.turbines.size(), socketWrapper)
 {
     // TODO: construct libiec_wrapper and SocketWrapper instances
 
     state.iec_status.store(COMM_DISCONNECTED);
     state.socket_status.store(COMM_DISCONNECTED);
     state.lastActivityTime = std::chrono::system_clock::now();
+    // attackInterface = AttackInterface::AttackInterface(config.mms.turbines.size(), socketWrapper);
 }
 
 void CommunicationTask::init()
@@ -57,6 +59,9 @@ void CommunicationTask::onStart()
     
 }
 
+
+
+
 void CommunicationTask::execute()
 {
     // TODO: poll IEC 61850 + socket status
@@ -86,13 +91,17 @@ void CommunicationTask::execute()
         if (iecWrapper_.rxWindSpeed(i + 1, windSpeed) == IEC_OK) {
             std::cout << "Received wind speed from turbine " << (i + 1) << ": " << windSpeed << " m/s\n";
             {
+                // First eavesdrop
+                attackInterface.txData(i + 1, AttackInterface::TxDataType::TX_WS, windSpeed);    
+                
                 std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
                 GlobalDataStructure::instance().data().lastWS[i] = windSpeed;
                 GlobalDataStructure::instance().data().wsHistory[i].push_back(windSpeed);
+
             }
         } else {
-            // std::cerr << "[CommunicationTask] Failed to read wind speed from turbine "
-                        // << (i + 1) << "\n"; 
+            std::cerr << "[CommunicationTask] Failed to read wind speed from turbine "
+                        << (i + 1) << "\n"; 
         }
 
         // Read Wind Direction Measurement From Each Turbine
@@ -100,13 +109,16 @@ void CommunicationTask::execute()
         if (iecWrapper_.rxWindDirection(i + 1, windDirection) == IEC_OK) {
             std::cout << "Received wind direction from turbine " << (i + 1) << ": " << windDirection << " deg\n";
             {
+                // First eavesdrop
+                attackInterface.txData(i + 1, AttackInterface::TxDataType::TX_WD, windDirection);   
+
                 std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
                 GlobalDataStructure::instance().data().lastWD[i] = windDirection;
                 GlobalDataStructure::instance().data().wdHistory[i].push_back(windDirection);   
             }
         } else {
-            // std::cerr << "[CommunicationTask] Failed to read wind direction from turbine "
-                        // << (i + 1) << "\n";  
+            std::cerr << "[CommunicationTask] Failed to read wind direction from turbine "
+                        << (i + 1) << "\n";  
         }
     }
 

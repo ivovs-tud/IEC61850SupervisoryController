@@ -34,6 +34,8 @@ typedef enum {
 struct TurbineConnection
 {
     int                 id               {0};
+    uint8_t             mac[6]           {0x00, 0x15, 0x5d, 0xb4, 0x81, 0xad};  ///< Populated from IED on connect, used for GOOSE subscription filtering
+    uint16_t            appId            {1000};       ///< Optional GOOSE AppID for subscription filtering
     std::string         ip;
     int                 port             {102};
     std::string         logicalDevice;
@@ -178,6 +180,17 @@ public:
      *
      * If daReference already starts with "IED/" or "LD/" it is returned unchanged.
      * Otherwise this prepends "IED/LD/" (when IED is configured) or "LD/".
+     */
+
+    std::string buildGooseRef(int turbineId, const std::string& goCbRef);
+    /**
+     * @brief Build a full GOOSE control block reference from per-turbine IED/LD metadata.
+     *
+     * GOOSE references use a different format from MMS:
+     *   IEDName/LDName$LNName$GO$GoCbName
+     * e.g. "WTURBINE/LD0$WTUR1$GO$TurSt"
+     *
+     * If goCbRef already contains '/' it is returned unchanged (already absolute).
      */
 
     // ── Model interrogation ──────────────────────────────────────────────────
