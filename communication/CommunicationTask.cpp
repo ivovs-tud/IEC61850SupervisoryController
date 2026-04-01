@@ -1,6 +1,7 @@
 #include "CommunicationTask.hpp"
 #include "socket/SocketWrapper.hpp"
 #include "AttackInterface.hpp"
+#include "common/config.hpp"
 
 CommunicationTask::CommunicationTask(const CommConfig& config)
     : PeriodicTask(config.orchestrationPeriod)
@@ -19,15 +20,14 @@ void CommunicationTask::init()
     // Initialise IEC 61850 connections for all turbines listed in CommConfig.
     if (iecWrapper_.init(config_.mms.turbines, config_.goose.networkInterface) != IEC_OK)
     {
-        std::cerr << "[CommunicationTask] IEC61850 init failed – "
-                     "check CommConfig::mms.turbines\n";
+        COMMTASK_ERR("IEC61850 init failed - check CommConfig::mms.turbines");
     }
 
     socketWrapper.AttachServerCallback([](const std::vector<float>& data) {
         if (data.size() > 0) {
             std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
             GlobalDataStructure::instance().data().RequestedReferencePower = data[0];
-            std::cout << "Updated RequestedReferencePower to " << data[0] << "\n";
+            COMMTASK_LOG_V1("Updated RequestedReferencePower to " << data[0]);
         }
     });
 
@@ -48,13 +48,15 @@ void CommunicationTask::onStart()
     
     iecWrapper_.printTurbineDataModel(1, 1000);  // print first 10 DA references of turbine 1 for sanity check
 
+#if SC_LOG_LEVEL_COMMTASK >= 3
     auto support = iecWrapper_.checkTurbineSupport(1, IEC_STRINGS::REQ_REFS);
     for (auto& [ref, ok] : support)
-        std::cout << ref << ": " << (ok ? "OK" : "NOT SUPPORTED") << "\n";
+        COMMTASK_LOG_V2(ref << ": " << (ok ? "OK" : "NOT SUPPORTED"));
 
     support = iecWrapper_.checkTurbineSupport(1, IEC_STRINGS::REQ_CMDS);
     for (auto& [ref, ok] : support)
-        std::cout << ref << ": " << (ok ? "OK" : "NOT SUPPORTED") << "\n";
+        COMMTASK_LOG_V2(ref << ": " << (ok ? "OK" : "NOT SUPPORTED"));
+#endif
 
     
 }
@@ -73,6 +75,7 @@ const CommunicationTask::RxDescriptor CommunicationTask::RX_DESCRIPTORS[] = {
     { "wind speed",      "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory  },
     { "wind direction",  "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory  },
     { "rotor speed",     "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory },
+    { "power_gen",       "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::Power_i,    &GlobalData::powerHistory },
 };
 
 const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
@@ -115,16 +118,15 @@ void CommunicationTask::doTxSetpoint(int turbineId, int idx, const TxDescriptor&
 
     // Before storing, potentially allow attackInterface to overwrite the measurement
     if(attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
-        std::cerr << "[CommunicationTask] Failed to get overwrite decision for " << desc.name
-                  << " from turbine " << turbineId << "\n";
+        COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
+                     << " from turbine " << turbineId);
     }
 
     if ((iecWrapper_.*desc.iecWrite)(turbineId, value) != IEC_OK) {
-        std::cerr << "[CommunicationTask] Failed to write " << desc.name
-                  << " to turbine " << turbineId << "\n";
+        COMMTASK_ERR("Failed to write " << desc.name << " to turbine " << turbineId);
     } else {
-        std::cout << "Sent " << desc.name << " to turbine " << turbineId
-                  << ": " << value << " " << desc.unit << "\n";
+        COMMTASK_LOG_V1("Sent " << desc.name << " to turbine " << turbineId
+                        << ": " << value << " " << desc.unit);
     }
 }
 
@@ -132,9 +134,9 @@ void CommunicationTask::doRxSecret(int turbineId)
 {
     std::string secret;
     if (iecWrapper_.rxSecret(turbineId, secret) == IEC_OK) {
-        std::cout << "Received secret from turbine " << turbineId << ": " << secret << "\n";
+        COMMTASK_LOG_V2("Received secret from turbine " << turbineId << ": " << secret);
     } else {
-        std::cerr << "[CommunicationTask] Failed to read secret from turbine " << turbineId << "\n";
+        COMMTASK_ERR("Failed to read secret from turbine " << turbineId);
     }
 }
 
@@ -143,24 +145,23 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
     float value;
     // First request the data from a turbine IEC 61850 server
     if ((iecWrapper_.*desc.iecRead)(turbineId, value) != IEC_OK) {
-        std::cerr << "[CommunicationTask] Failed to read " << desc.name
-                  << " from turbine " << turbineId << "\n";
+        COMMTASK_ERR("Failed to read " << desc.name << " from turbine " << turbineId);
         return;
     }
 
-    std::cout << "Received " << desc.name << " from turbine " << turbineId
-              << ": " << value << " " << desc.unit << "\n";
+    COMMTASK_LOG_V1("Received " << desc.name << " from turbine " << turbineId
+                    << ": " << value << " " << desc.unit);
 
     // Then potentially transmit this data to an eavesdropper over the attack interface
     attackInterface.txData(turbineId, desc.txDataType, value);
 
     // Before storing, potentially allow attackInterface to overwrite the measurement
     if(attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
-        std::cerr << "[CommunicationTask] Failed to get overwrite decision for " << desc.name
-                  << " from turbine " << turbineId << "\n";
+        COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
+                     << " from turbine " << turbineId);
     }
-    std::cout << "Received " << desc.name << " from turbine " << turbineId
-              << ": " << value << " " << desc.unit << "\n";
+    COMMTASK_LOG_V2("Post-overwrite " << desc.name << " for turbine " << turbineId
+                    << ": " << value << " " << desc.unit);
 
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
@@ -179,6 +180,6 @@ void CommunicationTask::onStop()
     iecWrapper_.stop();
     state.iec_status.store(COMM_DISCONNECTED);
 
-    std::cout << "CommunicationTask: Socket servers stopped.\n";
-    std::cout << "CommunicationTask: Stopped\n";
+    COMMTASK_LOG_V1("Socket servers stopped.");
+    COMMTASK_LOG_V1("Stopped");
 }

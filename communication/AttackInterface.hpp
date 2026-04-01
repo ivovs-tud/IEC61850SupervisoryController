@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 
+#include "common/config.hpp"
 #include "libiec_wrapper.hpp"
 #include "socket/SocketWrapper.hpp"
 
@@ -151,53 +152,53 @@ namespace AttackInterface
                 } else if (length >= compactLength) {
                     enableBytes = data + compactPrefixLength;
                 } else {
-                    std::cerr << "[AT] Invalid CT_DATA length: " << length
-                              << ", expected at least " << compactLength
-                              << " (compact) or " << fullStructLength << " (full struct)\n";
+                    ATTACK_ERR("Invalid CT_DATA length: " << length
+                               << ", expected at least " << compactLength
+                               << " (compact) or " << fullStructLength << " (full struct)");
                     return;
                 }
 
-                std::cout << "[AT] Parsed CT_DATA command with signal: " << static_cast<int>(signal)
-                          << ", dataType: " << static_cast<int>(dataType) << "\n";
+                ATTACK_LOG_V2("Parsed CT_DATA command with signal: " << static_cast<int>(signal)
+                              << ", dataType: " << static_cast<int>(dataType));
 
                 if (signal == CTRL_TAP) {
                     for (int i = 0; i < numTurbines; ++i) {
                         const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
                         state.LinkStates[i].tapEnabled[dataType] = enabled;
-                        std::cout << "[AT] Toggled control for turbine " << (i + 1)
-                                  << ", dataType " << static_cast<int>(dataType)
-                                  << " to " << enabled << "\n";
+                        ATTACK_LOG_V1("Toggled control for turbine " << (i + 1)
+                                      << ", dataType " << static_cast<int>(dataType)
+                                      << " to " << enabled);
                     }
                 } else if(signal == CTRL_FDI) {
                     for (int i = 0; i < numTurbines; ++i) {
                         const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
                         state.LinkStates[i].fdiEnabled[dataType] = enabled;
-                        std::cout << "[AT] Toggled false data injection for turbine " << (i + 1)
-                                  << ", dataType " << static_cast<int>(dataType)
-                                  << " to " << enabled << "\n";
+                        ATTACK_LOG_V1("Toggled false data injection for turbine " << (i + 1)
+                                      << ", dataType " << static_cast<int>(dataType)
+                                      << " to " << enabled);
                     }
 
                 } else {
-                    std::cerr << "[AT] Unsupported control signal received in CT_DATA: "
-                              << static_cast<int>(signal) << "\n";
+                    ATTACK_ERR("Unsupported control signal received in CT_DATA: "
+                               << static_cast<int>(signal));
                 }
             }
 
             void parseATCommand(const uint8_t* data, size_t length) {
                 if (length < sizeof(AtDataMessage)) {
-                    std::cerr << "[AT] Invalid AT_DATA length: " << length
-                              << ", expected at least " << sizeof(AtDataMessage) << "\n";
+                    ATTACK_ERR("Invalid AT_DATA length: " << length
+                               << ", expected at least " << sizeof(AtDataMessage));
                     return;
                 }
 
                 const AtDataMessage* msg = reinterpret_cast<const AtDataMessage*>(data);
-                std::cout << "[AT] Parsed AT_DATA command for turbine " << static_cast<int>(msg->turbineId)
-                          << ", dataType " << static_cast<int>(msg->dataType)
-                          << ", fakeValue " << msg->fake_value << "\n";
+                ATTACK_LOG_V1("Parsed AT_DATA command for turbine " << static_cast<int>(msg->turbineId)
+                              << ", dataType " << static_cast<int>(msg->dataType)
+                              << ", fakeValue " << msg->fake_value);
 
                 // Check if this is a response to a RQ_DATA message we sent
                 if (msg->dataType != state.rq_DataType || msg->turbineId != state.rq_TurbineId) {
-                    std::cerr << "[AT] Received AT_DATA does not match any pending RQ_DATA request. Ignoring.\n";
+                    ATTACK_ERR("Received AT_DATA does not match any pending RQ_DATA request. Ignoring.");
                     return;
                 }
 
@@ -212,22 +213,8 @@ namespace AttackInterface
             void AttackHandler(const uint8_t* data, size_t length) {
                 if (length == 0) return;
 
-                std::cout << "[AT] Raw bytes (hex, len=" << length << "): ";
-                std::ios_base::fmtflags originalFlags = std::cout.flags();
-                char originalFill = std::cout.fill();
-                for (size_t i = 0; i < length; ++i) {
-                    std::cout << std::hex << std::setw(2) << std::setfill('0')
-                              << static_cast<unsigned int>(data[i]);
-                    if (i + 1 < length) {
-                        std::cout << ' ';
-                    }
-                }
-                std::cout.flags(originalFlags);
-                std::cout.fill(originalFill);
-                std::cout << "\n";
-
                 MessageType msgType = static_cast<MessageType>(data[0]);
-                std::cout << "[AT] Received message with header: " << static_cast<int>(msgType) << std::endl;
+                ATTACK_LOG_V1("Received message with header: " << static_cast<int>(msgType));
 
                 switch(msgType) {
                     case CT_DATA:
@@ -237,7 +224,7 @@ namespace AttackInterface
                         parseATCommand(data, length);
                         break;
                     default:
-                        std::cerr << "[AT] Unknown message type received: " << static_cast<int>(msgType) << std::endl;
+                        ATTACK_ERR("Unknown message type received: " << static_cast<int>(msgType));
                 }
             }
 
@@ -260,14 +247,14 @@ namespace AttackInterface
 
             void txData(int turbineId, TxDataType dataType, float value) {
                 if (turbineId < 1 || turbineId > state.LinkStates.size()) {
-                    std::cerr << "[AT] Invalid turbine ID: " << turbineId << "\n";
+                    ATTACK_ERR("Invalid turbine ID: " << turbineId);
                     return;
                 }
 
                 if (!state.LinkStates[turbineId - 1].tapEnabled[dataType]) return;
 
-                std::cout << "[AT] txData called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType) 
-                          << ", value " << value << "\n";
+                ATTACK_LOG_V2("txData called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType)
+                              << ", value " << value);
 
                 // First, we create a TxDataMessage, and pass a shared_ptr to the socket wrapper's tx function
                 TxDataMessage msg;
@@ -287,11 +274,14 @@ namespace AttackInterface
                  */
 
                  if (turbineId < 1 || turbineId > state.LinkStates.size()) {
-                    std::cerr << "[AT] Invalid turbine ID: " << turbineId << "\n";
+                          ATTACK_ERR("Invalid turbine ID: " << turbineId);
                     return AI_ERROR;
                 }
 
                 if (!state.LinkStates[turbineId - 1].fdiEnabled[dataType]) return AI_OK;
+
+                ATTACK_LOG_V1("overwrite called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType)
+                              << ", original value " << val);
 
                 // 1. Send RQ_DATA message to client
                 RqDataMessage rqMsg;
@@ -303,7 +293,7 @@ namespace AttackInterface
                 {
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                     if (state.awaiting_at_response) {
-                        std::cerr << "[AT] Already awaiting AT_DATA response for a previous RQ_DATA. Cannot send new RQ_DATA until previous one is resolved.\n";
+                        ATTACK_ERR("Already awaiting AT_DATA response for previous RQ_DATA. Cannot send new RQ_DATA yet.");
                         return AI_ERROR;
                     }
                     state.awaiting_at_response = true;
@@ -324,6 +314,7 @@ namespace AttackInterface
                             val = state.at_response_val;
                             state.awaiting_at_response = false;
                             state.at_response_received = false;
+                            ATTACK_LOG_V1("Received overwrite " << val);
                             return AI_OK;
                         }
                     }
@@ -336,6 +327,8 @@ namespace AttackInterface
                     state.awaiting_at_response = false;
                     state.at_response_received = false;
                 }
+
+                ATTACK_LOG_V1("Overwrite request timed out");
                 return AI_TIMEOUT;
             }
             

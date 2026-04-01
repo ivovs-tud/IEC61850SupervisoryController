@@ -160,6 +160,15 @@ public:
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 
+    IECReturnCode rxPowerGen(int turbineId, float& outPowerGen);
+    /**
+     * @brief Read the current power generation measurement from a specific turbine.
+     * @param turbineId      Integer turbine ID (1-based).
+     * @param outPowerGen    Output float populated with the power generation in watts on success.
+     * @return IEC_OK on success, IEC_ERROR on failure.
+     */
+
+
     IECReturnCode txPowerSetpoint(int turbineId, float powerSetpoint);
     /**
      * @brief Write only the active-power setpoint to a turbine.

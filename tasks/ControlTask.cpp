@@ -1,6 +1,8 @@
 #include <iostream>
+#include <sstream>
 
 #include "ControlTask.hpp"
+#include "common/config.hpp"
 #include "common/GlobalDataStructure.hpp"
 
 
@@ -30,7 +32,11 @@ void ControlTask::execute()
         glob_wd_i = GlobalDataStructure::instance().data().glob_wd_i;
     }
 
-    std::cout << "Using Wind Speed: " << glob_ws_i << " m/s, Wind Direction: " << glob_wd_i << " deg, to compute setpoints for requested reference power: " << powerSetpoint << " W\n";
+    (void)glob_ws_i;
+    (void)glob_wd_i;
+
+    CONTROL_LOG_V2("Using Wind Speed: " << glob_ws_i << " m/s, Wind Direction: " << glob_wd_i
+                  << " deg, to compute setpoints for requested reference power: " << powerSetpoint << " W");
     std::vector<float> power_sp = std::vector<float>(numTurbines_, -1.0);
     std::vector<int> yaw_sp = std::vector<int>(numTurbines_, 0);
     
@@ -42,15 +48,19 @@ void ControlTask::execute()
         power_sp = std::vector<float>(numTurbines_, static_cast<float>(powerSetpoint / numTurbines_));
     }
 
-    std::cout << "ControlTask: Computed power setpoints: ";
+#if SC_LOG_LEVEL_CONTROL >= 2
+    std::ostringstream powerLine;
     for (const auto& sp : power_sp) {
-        std::cout << sp << " ";
+        powerLine << sp << " ";
     }
-    std::cout << "\nControlTask: Computed yaw setpoints: ";
+    CONTROL_LOG_V1("Computed power setpoints: " << powerLine.str());
+
+    std::ostringstream yawLine;
     for (const auto& sp : yaw_sp) {
-        std::cout << sp << " ";
+        yawLine << sp << " ";
     }
-    std::cout << "\n";
+    CONTROL_LOG_V1("Computed yaw setpoints: " << yawLine.str());
+#endif
 
     // Next, we push this to the global data structure, to be send automatically to the turbines by the CommunicationTask.
     {
@@ -65,5 +75,5 @@ void ControlTask::execute()
 
 void ControlTask::onStop()
 {
-    std::cout << "ControlTask: Stopped\n";
+    CONTROL_LOG_V1("Stopped");
 }

@@ -1,4 +1,5 @@
 #include "libiec_wrapper.hpp"
+#include "common/config.hpp"
 #include <iostream>
 
 extern "C" {
@@ -13,7 +14,7 @@ extern "C" {
 IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines, std::string networkInterface)
 {
     if (turbines.empty()) {
-        std::cerr << "[libiec_wrapper] init(): turbines vector is empty\n";
+        LIBIEC_ERR("init(): turbines vector is empty");
         return IEC_ERROR;
     }
     // Turbine IDs are 1-based; turbines[i] maps to turbine ID i+1.
@@ -26,14 +27,13 @@ IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines,
 
     // Subscribe to GOOSE messages for each turbine and reference
     startGooseSubscription(1, IEC_STRINGS::GOOSE_SUB_TurSt, [](const std::string& ref, void* val) {
-        std::cout << "[libiec_wrapper] GOOSE callback for ref: " << ref
-                  << " enum=" << *((int32_t *)val) << "\n";
+        (void)ref;
+        (void)val;
+        LIBIEC_LOG_V2("GOOSE callback for ref: " << ref << " enum=" << *((int32_t *)val));
     });
 
     
-
-
-    std::cout << "[libiec_wrapper] registered " << turbines.size() << " turbine(s)\n";
+    LIBIEC_LOG_V1("registered " << turbines.size() << " turbine(s)");
     return IEC_OK;
 }
 
@@ -123,7 +123,7 @@ IECReturnCode libiec_wrapper::startGooseSubscription(int turbineId, const std::s
 
     GooseReceiver_addSubscriber(gooseReceiver, subscriber);
 
-    std::cout << "[libiec_wrapper] Started GOOSE subscription for turbine " << turbineId << ", ref: " << fullRef << "\n";
+    LIBIEC_LOG_V1("Started GOOSE subscription for turbine " << turbineId << ", ref: " << fullRef);
 
     return IEC_OK;
 }
@@ -169,6 +169,15 @@ IECReturnCode libiec_wrapper::rxRotorSpeed(int turbineId, float& outRPM) {
     auto rpm = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::RPM_MEAS), IEC61850_FC_MX);
     if (rpm) {
         outRPM = *rpm;
+        return IEC_OK;
+    }
+    return IEC_ERROR;
+}
+
+IECReturnCode libiec_wrapper::rxPowerGen(int turbineId, float& outPowerGen) {
+    auto pw = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::POWER_MEAS), IEC61850_FC_MX);
+    if (pw) {
+        outPowerGen = *pw;
         return IEC_OK;
     }
     return IEC_ERROR;

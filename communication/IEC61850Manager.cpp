@@ -17,6 +17,7 @@
  */
 
 #include "IEC61850Manager.hpp"
+#include "common/config.hpp"
 
 #include <array>
 #include <chrono>
@@ -80,9 +81,10 @@ void collectDataAttributesRecursive(IedConnection connection,
 
 } // anonymous namespace
 
-// ── Logging helper ────────────────────────────────────────────────────────
-#define IEC_LOG(id, msg)  std::cout  << "[IEC61850][" << (id) << "] " << msg << "\n"
-#define IEC_ERR(id, msg)  std::cerr  << "[IEC61850][" << (id) << "] " << msg << "\n"
+// ── Logging helper aliases ────────────────────────────────────────────────
+#define IEC_LOG(id, msg)  IECMGR_LOG_V1(id, msg)
+#define IEC_DEBUG(id, msg) IECMGR_LOG_V2(id, msg)
+#define IEC_ERR(id, msg)  IECMGR_ERR(id, msg)
 
 // ── Reconnect policy ─────────────────────────────────────────────────────
 static constexpr int    MAX_RETRIES        = 5;
@@ -705,7 +707,7 @@ void IEC61850Manager::printDataModel(int turbineId, int maxEntries)
     std::vector<std::string> refs = getDataModelReferences(turbineId);
 
     if (refs.empty()) {
-        IEC_LOG(turbineId, "printDataModel() – no entries found");
+        IEC_DEBUG(turbineId, "printDataModel() – no entries found");
         return;
     }
 
@@ -713,7 +715,7 @@ void IEC61850Manager::printDataModel(int turbineId, int maxEntries)
     if (maxEntries > 0)
         limit = std::min<std::size_t>(limit, static_cast<std::size_t>(maxEntries));
 
-    IEC_LOG(turbineId, "Data model entries: showing " << limit << " of " << refs.size());
+    IEC_DEBUG(turbineId, "Data model entries: showing " << limit << " of " << refs.size());
     for (std::size_t i = 0; i < limit; ++i)
-        std::cout << "  [" << i << "] " << refs[i] << "\n";
+        IEC_DEBUG(turbineId, "  [" << i << "] " << refs[i]);
 }

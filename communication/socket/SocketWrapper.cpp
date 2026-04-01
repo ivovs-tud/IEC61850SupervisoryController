@@ -1,4 +1,5 @@
 #include "SocketWrapper.hpp"
+#include "common/config.hpp"
 
 // ---------------------------------------------------------------------------
 // OperatorServer
@@ -17,11 +18,10 @@ void SocketWrapper::OperatorServer::onStart()
         socket_.emplace(context_, zmq::socket_type::pair);
         socket_->set(zmq::sockopt::rcvhwm, 3);
         socket_->bind("tcp://*:" + std::to_string(port_));
-        std::cout << "[OP] Operator server listening on port " << port_ << "\n";
+        SOCKET_OP_LOG_V1("Operator server listening on port " << port_);
         status_.store(SOCKET_CONNECTED);
     } catch (const std::exception& e) {
-        std::cerr << "[OP] Failed to start operator server on port " << port_
-                  << ": " << e.what() << "\n";
+        SOCKET_OP_ERR("Failed to start operator server on port " << port_ << ": " << e.what());
         status_.store(SOCKET_ERROR);
     }
 }
@@ -34,17 +34,17 @@ void SocketWrapper::OperatorServer::execute()
     const auto result = socket_->recv(message, zmq::recv_flags::dontwait);
     if (!result) return;  // no message this cycle
 
-    std::cout << "[OP] Received a message of size " << message.size() << " bytes\n";
+    SOCKET_OP_LOG_V2("Received a message of size " << message.size() << " bytes");
 
     if (callback_) {
         try {
             std::vector<float> data;
             auto handle = msgpack::unpack(static_cast<const char*>(message.data()), message.size());
             handle.get().convert(data);
-            std::cout << "[OP] Unpacked vector of size " << data.size() << "\n";
+            SOCKET_OP_LOG_V2("Unpacked vector of size " << data.size());
             callback_(data);
         } catch (const std::exception& e) {
-            std::cerr << "[OP] Failed to unpack message: " << e.what() << "\n";
+            SOCKET_OP_ERR("Failed to unpack message: " << e.what());
         }
     }
 }
@@ -53,7 +53,7 @@ void SocketWrapper::OperatorServer::onStop()
 {
     socket_.reset();  // close socket before context is destroyed
     status_.store(SOCKET_CLOSED);
-    std::cout << "[OP] Operator server stopped on port " << port_ << "\n";
+    SOCKET_OP_LOG_V1("Operator server stopped on port " << port_);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,11 +73,10 @@ void SocketWrapper::AttackInterfaceServer::onStart()
         socket_.emplace(context_, zmq::socket_type::pair);
         socket_->set(zmq::sockopt::rcvhwm, 3);
         socket_->bind("tcp://*:" + std::to_string(port_));
-        std::cout << "[AT] Attack interface server listening on port " << port_ << "\n";
+        SOCKET_AT_LOG_V1("Attack interface server listening on port " << port_);
         status_.store(SOCKET_CONNECTED);
     } catch (const std::exception& e) {
-        std::cerr << "[AT] Failed to start attack interface server on port " << port_
-                  << ": " << e.what() << "\n";
+        SOCKET_AT_ERR("Failed to start attack interface server on port " << port_ << ": " << e.what());
         status_.store(SOCKET_ERROR);
     }
 }
@@ -90,14 +89,14 @@ void SocketWrapper::AttackInterfaceServer::execute()
     const auto result = socket_->recv(message, zmq::recv_flags::dontwait);
     if (!result) return;
 
-    std::cout << "[AT] Received a message of size " << message.size() << " bytes\n";
+    SOCKET_AT_LOG_V2("Received a message of size " << message.size() << " bytes");
 
     if (callback_) {
         try {
-            std::cout << "[AT] Unpacked vector of size " << message.size() << "\n";
+            SOCKET_AT_LOG_V2("Passing payload of size " << message.size() << " to callback");
             callback_(static_cast<const uint8_t*>(message.data()), message.size());
         } catch (const std::exception& e) {
-            std::cerr << "[AT] Failed to unpack message: " << e.what() << "\n";
+            SOCKET_AT_ERR("Failed to unpack message: " << e.what());
         }
     }
     // TODO: parse and handle attack / injection commands
@@ -107,7 +106,7 @@ void SocketWrapper::AttackInterfaceServer::onStop()
 {
     socket_.reset();
     status_.store(SOCKET_CLOSED);
-    std::cout << "[AT] Attack interface server stopped on port " << port_ << "\n";
+    SOCKET_AT_LOG_V1("Attack interface server stopped on port " << port_);
 }
 
 // ---------------------------------------------------------------------------
@@ -120,11 +119,11 @@ SocketWrapper::SocketWrapper()
 SocketStatus SocketWrapper::StartOperatorServer(int port)
 {
     if (opServer_.status() >= SOCKET_CONNECTED) {
-        std::cerr << "[OP] Operator server is already running.\n";
+        SOCKET_OP_ERR("Operator server is already running.");
         return SOCKET_ERROR;
     }
     if (port < 1024 || port > 65535) {
-        std::cerr << "[OP] Invalid port number: " << port << "\n";
+        SOCKET_OP_ERR("Invalid port number: " << port);
         return SOCKET_ERROR;
     }
     opServer_.setPort(port);
@@ -151,11 +150,11 @@ void SocketWrapper::AttachAttackInterfaceCallback(AttackCallback callback)
 SocketStatus SocketWrapper::StartAttackInterfaceServer(int port)
 {
     if (attackServer_.status() >= SOCKET_CONNECTED) {
-        std::cerr << "[AT] Attack interface server is already running.\n";
+        SOCKET_AT_ERR("Attack interface server is already running.");
         return SOCKET_ERROR;
     }
     if (port < 1024 || port > 65535) {
-        std::cerr << "[AT] Invalid port number: " << port << "\n";
+        SOCKET_AT_ERR("Invalid port number: " << port);
         return SOCKET_ERROR;
     }
     attackServer_.setPort(port);
