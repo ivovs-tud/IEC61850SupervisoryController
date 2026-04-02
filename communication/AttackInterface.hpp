@@ -180,8 +180,7 @@ namespace AttackInterface
                     }
 
                 } else {
-                    ATTACK_ERR("Unsupported control signal received in CT_DATA: "
-                               << static_cast<int>(signal));
+                    ATTACK_ERR("Unsupported control signal received in CT_DATA: " << static_cast<int>(signal));
                 }
             }
 
@@ -191,6 +190,14 @@ namespace AttackInterface
                                << ", expected at least " << sizeof(AtDataMessage));
                     return;
                 }
+                
+                {
+                    std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
+                    if (!state.awaiting_at_response || state.at_response_received) {
+                        ATTACK_LOG_V2("Received unexpected AT_DATA message (not awaiting response or already received). Ignoring.");
+                        return;
+                    }
+                }
 
                 const AtDataMessage* msg = reinterpret_cast<const AtDataMessage*>(data);
                 ATTACK_LOG_V1("Parsed AT_DATA command for turbine " << static_cast<int>(msg->turbineId)
@@ -199,7 +206,7 @@ namespace AttackInterface
 
                 // Check if this is a response to a RQ_DATA message we sent
                 if (msg->dataType != state.rq_DataType || msg->turbineId != state.rq_TurbineId) {
-                    ATTACK_ERR("Received AT_DATA does not match any pending RQ_DATA request. Ignoring.");
+                    ATTACK_LOG_V2("Received AT_DATA does not match any pending RQ_DATA request. Ignoring.");
                     return;
                 }
 
@@ -324,7 +331,6 @@ namespace AttackInterface
 
                 // If we timed out, return an error
                 {
-                    // TODO: lock should wait for release
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                     state.awaiting_at_response = false;
                     state.at_response_received = false;
