@@ -191,6 +191,7 @@ namespace AttackInterface
                     return;
                 }
                 
+                // We return if we are not currently awaiting a response
                 {
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                     if (!state.awaiting_at_response || state.at_response_received) {
@@ -212,8 +213,9 @@ namespace AttackInterface
 
                 {
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
+                    // Extra fail-safe in case in between receiving and parsing the rq_thread timed out
+                    state.at_response_received = true & state.awaiting_at_response; 
                     state.awaiting_at_response = false;
-                    state.at_response_received = true;
                     state.at_response_val = msg->fake_value;
                 }
             }
@@ -245,6 +247,10 @@ namespace AttackInterface
                         {TX_WS, false}, {TX_WD, false}, {TX_ST, false}, {TX_PW, false}, 
                         {TX_YAW, false}, {TX_RPM, false}, {TX_PTCH, false}, {TX_SPT_YAW, false}, {TX_SPT_PWR, false},
                     };
+                    ls.fdiEnabled = std::map<TxDataType, bool> {
+                        {TX_WS, false}, {TX_WD, false}, {TX_ST, false}, {TX_PW, false}, 
+                        {TX_YAW, false}, {TX_RPM, false}, {TX_PTCH, false}, {TX_SPT_YAW, false}, {TX_SPT_PWR, false},
+                    };
                     state.LinkStates.push_back(ls);
                 }
 
@@ -253,7 +259,7 @@ namespace AttackInterface
                 });
             }
 
-            void txData(int turbineId, TxDataType dataType, float value) {
+            void txData(unsigned int turbineId, TxDataType dataType, float value) {
                 if (turbineId < 1 || turbineId > state.LinkStates.size()) {
                     ATTACK_ERR("Invalid turbine ID: " << turbineId);
                     return;
@@ -273,7 +279,7 @@ namespace AttackInterface
             }
 
 
-            AIRC overwrite(int turbineId, TxDataType dataType, float &val) {
+            AIRC overwrite(unsigned int turbineId, TxDataType dataType, float &val) {
                 /**
                  * @brief If the control for the given dataType is enabled, then the value is overwritten by the attack interface
                  * 
