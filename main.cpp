@@ -30,7 +30,7 @@ int main()
         {"localhost", 102, "WTURBINE", "LD3"},
     };
     // cfg.goose.networkIface        = "eth1";
-    cfg.orchestrationPeriod       = 1000ms;
+    cfg.orchestrationPeriod       = 10ms;
     CommunicationTask commTask(cfg);
     commTask.init();
 

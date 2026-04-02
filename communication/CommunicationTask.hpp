@@ -84,6 +84,13 @@ private:
     SocketWrapper socketWrapper;
     AttackInterface::AttackInterface attackInterface;
 
+    // Runtime state for descriptor scheduling (next execution times in UNIX ms)
+    // Key: "turbineId:descriptorName" (e.g., "1:power setpoint")
+    mutable std::mutex rxDescriptorMutex_;
+    mutable std::mutex txDescriptorMutex_;
+    std::map<std::string, uint64_t> rxNextExecutionTimes_;  ///< maps descriptor key to next execution time (UNIX ms)
+    std::map<std::string, uint64_t> txNextExecutionTimes_;  ///< maps descriptor key to next execution time (UNIX ms)
+
     // -----------------------------------------------------------------------
     // Descriptor-driven per-turbine operation helpers called by execute().
     //
@@ -105,6 +112,7 @@ private:
         AttackInterface::TxDataType              txDataType;
         std::vector<double> GlobalData::*        lastField;
         TurbineHistory<double> GlobalData::*     historyField;
+        uint32_t                                 intervalMs;  ///< interval between RX operations in milliseconds
     };
 
     struct TxDescriptor {
@@ -113,10 +121,30 @@ private:
         std::function<float(const GlobalData&, int)> gdsRead;
         AttackInterface::TxDataType                  txDataType;
         IECReturnCode (libiec_wrapper::*iecWrite)(int, float);
+        uint32_t                                     intervalMs;  ///< interval between TX operations in milliseconds
     };
 
     static const RxDescriptor RX_DESCRIPTORS[];
     static const TxDescriptor TX_DESCRIPTORS[];
+
+    // -----------------------------------------------------------------------
+    // Timestamp control methods: allow prescribing RX/TX frequencies
+    // -----------------------------------------------------------------------
+    
+    /// Get the next execution time (UNIX timestamp in ms) for an RX descriptor
+    uint64_t getRxNextExecutionTimeMs(int turbineId, const RxDescriptor& desc) const;
+    
+    /// Get the next execution time (UNIX timestamp in ms) for a TX descriptor
+    uint64_t getTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc) const;
+    
+    /// Overwrite the next execution time for an RX descriptor (in UNIX timestamp ms)
+    void setRxNextExecutionTimeMs(int turbineId, const RxDescriptor& desc, uint64_t timeMs);
+    
+    /// Overwrite the next execution time for a TX descriptor (in UNIX timestamp ms)
+    void setTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc, uint64_t timeMs);
+    
+    /// Get a descriptor key for internal map lookups
+    std::string getDescriptorKey(int turbineId, const char* descriptorName) const;
 
     void doRxMeasurement(int turbineId, int idx, const RxDescriptor& desc);
     void doTxSetpoint   (int turbineId, int idx, const TxDescriptor& desc);

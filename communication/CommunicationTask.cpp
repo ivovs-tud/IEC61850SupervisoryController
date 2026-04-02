@@ -2,6 +2,8 @@
 #include "socket/SocketWrapper.hpp"
 #include "AttackInterface.hpp"
 #include "common/config.hpp"
+#include "common/TimeUtils.hpp"
+#include <map>
 
 CommunicationTask::CommunicationTask(const CommConfig& config)
     : PeriodicTask(config.orchestrationPeriod)
@@ -32,6 +34,57 @@ void CommunicationTask::init()
     });
 
     // TODO: set up GOOSE subscriber via libiec_wrapper and register onGooseMessage() as callback
+}
+
+// =============================================================================
+// Descriptor Timestamp Control Methods
+// =============================================================================
+
+std::string CommunicationTask::getDescriptorKey(int turbineId, const char* descriptorName) const
+{
+    return std::to_string(turbineId) + ":" + std::string(descriptorName);
+}
+
+uint64_t CommunicationTask::getRxNextExecutionTimeMs(int turbineId, const RxDescriptor& desc) const
+{
+    std::lock_guard<std::mutex> lock(rxDescriptorMutex_);
+    std::string key = getDescriptorKey(turbineId, desc.name);
+    auto it = rxNextExecutionTimes_.find(key);
+    if (it == rxNextExecutionTimes_.end()) {
+        // First time: initialize to now (allow immediate execution)
+        return getCurrentTimeMs();
+    }
+    return it->second;
+}
+
+uint64_t CommunicationTask::getTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc) const
+{
+    std::lock_guard<std::mutex> lock(txDescriptorMutex_);
+    std::string key = getDescriptorKey(turbineId, desc.name);
+    auto it = txNextExecutionTimes_.find(key);
+    if (it == txNextExecutionTimes_.end()) {
+        // First time: initialize to now (allow immediate execution)
+        return getCurrentTimeMs();
+    }
+    return it->second;
+}
+
+void CommunicationTask::setRxNextExecutionTimeMs(int turbineId, const RxDescriptor& desc, uint64_t timeMs)
+{
+    std::lock_guard<std::mutex> lock(rxDescriptorMutex_);
+    std::string key = getDescriptorKey(turbineId, desc.name);
+    rxNextExecutionTimes_[key] = timeMs;
+    COMMTASK_LOG_V2("RX descriptor '" << desc.name << "' (turbine " << turbineId 
+                    << ") next execution time set to " << timeMs << " ms");
+}
+
+void CommunicationTask::setTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc, uint64_t timeMs)
+{
+    std::lock_guard<std::mutex> lock(txDescriptorMutex_);
+    std::string key = getDescriptorKey(turbineId, desc.name);
+    txNextExecutionTimes_[key] = timeMs;
+    COMMTASK_LOG_V2("TX descriptor '" << desc.name << "' (turbine " << turbineId 
+                    << ") next execution time set to " << timeMs << " ms");
 }
 
 void CommunicationTask::onStart()
@@ -71,34 +124,50 @@ void CommunicationTask::onStart()
 // =============================================================================
 
 const CommunicationTask::RxDescriptor CommunicationTask::RX_DESCRIPTORS[] = {
-    //  name              unit   IEC read fn                         AI type                   GDS last-value field     GDS history field
-    { "wind speed",      "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory  },
-    { "wind direction",  "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory  },
-    { "rotor speed",     "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory },
-    { "power_gen",       "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::Power_i,    &GlobalData::powerHistory },
+    //  name              unit   IEC read fn                         AI type                   GDS last-value field     GDS history field          interval (ms)
+    { "wind speed",      "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    2000 },
+    { "wind direction",  "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    2000 },
+    { "rotor speed",     "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   500  },
+    { "power_gen",       "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::Power_i,    &GlobalData::powerHistory, 500  },
 };
 
 const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
-    //  name            unit    GDS reader                                                                                  AI type                         IEC write fn
-    { "power setpoint", "W",    [](const GlobalData& d, int i) { return d.TurbinePowerSetpoints[i]; },                      AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint },
-    { "yaw setpoint",   "deg",  [](const GlobalData& d, int i) { return static_cast<float>(d.TurbineYawSetpoints[i]); },    AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint   },
+    //  name            unit    GDS reader                                                                                  AI type                         IEC write fn                               interval (ms)
+    { "power setpoint", "W",    [](const GlobalData& d, int i) { return d.TurbinePowerSetpoints[i]; },                      AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,          5000 },
+    { "yaw setpoint",   "deg",  [](const GlobalData& d, int i) { return static_cast<float>(d.TurbineYawSetpoints[i]); },    AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,            10000 },
 };
 
 // =============================================================================
 
 void CommunicationTask::execute()
 {
+    uint64_t currentTimeMs = getCurrentTimeMs();
+
     for (int i = 0; i < static_cast<int>(config_.mms.turbines.size()); ++i) {
         if (i > 0) continue;
         const int turbineId = i + 1;  // 1-based for IEC 61850
 
-        for (const auto& desc : TX_DESCRIPTORS)
-            doTxSetpoint(turbineId, i, desc);
+        // TX operations: check timestamp before executing
+        for (const auto& desc : TX_DESCRIPTORS) {
+            uint64_t nextExecTime = getTxNextExecutionTimeMs(turbineId, desc);
+            if (currentTimeMs >= nextExecTime) {
+                doTxSetpoint(turbineId, i, desc);
+                // Schedule next execution
+                setTxNextExecutionTimeMs(turbineId, desc, currentTimeMs + desc.intervalMs);
+            }
+        }
 
+        // RX operations: check timestamp before executing
         doRxSecret(turbineId);
 
-        for (const auto& desc : RX_DESCRIPTORS)
-            doRxMeasurement(turbineId, i, desc);
+        for (const auto& desc : RX_DESCRIPTORS) {
+            uint64_t nextExecTime = getRxNextExecutionTimeMs(turbineId, desc);
+            if (currentTimeMs >= nextExecTime) {
+                doRxMeasurement(turbineId, i, desc);
+                // Schedule next execution
+                setRxNextExecutionTimeMs(turbineId, desc, currentTimeMs + desc.intervalMs);
+            }
+        }
     }
 }
 
@@ -178,7 +247,7 @@ void CommunicationTask::onStop()
     socketWrapper.StopAttackInterfaceServer();
     state.socket_status.store(COMM_DISCONNECTED);
 
-    
+
     iecWrapper_.stop();
     state.iec_status.store(COMM_DISCONNECTED);
 

@@ -6,6 +6,7 @@
 #include <string>
 
 #include "common/config.hpp"
+#include "common/TimeUtils.hpp"
 #include "libiec_wrapper.hpp"
 #include "socket/SocketWrapper.hpp"
 
@@ -287,7 +288,7 @@ namespace AttackInterface
                 RqDataMessage rqMsg;
                 rqMsg.turbineId = turbineId;
                 rqMsg.dataType = dataType;
-                rqMsg.rq_time = static_cast<TimeStamp>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+                rqMsg.rq_time = static_cast<TimeStamp>(getCurrentTimeMs());
                 rqMsg.exp_time = rqMsg.rq_time + 100; // Request expires after 100 milliseconds. TODO: Make this configurable
 
                 {
