@@ -149,7 +149,7 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
         return;
     }
 
-    COMMTASK_LOG_V1("Received " << desc.name << " from turbine " << turbineId
+    COMMTASK_LOG_V2("Received (pre-overwrite)" << desc.name << " from turbine " << turbineId
                     << ": " << value << " " << desc.unit);
 
     // Then potentially transmit this data to an eavesdropper over the attack interface
@@ -160,7 +160,7 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
         COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
                      << " from turbine " << turbineId);
     }
-    COMMTASK_LOG_V2("Post-overwrite " << desc.name << " for turbine " << turbineId
+    COMMTASK_LOG_V1("Received (post-overwrite) " << desc.name << " for turbine " << turbineId
                     << ": " << value << " " << desc.unit);
 
     {
@@ -173,10 +173,12 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
 
 void CommunicationTask::onStop()
 {
-    state.socket_status.store(COMM_DISCONNECTED);
+    
     socketWrapper.StopOperatorServer();
     socketWrapper.StopAttackInterfaceServer();
+    state.socket_status.store(COMM_DISCONNECTED);
 
+    
     iecWrapper_.stop();
     state.iec_status.store(COMM_DISCONNECTED);
 

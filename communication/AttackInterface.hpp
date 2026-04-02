@@ -323,6 +323,7 @@ namespace AttackInterface
 
                 // If we timed out, return an error
                 {
+                    // TODO: lock should wait for release
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                     state.awaiting_at_response = false;
                     state.at_response_received = false;
