@@ -6,8 +6,8 @@
 #include "common/GlobalDataStructure.hpp"
 
 
-ControlTask::ControlTask(int numTurbines, std::chrono::milliseconds period)
-    : PeriodicTask(period), numTurbines_(numTurbines)
+ControlTask::ControlTask(Config config)
+    : PeriodicTask(config.period), numTurbines_(config.numTurbines), yawLut_(config.yawLutCsvPath)
 {
     // TODO: initialise control algorithm state
 }

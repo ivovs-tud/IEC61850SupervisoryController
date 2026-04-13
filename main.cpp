@@ -9,8 +9,14 @@ using namespace std::chrono_literals;
 #include "tasks/MonitoringTask.hpp"
 #include "communication/CommunicationTask.hpp"
 
-int main()
+int main(int argc, char* argv[])
 {
+if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <yaw_lut.csv>\n";
+        return 1;
+    }
+
+    try {
     const int numTurbines = 3; 
 
     // TODO: drop privileges (e.g. setuid/setgid) before spawning worker threads
@@ -34,6 +40,12 @@ int main()
     CommunicationTask commTask(cfg);
     commTask.init();
 
+        ControlTask::Config controlConfig;
+        controlConfig.period = 4000ms;
+        controlConfig.yawLutCsvPath = argv[1];
+        controlConfig.numTurbines = numTurbines;
+        ControlTask controlTask(controlConfig);
+
     // hmiTask.start();
     controlTask.start();
     // signalTask.start();
@@ -51,4 +63,8 @@ int main()
     commTask.stop();
 
     return 0;
+} catch (const std::exception& ex) {
+        std::cerr << "Failed to start supervisory controller: " << ex.what() << '\n';
+        return 1;
+    }
 }
