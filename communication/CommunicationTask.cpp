@@ -3,11 +3,21 @@
 #include "AttackInterface.hpp"
 #include "common/config.hpp"
 #include "common/TimeUtils.hpp"
-#include <map>
 
-CommunicationTask::CommunicationTask(const CommConfig& config)
+#include <map>
+#include <string>
+
+CommunicationTask::CommunicationTask(DataHistorian& dataHistorian, const CommConfig& config)
     : PeriodicTask(config.orchestrationPeriod)
-    , config_(config), attackInterface(config.mms.turbines.size(), socketWrapper)
+    , config_(config)
+    , socketWrapper(config.operatorServer.port,
+                    static_cast<int>(config.operatorServer.pollPeriod.count()),
+                    config.attackInterface.port,
+                    static_cast<int>(config.attackInterface.pollPeriod.count()),
+                    config.dataHistorian.port,
+                    static_cast<int>(config.dataHistorian.pollPeriod.count()))
+    , attackInterface(config.mms.turbines.size(), socketWrapper)
+    , dataHistorian_(dataHistorian)
 {
     // TODO: construct libiec_wrapper and SocketWrapper instances
 
@@ -31,6 +41,17 @@ void CommunicationTask::init()
             GlobalDataStructure::instance().data().RequestedReferencePower = data[0];
             COMMTASK_LOG_V1("Updated RequestedReferencePower to " << data[0]);
         }
+    });
+
+    socketWrapper.AttachDataHistorianCallback([this](const uint8_t* data, size_t length) {
+        if (data == nullptr || length == 0) {
+            COMMTASK_ERR("Received empty DataHistorian message");
+            return;
+        }
+
+        COMMTASK_LOG_V2("Received DataHistorian message of size " << length << " bytes");
+
+        dataHistorian_.log(std::string(reinterpret_cast<const char*>(data), length));
     });
 
     // TODO: set up GOOSE subscriber via libiec_wrapper and register onGooseMessage() as callback
@@ -90,8 +111,15 @@ void CommunicationTask::setTxNextExecutionTimeMs(int turbineId, const TxDescript
 void CommunicationTask::onStart()
 {
     state.socket_status.store(COMM_CONNECTING);
-    socketWrapper.StartOperatorServer(config_.operatorServer.port);
-    socketWrapper.StartAttackInterfaceServer(config_.attackInterface.port);
+    if (socketWrapper.StartOperatorServer(config_.operatorServer.port) < SOCKET_CONNECTED) {
+        COMMTASK_ERR("Failed to start operator server on port " << config_.operatorServer.port);
+    }
+    if (socketWrapper.StartAttackInterfaceServer(config_.attackInterface.port) < SOCKET_CONNECTED) {
+        COMMTASK_ERR("Failed to start attack interface server on port " << config_.attackInterface.port);
+    }
+    if (socketWrapper.StartDataHistorianServer(config_.dataHistorian.port) < SOCKET_CONNECTED) {
+        COMMTASK_ERR("Failed to start data historian server on port " << config_.dataHistorian.port);
+    }
     state.socket_status.store(COMM_CONNECTED);
 
     state.iec_status.store(COMM_CONNECTING);
@@ -141,30 +169,31 @@ const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
 
 void CommunicationTask::execute()
 {
-    uint64_t currentTimeMs = getCurrentTimeMs();
-
     for (int i = 0; i < static_cast<int>(config_.mms.turbines.size()); ++i) {
         if (i > 0) continue;
         const int turbineId = i + 1;  // 1-based for IEC 61850
 
-        // TX operations: check timestamp before executing
+        // TX operations: check timestamp before executing.
+        // Capture the current time immediately before each comparison so that
+        // first-use descriptors (which default to "now") are handled
+        // deterministically instead of occasionally missing their first cycle.
         for (const auto& desc : TX_DESCRIPTORS) {
-            uint64_t nextExecTime = getTxNextExecutionTimeMs(turbineId, desc);
+            const uint64_t nextExecTime = getTxNextExecutionTimeMs(turbineId, desc);
+            const uint64_t currentTimeMs = getCurrentTimeMs();
             if (currentTimeMs >= nextExecTime) {
                 doTxSetpoint(turbineId, i, desc);
-                // Schedule next execution
                 setTxNextExecutionTimeMs(turbineId, desc, currentTimeMs + desc.intervalMs);
             }
         }
 
         // RX operations: check timestamp before executing
-        doRxSecret(turbineId);
+        // doRxSecret(turbineId);
 
         for (const auto& desc : RX_DESCRIPTORS) {
-            uint64_t nextExecTime = getRxNextExecutionTimeMs(turbineId, desc);
+            const uint64_t nextExecTime = getRxNextExecutionTimeMs(turbineId, desc);
+            const uint64_t currentTimeMs = getCurrentTimeMs();
             if (currentTimeMs >= nextExecTime) {
                 doRxMeasurement(turbineId, i, desc);
-                // Schedule next execution
                 setRxNextExecutionTimeMs(turbineId, desc, currentTimeMs + desc.intervalMs);
             }
         }
@@ -245,6 +274,7 @@ void CommunicationTask::onStop()
     
     socketWrapper.StopOperatorServer();
     socketWrapper.StopAttackInterfaceServer();
+    socketWrapper.StopDataHistorianServer();
     state.socket_status.store(COMM_DISCONNECTED);
 
 

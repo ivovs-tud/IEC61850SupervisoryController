@@ -1,4 +1,5 @@
 #include <chrono>
+#include <exception>
 #include <iostream>
 
 using namespace std::chrono_literals;
@@ -8,37 +9,43 @@ using namespace std::chrono_literals;
 #include "tasks/SignalProcessingTask.hpp"
 #include "tasks/MonitoringTask.hpp"
 #include "communication/CommunicationTask.hpp"
+#include "common/DataHistorian.hpp"
 
 int main(int argc, char* argv[])
 {
-if (argc < 2) {
+    if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <yaw_lut.csv>\n";
         return 1;
     }
 
     try {
-    const int numTurbines = 3; 
+        const int numTurbines = 3;
 
-    // TODO: drop privileges (e.g. setuid/setgid) before spawning worker threads
+        // TODO: drop privileges (e.g. setuid/setgid) before spawning worker threads
 
-    // HmiTask              hmiTask(100ms);      // 10 Hz
-    ControlTask          controlTask(numTurbines, 4000ms);      // 0.25 Hz
-    // SignalProcessingTask signalTask(1ms);      // 1 kHz
-    // MonitoringTask       monitoringTask(50ms); // 20 Hz
+        // HmiTask              hmiTask(100ms);      // 10 Hz
+              // 0.25 Hz
+        // SignalProcessingTask signalTask(1ms);      // 1 kHz
+        // MonitoringTask       monitoringTask(50ms); // 20 Hz
 
-    // All fields have sensible defaults – override only what you need.
-    CommConfig cfg;
-    // cfg.operatorServer.port       = 9001;
-    // cfg.attackInterface.port      = 9002;
-    cfg.mms.turbines = {
-        {"localhost", 102, "WTURBINE", "LD0"},
-        {"localhost", 102, "WTURBINE", "LD2"},
-        {"localhost", 102, "WTURBINE", "LD3"},
-    };
-    // cfg.goose.networkIface        = "eth1";
-    cfg.orchestrationPeriod       = 10ms;
-    CommunicationTask commTask(cfg);
-    commTask.init();
+        // All fields have sensible defaults – override only what you need.
+        CommConfig cfg;
+        // cfg.operatorServer.port       = 9001;
+        // cfg.operatorServer.pollPeriod = 10ms;
+        // cfg.attackInterface.port      = 9002;
+        // cfg.attackInterface.pollPeriod = 10ms;
+        // cfg.dataHistorian.port        = 9003;
+        // cfg.dataHistorian.pollPeriod  = 10ms;
+        cfg.mms.turbines = {
+            {"localhost", 102, "WTURBINE", "LD0"},
+            {"localhost", 103, "WTURBINE", "LD0"},
+            {"localhost", 104, "WTURBINE", "LD0"},
+        };
+        // cfg.goose.networkIface        = "eth1";
+        cfg.orchestrationPeriod = 10ms;
+        DataHistorian dataHistorian("project_datahistorian");
+        CommunicationTask commTask(dataHistorian, cfg);
+        commTask.init();
 
         ControlTask::Config controlConfig;
         controlConfig.period = 4000ms;
@@ -46,24 +53,24 @@ if (argc < 2) {
         controlConfig.numTurbines = numTurbines;
         ControlTask controlTask(controlConfig);
 
-    // hmiTask.start();
-    controlTask.start();
-    // signalTask.start();
-    // monitoringTask.start();
-    commTask.start();
+        // hmiTask.start();
+        controlTask.start();
+        // signalTask.start();
+        // monitoringTask.start();
+        commTask.start();
 
-    std::cout << "Server running. Press Enter to stop.\n";
+        std::cout << "Server running. Press Enter to stop.\n";
 
-    std::cin.get();
+        std::cin.get();
 
-    // hmiTask.stop();
-    controlTask.stop();
-    // signalTask.stop();
-    // monitoringTask.stop();
-    commTask.stop();
+        // hmiTask.stop();
+        controlTask.stop();
+        // signalTask.stop();
+        // monitoringTask.stop();
+        commTask.stop();
 
-    return 0;
-} catch (const std::exception& ex) {
+        return 0;
+    } catch (const std::exception& ex) {
         std::cerr << "Failed to start supervisory controller: " << ex.what() << '\n';
         return 1;
     }

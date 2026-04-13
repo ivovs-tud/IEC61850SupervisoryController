@@ -7,7 +7,7 @@
 // -----------------------------------------------------------------------------
 // 0: no logs, 1: errors only, 2: +verbosity-1, 3: +verbosity-2
 #ifndef SC_LOG_DEFAULT_LEVEL
-#define SC_LOG_DEFAULT_LEVEL 2
+#define SC_LOG_DEFAULT_LEVEL 3
 #endif
 
 // -----------------------------------------------------------------------------
@@ -59,6 +59,7 @@
 #define SC_LOG_COLOR_ATTACK_V1   "\x1b[35m"   // magenta
 #define SC_LOG_COLOR_SOCKET_OP_V1 "\x1b[32m"  // green
 #define SC_LOG_COLOR_SOCKET_AT_V1 "\x1b[33m"  // yellow
+#define SC_LOG_COLOR_SOCKET_DH_V1 "\x1b[33m"       // yellow
 #define SC_LOG_COLOR_LIBIEC_V1   "\x1b[34m"   // blue
 #define SC_LOG_COLOR_IECMGR_V1   "\x1b[96m"   // bright cyan
 #define SC_LOG_COLOR_CONTROL_V1  "\x1b[92m"   // bright green
@@ -68,6 +69,7 @@
 #define SC_LOG_COLOR_ATTACK_V2   "\x1b[2;35m"
 #define SC_LOG_COLOR_SOCKET_OP_V2 "\x1b[2;32m"
 #define SC_LOG_COLOR_SOCKET_AT_V2 "\x1b[2;33m"
+#define SC_LOG_COLOR_SOCKET_DH_V2 "\x1b[2;33m"
 #define SC_LOG_COLOR_LIBIEC_V2   "\x1b[2;34m"
 #define SC_LOG_COLOR_IECMGR_V2   "\x1b[2;96m"
 #define SC_LOG_COLOR_CONTROL_V2  "\x1b[2;92m"
@@ -79,6 +81,7 @@
 #define SC_LOG_COLOR_ATTACK_V1   ""
 #define SC_LOG_COLOR_SOCKET_OP_V1 ""
 #define SC_LOG_COLOR_SOCKET_AT_V1 ""
+#define SC_LOG_COLOR_SOCKET_DH_V1 ""
 #define SC_LOG_COLOR_LIBIEC_V1   ""
 #define SC_LOG_COLOR_IECMGR_V1   ""
 #define SC_LOG_COLOR_CONTROL_V1  ""
@@ -87,6 +90,7 @@
 #define SC_LOG_COLOR_ATTACK_V2   ""
 #define SC_LOG_COLOR_SOCKET_OP_V2 ""
 #define SC_LOG_COLOR_SOCKET_AT_V2 ""
+#define SC_LOG_COLOR_SOCKET_DH_V2 ""
 #define SC_LOG_COLOR_LIBIEC_V2   ""
 #define SC_LOG_COLOR_IECMGR_V2   ""
 #define SC_LOG_COLOR_CONTROL_V2  ""
@@ -189,6 +193,28 @@
 #else
 #define SOCKET_AT_LOG_V2(msg) do {} while (0)
 #endif
+
+// -----------------------------------------------------------------------------
+// SOCKET datahistorian server macros
+// -----------------------------------------------------------------------------
+#if SC_LOG_LEVEL_SOCKET_DATA >= 1
+#define SOCKET_DH_ERR(msg) SC_LOG_EMIT_COLOR(std::cerr, SC_LOG_COLOR_ERROR, "[DH][ERR] ", msg)
+#else
+#define SOCKET_DH_ERR(msg) do {} while (0)
+#endif
+
+#if SC_LOG_LEVEL_SOCKET_DATA >= 2
+#define SOCKET_DH_LOG_V1(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_SOCKET_DH_V1, "[DH] ", msg)
+#else
+#define SOCKET_DH_LOG_V1(msg) do {} while (0)
+#endif
+
+#if SC_LOG_LEVEL_SOCKET_DATA >= 3
+#define SOCKET_DH_LOG_V2(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_SOCKET_DH_V2, "[DH][V2] ", msg)
+#else
+#define SOCKET_DH_LOG_V2(msg) do {} while (0)
+#endif
+
 
 // -----------------------------------------------------------------------------
 // libiec_wrapper macros

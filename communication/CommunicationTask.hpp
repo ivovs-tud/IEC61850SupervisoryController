@@ -2,6 +2,7 @@
 
 #include "common/PeriodicTask.hpp"
 #include "common/GlobalDataStructure.hpp"
+#include "common/DataHistorian.hpp"
 #include "communication/libiec_wrapper.hpp"
 #include "communication/socket/SocketWrapper.hpp"
 #include "AttackInterface.hpp"
@@ -38,6 +39,12 @@ struct CommConfig
         std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
     } attackInterface;
 
+    // TCP data historian server (external device/test source -> controller)
+    struct DataHistorian {
+        int                       port        {9003};
+        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
+    } dataHistorian;
+
     // IEC 61850 MMS client
     struct Mms {
         std::vector<TurbineEndpoint>  turbines;   ///< one entry per turbine; IDs are 1-based
@@ -60,7 +67,7 @@ struct CommConfig
 class CommunicationTask : public PeriodicTask
 {
 public:
-    explicit CommunicationTask(const CommConfig& config = CommConfig{});
+    explicit CommunicationTask(DataHistorian& dataHistorian, const CommConfig& config = CommConfig{});
 
     void init();
 
@@ -83,6 +90,7 @@ private:
     libiec_wrapper iecWrapper_;
     SocketWrapper socketWrapper;
     AttackInterface::AttackInterface attackInterface;
+    DataHistorian& dataHistorian_;
 
     // Runtime state for descriptor scheduling (next execution times in UNIX ms)
     // Key: "turbineId:descriptorName" (e.g., "1:power setpoint")
