@@ -41,11 +41,8 @@ void SocketWrapper::OperatorServer::execute()
 
     if (callback_) {
         try {
-            std::vector<float> data;
-            auto handle = msgpack::unpack(static_cast<const char*>(message.data()), message.size());
-            handle.get().convert(data);
-            SOCKET_OP_LOG_V2("Unpacked vector of size " << data.size());
-            callback_(data);
+            SOCKET_OP_LOG_V2("Unpacked vector of size " << message.size());
+            callback_(static_cast<const uint8_t*>(message.data()), message.size());
         } catch (const std::exception& e) {
             SOCKET_OP_ERR("Failed to unpack message: " << e.what());
         }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <boost/circular_buffer.hpp>
 #include <mutex>
 #include <string>
@@ -69,6 +70,57 @@ struct GlobalData
 
     // -- Data from the grid operator
     float RequestedReferencePower = 0.0f; 
+
+
+
+    // Fields for property coordination with the simulator
+    bool simStarted = false;
+    bool simConfigured = false;
+    std::string simTeamName;
+    int simScenario = -1;
+    int simTurbineController = -1;
+
+    void resetForNewRunFields(const std::string& teamName,
+                              int scenarioId,
+                              int turbineControllerId)
+    {
+        systemRunning = false;
+        statusMessage.clear();
+
+        std::fill(lastWS.begin(), lastWS.end(), 0.0);
+        std::fill(lastWD.begin(), lastWD.end(), 0.0);
+        std::fill(lastRPM.begin(), lastRPM.end(), 0.0);
+
+        for (auto& h : wsHistory)
+            h.clear();
+        for (auto& h : wdHistory)
+            h.clear();
+        for (auto& h : rpmHistory)
+            h.clear();
+        for (auto& h : powerHistory)
+            h.clear();
+
+        std::fill(Power_i.begin(), Power_i.end(), 0.0);
+        std::fill(Power_avg20.begin(), Power_avg20.end(), 0.0);
+        std::fill(AvailablePower.begin(), AvailablePower.end(), 0.0);
+        std::fill(rpm_i.begin(), rpm_i.end(), 0.0);
+        std::fill(rpm_avg20.begin(), rpm_avg20.end(), 0.0);
+        glob_ws_i = 0.0f;
+        glob_ws_avg20 = 0.0f;
+        glob_wd_i = 0.0f;
+        glob_wd_avg20 = 0.0f;
+
+        std::fill(TurbinePowerSetpoints.begin(), TurbinePowerSetpoints.end(), -1.0f);
+        std::fill(TurbineYawSetpoints.begin(), TurbineYawSetpoints.end(), 0);
+
+        RequestedReferencePower = 0.0f;
+
+        simStarted = false;
+        simConfigured = true;
+        simTeamName = teamName;
+        simScenario = scenarioId;
+        simTurbineController = turbineControllerId;
+    }
 };
 
 // Singleton providing mutex-protected access to the shared GlobalData struct.
@@ -83,6 +135,14 @@ public:
 
     std::mutex& mutex() { return mutex_; }
     GlobalData& data()  { return data_;  }
+
+    void resetForNewRun(const std::string& teamName,
+                        int scenarioId,
+                        int turbineControllerId)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        data_.resetForNewRunFields(teamName, scenarioId, turbineControllerId);
+    }
 
     GlobalDataStructure(const GlobalDataStructure&)             = delete;
     GlobalDataStructure& operator=(const GlobalDataStructure&)  = delete;

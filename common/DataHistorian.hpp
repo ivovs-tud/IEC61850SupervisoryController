@@ -34,7 +34,7 @@ public:
         , flushEvery_(flushEvery == 0 ? 1 : flushEvery)
         , flushPeriod_(flushPeriod)
     {
-        startNewRun(std::move(experimentName));
+        
     }
 
     ~DataHistorian()
@@ -67,15 +67,26 @@ public:
         file_ << "timestamp_ms,key,value\n";
         file_.flush();
         lastFlushTime_ = std::chrono::steady_clock::now();
+        started_ = true;
+    }
+
+    void stopRun()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        flushUnlocked();
+        started_ = false;
     }
 
     // Log a named scalar measurement.
     void log(const std::string& key, double value)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!started_) {
+            return;
+        }
+
         const auto timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
-
-        std::lock_guard<std::mutex> lock(mutex_);
         ensureFileOpen();
 
         buffer_ << timestampMs << ',' << key << ',' << value << '\n';
@@ -86,10 +97,13 @@ public:
     // Log a raw text message while prepending a timestamp.
     void log(const std::string& rawMessage)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!started_) {
+            return;
+        }
+
         const auto timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
-
-        std::lock_guard<std::mutex> lock(mutex_);
         ensureFileOpen();
 
         buffer_ << timestampMs << ' ' << rawMessage << '\n';
@@ -180,4 +194,5 @@ private:
     std::chrono::milliseconds flushPeriod_{std::chrono::milliseconds(1000)};
     std::chrono::steady_clock::time_point lastFlushTime_{std::chrono::steady_clock::now()};
     std::size_t bufferedRecords_ {0};
+    bool started_ {false};
 };

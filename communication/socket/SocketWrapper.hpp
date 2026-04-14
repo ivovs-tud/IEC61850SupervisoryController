@@ -27,7 +27,7 @@ typedef enum p {
     SOCKET_TRANSMITTING  =  4,
 } SocketStatus;
 
-using OperatorCallback = std::function<void(const std::vector<float>&)>;
+using OperatorCallback = std::function<void(const uint8_t*, size_t)>;
 using AttackCallback = std::function<void(const uint8_t*, size_t)>;
 using DataHistorianCallback = std::function<void(const uint8_t*, size_t)>;
 constexpr int TCP_BUFFER_SIZE = 1024;

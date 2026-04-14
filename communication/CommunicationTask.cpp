@@ -4,6 +4,7 @@
 #include "common/config.hpp"
 #include "common/TimeUtils.hpp"
 
+#include <cstring>
 #include <map>
 #include <string>
 
@@ -35,11 +36,34 @@ void CommunicationTask::init()
         COMMTASK_ERR("IEC61850 init failed - check CommConfig::mms.turbines");
     }
 
-    socketWrapper.AttachServerCallback([](const std::vector<float>& data) {
-        if (data.size() > 0) {
+    socketWrapper.AttachServerCallback([this](const uint8_t* data, size_t length) {
+        // Reinterpret a uint32_t's bit pattern as an IEEE 754 float.
+        auto asFloat = [](uint32_t u) {
+            float f;
+            std::memcpy(&f, &u, sizeof(f));
+            return f;
+        };
+        if (length == 4) {
+            const float value = asFloat(*reinterpret_cast<const uint32_t*>(data));
             std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-            GlobalDataStructure::instance().data().RequestedReferencePower = data[0];
-            COMMTASK_LOG_V1("Updated RequestedReferencePower to " << data[0]);
+            GlobalDataStructure::instance().data().RequestedReferencePower = value;
+            COMMTASK_LOG_V1("Updated RequestedReferencePower to " << value);
+        } else if (length >= 5 && (*reinterpret_cast<const uint32_t*>(data) == 0x01010101)) {
+            // This means the message is a synchronization message from the operator server
+            // The next value indicates if the simulation is stopping (0.0) or starting (!= 0.0)
+            bool simStopped = (*(data + 4) == 0);
+            {
+                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+                if (simStopped) {
+                    // If simulation is stopping, also reset simConfigured to require reconfiguration for the next run
+                    GlobalDataStructure::instance().data().simStarted = false;
+                    GlobalDataStructure::instance().data().simConfigured = false;
+                    dataHistorian_.stopRun();
+                }
+            }
+            COMMTASK_LOG_V1("Received simulation control message from operator server: simStarting = " << !simStopped);
+        } else {
+            COMMTASK_ERR("Received operator message with unexpected format or size: " << length << " (data[0] = " << (length > 0 ? std::to_string(data[0]) : "N/A") << ")");
         }
     });
 
@@ -52,6 +76,38 @@ void CommunicationTask::init()
         COMMTASK_LOG_V2("Received DataHistorian message of size " << length << " bytes");
 
         dataHistorian_.log(std::string(reinterpret_cast<const char*>(data), length));
+    });
+
+    attackInterface.setCfgCommandCallback([this](const AttackInterface::CfgDataMessage &cmd) {
+        // Handle configuration commands from the test harness (e.g., enable/disable attack interface control for specific data types)
+        COMMTASK_LOG_V1("Received AttackInterface config command: TeamName " << cmd.teamName 
+                        << ", ScenarioId " << cmd.scenarioId 
+                        << ", TurbineController " << cmd.turbineController);
+
+        GlobalDataStructure::instance().resetForNewRun(std::string(cmd.teamName), cmd.scenarioId, cmd.turbineController);
+
+        attackInterface.resetState();
+
+        // TODO: also send scenario ID to simulator PC and send turbineControllerId to Speedgoat
+    });
+
+    attackInterface.setSimCtrlCommandCallback([this](const AttackInterface::SimCtrlMessage& cmd) {
+        // Handle simulator control commands from the test harness (e.g., start/stop simulation, switch scenarios)
+        COMMTASK_LOG_V1("Received Simulator Control command: simStart " << cmd.simStart);
+        std::string runName;
+        {
+            std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+            auto& gds = GlobalDataStructure::instance().data();
+            if (gds.simConfigured && cmd.simStart) {
+                gds.simStarted = true;
+                runName = "sim_scenario_" + std::to_string(gds.simScenario) + "_" + gds.simTeamName;
+            }
+        }
+
+        if (!runName.empty())
+            dataHistorian_.startNewRun(runName);
+
+        // TODO: Also send start sim command to simulator PC
     });
 
     // TODO: set up GOOSE subscriber via libiec_wrapper and register onGooseMessage() as callback
@@ -169,6 +225,16 @@ const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
 
 void CommunicationTask::execute()
 {
+
+    if (GlobalDataStructure::instance().data().simConfigured && !GlobalDataStructure::instance().data().simStarted) {
+        // If the simulation is configured but not started, skip exectuion, but we signal to the attackinterface that we are ready
+        attackInterface.signalReady();
+
+        // Then wait 1 second
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        return;
+    }
+
     for (int i = 0; i < static_cast<int>(config_.mms.turbines.size()); ++i) {
         if (i > 0) continue;
         const int turbineId = i + 1;  // 1-based for IEC 61850

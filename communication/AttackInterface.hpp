@@ -4,6 +4,8 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <functional>
+#include <cstring>
 
 #include "common/config.hpp"
 #include "common/TimeUtils.hpp"
@@ -18,6 +20,8 @@ namespace AttackInterface
         RQ_DATA = 0x02,     // Request for sending specific data
         AT_DATA = 0x04,     // Data containing overwrite signals (response to RQ_DATA)
         CT_DATA = 0x08,     // Control data (e.g. containing)
+        CFG_DATA = 0x10,    // Configuration data (e.g. scenario configuration)
+        SIM_CTRL = 0x20,    // Simulation control data (e.g. start/stop signal for the simulator, scenario selection, etc.)
     } DataHeader;
 
     typedef DataHeader MessageType;
@@ -51,6 +55,7 @@ namespace AttackInterface
         CTRL_NONE = 0x00,           // Nothing
         CTRL_TAP = 0x01,            // Start/stop tapping communication
         CTRL_FDI = 0x02,            // Start/stop false data injection attack
+        // CTRL_CFG = 0x04,            // Configuration message (contains data for scenario configuration. Should only be used before starting a scenario, and ignored otherwise)
     } ControlSignal;
 
     
@@ -86,7 +91,26 @@ namespace AttackInterface
         ControlSignal signal;       // Control type
         TxDataType dataType;        // Type of data the control signal is related to (if applicable)
         uint8_t *enable;            // Enable/disable control of this datatype for each turbine
-    } CtDataMessage;   
+    } CtDataMessage; 
+
+    typedef struct sCfgDataMessage {
+        const uint8_t header = CFG_DATA;
+        // To be defined based on what configuration parameters we want to support
+        char teamName[256];         // Name of the team
+        int scenarioId;             // ID of the scenario to configure
+        int turbineController;      // ID of the turbine controller
+    } CfgDataMessage;
+
+    typedef struct sSimCtrlMessage {
+        const uint8_t header = SIM_CTRL;
+        bool simStart;              // Whether if send from here indicates ready. If received, indicates to start simulation.
+        // int scenarioId;             // ID of the scenario to run (if simStart is true)
+    } SimCtrlMessage;
+
+    using CfgCommandCallback = std::function<void(const CfgDataMessage&)>;
+    using SimCtrlCommandCallback = std::function<void(const SimCtrlMessage&)>;
+    
+    
 
     typedef enum eAIRC {
         AI_OK = 0,
@@ -102,7 +126,6 @@ namespace AttackInterface
          *  3. Handles hooks for attachment points in the communication flow (e.g. when a new setpoint is sent or a new measurement is received)
          * 
          */
-        
         private:
             int numTurbines; // Number of turbines in the system, used for bounds checking and vector sizing
 
@@ -128,8 +151,9 @@ namespace AttackInterface
             } state;
 
             
-
             SocketWrapper& socket;
+            CfgCommandCallback cfgCommandCallback_;
+            SimCtrlCommandCallback simCtrlCommandCallback_;
 
             void parseCTCommand(const uint8_t* data, size_t length) {
                 // Native-layout wire format used by the harness:
@@ -201,7 +225,7 @@ namespace AttackInterface
                 }
 
                 const AtDataMessage* msg = reinterpret_cast<const AtDataMessage*>(data);
-                ATTACK_LOG_V1("Parsed AT_DATA command for turbine " << static_cast<int>(msg->turbineId)
+                ATTACK_LOG_V2("Parsed AT_DATA command for turbine " << static_cast<int>(msg->turbineId)
                               << ", dataType " << static_cast<int>(msg->dataType)
                               << ", fakeValue " << msg->fake_value);
 
@@ -220,6 +244,50 @@ namespace AttackInterface
                 }
             }
 
+            void parseCFGCommand(const uint8_t* data, size_t length) {
+                if (length < sizeof(CfgDataMessage)) {
+                    ATTACK_ERR("Invalid CFG_DATA length: " << length
+                               << ", expected at least " << sizeof(CfgDataMessage));
+                    return;
+                }
+
+                const CfgDataMessage* msg = reinterpret_cast<const CfgDataMessage*>(data);
+
+                CfgDataMessage parsed{};
+                std::memcpy(parsed.teamName, msg->teamName, sizeof(parsed.teamName));
+                parsed.teamName[sizeof(parsed.teamName) - 1] = '\0';
+                parsed.scenarioId = msg->scenarioId;
+                parsed.turbineController = msg->turbineController;
+
+                ATTACK_LOG_V1("Parsed CFG_DATA command: teamName='" << parsed.teamName
+                              << "', scenarioId=" << parsed.scenarioId
+                              << ", turbineController=" << parsed.turbineController);
+
+                if (cfgCommandCallback_) {
+                    cfgCommandCallback_(parsed);
+                }
+            }
+
+            void parseSimCtrlCommand(const uint8_t* data, size_t length) {
+                if (length < sizeof(SimCtrlMessage)) {
+                    ATTACK_ERR("Invalid SIM_CTRL length: " << length
+                               << ", expected at least " << sizeof(SimCtrlMessage));
+                    return;
+                }
+
+                const SimCtrlMessage* msg = reinterpret_cast<const SimCtrlMessage*>(data);
+                SimCtrlMessage parsed{};
+                parsed.simStart = msg->simStart;
+
+                ATTACK_LOG_V1("Parsed SIM_CTRL command: simStart=" << parsed.simStart);
+
+                if (simCtrlCommandCallback_) {
+                    simCtrlCommandCallback_(parsed);
+                }
+
+
+            }
+
             void AttackHandler(const uint8_t* data, size_t length) {
                 if (length == 0) return;
 
@@ -232,6 +300,12 @@ namespace AttackInterface
                         break;
                     case AT_DATA:
                         parseATCommand(data, length);
+                        break;
+                    case CFG_DATA:
+                        parseCFGCommand(data, length);
+                        break;
+                    case SIM_CTRL:
+                        parseSimCtrlCommand(data, length);
                         break;
                     default:
                         ATTACK_ERR("Unknown message type received: " << static_cast<int>(msgType));
@@ -257,6 +331,24 @@ namespace AttackInterface
                 socket.AttachAttackInterfaceCallback([this](const uint8_t* data, size_t length) {
                     this->AttackHandler(data, length);
                 });
+            }
+
+            void resetState() {
+                for (auto& linkState : state.LinkStates) {
+                    for (auto& [dataType, _] : linkState.tapEnabled) {
+                        linkState.tapEnabled[dataType] = false;
+                    }
+                    for (auto& [dataType, _] : linkState.fdiEnabled) {
+                        linkState.fdiEnabled[dataType] = false;
+                    }
+                }
+            }
+
+            void signalReady() {
+                SimCtrlMessage msg;
+                msg.simStart = true;
+                socket.txAttackInterfaceData(std::make_shared<SimCtrlMessage>(msg), sizeof(SimCtrlMessage));
+                ATTACK_LOG_V1("Signaled readiness to start simulation to the attack interface client.");
             }
 
             void txData(unsigned int turbineId, TxDataType dataType, float value) {
@@ -344,6 +436,16 @@ namespace AttackInterface
 
                 ATTACK_LOG_V1("Overwrite request timed out");
                 return AI_TIMEOUT;
+            }
+
+            void setCfgCommandCallback(CfgCommandCallback callback)
+            {
+                cfgCommandCallback_ = std::move(callback);
+            }
+
+            void setSimCtrlCommandCallback(SimCtrlCommandCallback callback)
+            {
+                simCtrlCommandCallback_ = std::move(callback);
             }
             
     };
