@@ -135,7 +135,6 @@ IECReturnCode libiec_wrapper::txSetpoint(int turbineId, float powerSetpoint, int
     ok &= manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_DmdWSpt), powerSetpoint, false);
     ok &= manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::XWYAW_YawSpt), yawSetpoint, false);
     return ok ? IEC_OK : IEC_ERROR;
-
 }
 
 IECReturnCode libiec_wrapper::rxSecret(int turbineId, std::string& outSecret) {
@@ -190,6 +189,12 @@ IECReturnCode libiec_wrapper::txPowerSetpoint(int turbineId, float powerSetpoint
 
 IECReturnCode libiec_wrapper::txYawSetpoint(int turbineId, float yawSetpoint) {
     bool ok = manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::XWYAW_YawSpt), yawSetpoint, false);
+    return ok ? IEC_OK : IEC_ERROR;
+}
+
+IECReturnCode libiec_wrapper::txTurbineController(int turbineId, int controllerId) {
+    uint32_t controlWord = static_cast<uint32_t>(controllerId); // Placeholder encoding
+    bool ok = manager_.writeControlledEnum(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_TURCTL), controlWord, false);
     return ok ? IEC_OK : IEC_ERROR;
 }
 

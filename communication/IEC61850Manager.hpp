@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -137,6 +138,16 @@ public:
                               const std::string& controlObjectReference,
                               float value,
                               bool useSelectBeforeOperate);
+
+    bool writeControlledInt(int turbineId,
+                            const std::string& controlObjectReference,
+                            int value,
+                            bool useSelectBeforeOperate);
+
+    bool writeControlledEnum(int turbineId,
+                             const std::string& controlObjectReference,
+                             int enumOrdinal,
+                             bool useSelectBeforeOperate);
     /**
      * @brief Write a control value using IEC 61850 control services.
      *
@@ -147,7 +158,7 @@ public:
      * server control model reported by the control object.
      *
      * @param controlObjectReference IEC 61850 control object reference.
-     * @param value Float control value.
+     * @param value Float/integer control value; enumOrdinal for enum variant.
      * @param useSelectBeforeOperate true to perform SBO, false for direct operate.
      * @return true on success, false on failure.
      */
@@ -245,6 +256,32 @@ private:
     /**
      * @brief Close and nullify the IedConnection for the given turbine.
      *        Caller must hold the turbine mutex.
+     */
+
+    bool performSelectAndOperate(void* controlObjectClient,
+                                 void* mmsValue,
+                                 int turbineId,
+                                 const std::string& controlObjectReference,
+                                 const std::string& functionName,
+                                 bool useSelectBeforeOperate);
+    /**
+     * @brief Common select-and-operate logic for controlled writes.
+     *        Caller must hold the turbine mutex.  Passed as void* to avoid
+     *        including libiec61850 headers in this file.
+     * @return true if select+operate succeeded, false otherwise.
+     */
+
+    bool writeControlledGeneric(int turbineId,
+                                const std::string& controlObjectReference,
+                                const std::string& functionName,
+                                std::function<void*()> createMmsValue,
+                                bool useSelectBeforeOperate);
+    /**
+     * @brief Generic helper for all writeControlled* variants.
+     *        Handles turbine lookup, connection check, control object creation,
+     *        MmsValue cleanup, and error logging. Returns early if lookup/connection fails.
+     * @param createMmsValue Callback that creates and returns an MmsValue* (void* for header purity).
+     * @return true if operate succeeded, false otherwise.
      */
 
     // Map from turbine ID → connection state.

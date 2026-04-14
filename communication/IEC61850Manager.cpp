@@ -86,6 +86,81 @@ void collectDataAttributesRecursive(IedConnection connection,
 #define IEC_DEBUG(id, msg) IECMGR_LOG_V2(id, msg)
 #define IEC_ERR(id, msg)  IECMGR_ERR(id, msg)
 
+// ── Forward declarations for select-and-operate ──────────────────────────
+bool IEC61850Manager::performSelectAndOperate(
+    void* controlObjectClient,
+    void* mmsValue,
+    int turbineId,
+    const std::string& controlObjectReference,
+    const std::string& functionName,
+    bool useSelectBeforeOperate)
+{
+    auto* control = static_cast<ControlObjectClient>(controlObjectClient);
+    auto* ctlVal = static_cast<MmsValue*>(mmsValue);
+
+    if (useSelectBeforeOperate) {
+        ControlModel controlModel = ControlObjectClient_getControlModel(control);
+        bool selected = false;
+
+        if (controlModel == CONTROL_MODEL_SBO_ENHANCED)
+            selected = ControlObjectClient_selectWithValue(control, ctlVal);
+        else
+            selected = ControlObjectClient_select(control);
+
+        if (!selected) {
+            IEC_ERR(turbineId, functionName << "() – select failed for " << controlObjectReference
+                               << " (err=" << ControlObjectClient_getLastError(control) << ")");
+            return false;
+        }
+    }
+
+    bool ok = ControlObjectClient_operate(control, ctlVal, 0);
+    if (!ok) {
+        IEC_ERR(turbineId, functionName << "() – operate failed for " << controlObjectReference
+                           << " (err=" << ControlObjectClient_getLastError(control) << ")");
+    }
+    return ok;
+}
+
+bool IEC61850Manager::writeControlledGeneric(
+    int turbineId,
+    const std::string& controlObjectReference,
+    const std::string& functionName,
+    std::function<void*()> createMmsValue,
+    bool useSelectBeforeOperate)
+{
+    std::lock_guard<std::mutex> mapLock(mapMutex_);
+    auto it = turbines_.find(turbineId);
+    if (it == turbines_.end()) {
+        IEC_ERR(turbineId, functionName << "() – turbine not registered");
+        return false;
+    }
+
+    TurbineConnection& tc = it->second;
+    std::lock_guard<std::mutex> tcLock(tc.mutex);
+
+    if (!tc.intentConnected)
+        return false;
+
+    if (!ensureConnected(tc)) {
+        IEC_ERR(turbineId, functionName << "() – not connected, skipping control of " << controlObjectReference);
+        return false;
+    }
+
+    ControlObjectClient control = ControlObjectClient_create(controlObjectReference.c_str(), tc.connection);
+    if (!control) {
+        IEC_ERR(turbineId, functionName << "() – failed to create control object " << controlObjectReference);
+        return false;
+    }
+
+    MmsValue* ctlVal = static_cast<MmsValue*>(createMmsValue());
+    bool ok = performSelectAndOperate(control, ctlVal, turbineId, controlObjectReference, functionName, useSelectBeforeOperate);
+    MmsValue_delete(ctlVal);
+    ControlObjectClient_destroy(control);
+
+    return ok;
+}
+
 // ── Reconnect policy ─────────────────────────────────────────────────────
 static constexpr int    MAX_RETRIES        = 5;
 static constexpr int    BACKOFF_BASE_MS    = 100;  // doubled each retry
@@ -389,63 +464,30 @@ bool IEC61850Manager::writeControlledFloat(int turbineId,
                                            float value,
                                            bool useSelectBeforeOperate)
 {
-    std::lock_guard<std::mutex> mapLock(mapMutex_);
-    auto it = turbines_.find(turbineId);
-    if (it == turbines_.end()) {
-        IEC_ERR(turbineId, "writeControlledFloat() – turbine not registered");
-        return false;
-    }
+    return writeControlledGeneric(turbineId, controlObjectReference, "writeControlledFloat",
+                                  [value]() { return static_cast<void*>(MmsValue_newFloat(value)); },
+                                  useSelectBeforeOperate);
+}
 
-    TurbineConnection& tc = it->second;
-    std::lock_guard<std::mutex> tcLock(tc.mutex);
+bool IEC61850Manager::writeControlledInt(int turbineId,
+                                         const std::string& controlObjectReference,
+                                         int value,
+                                         bool useSelectBeforeOperate)
+{
+    return writeControlledGeneric(turbineId, controlObjectReference, "writeControlledInt",
+                                  [value]() { return static_cast<void*>(MmsValue_newIntegerFromInt32(value)); },
+                                  useSelectBeforeOperate);
+}
 
-    if (!tc.intentConnected)
-        return false;
-
-    if (!ensureConnected(tc)) {
-        IEC_ERR(turbineId, "writeControlledFloat() – not connected, skipping control of " << controlObjectReference);
-        return false;
-    }
-
-    ControlObjectClient control = ControlObjectClient_create(controlObjectReference.c_str(), tc.connection);
-    if (!control) {
-        IEC_ERR(turbineId, "writeControlledFloat() – failed to create control object " << controlObjectReference);
-        return false;
-    }
-
-    MmsValue* ctlVal = MmsValue_newFloat(value);
-    bool ok = false;
-
-    if (useSelectBeforeOperate) {
-        ControlModel controlModel = ControlObjectClient_getControlModel(control);
-        bool selected = false;
-
-        if (controlModel == CONTROL_MODEL_SBO_ENHANCED)
-            selected = ControlObjectClient_selectWithValue(control, ctlVal);
-        else
-            selected = ControlObjectClient_select(control);
-
-        if (!selected) {
-            IEC_ERR(turbineId, "writeControlledFloat() – select failed for " << controlObjectReference
-                               << " (err=" << ControlObjectClient_getLastError(control) << ")");
-        }
-        else {
-            ok = ControlObjectClient_operate(control, ctlVal, 0);
-        }
-    }
-    else {
-        ok = ControlObjectClient_operate(control, ctlVal, 0);
-    }
-
-    if (!ok) {
-        IEC_ERR(turbineId, "writeControlledFloat() – operate failed for " << controlObjectReference
-                           << " = " << value << " (err=" << ControlObjectClient_getLastError(control) << ")");
-    }
-
-    MmsValue_delete(ctlVal);
-    ControlObjectClient_destroy(control);
-
-    return ok;
+bool IEC61850Manager::writeControlledEnum(int turbineId,
+                                          const std::string& controlObjectReference,
+                                          int enumOrdinal,
+                                          bool useSelectBeforeOperate)
+{
+    // MMS enumerated values are encoded as integers on the wire.
+    return writeControlledGeneric(turbineId, controlObjectReference, "writeControlledEnum",
+                                  [enumOrdinal]() { return static_cast<void*>(MmsValue_newIntegerFromInt32(enumOrdinal)); },
+                                  useSelectBeforeOperate);
 }
 
 std::optional<int> IEC61850Manager::readInt(int turbineId,

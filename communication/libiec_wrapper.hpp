@@ -45,6 +45,8 @@ static constexpr const char* WTUR_OP_CMD  = "WTUR1.TurOp";   // Wind Turbine Ope
 static constexpr const char* WROT_RotBlk  = "WROT1.RotBlk";  // Block Rotor Position Command [CMD]
 // static constexpr const char* WROT_PthEmgChk = "WROT1.PthEmgChk";
 
+static constexpr const char* WTUR_TURCTL = "WTUR1.TurCtl";  // Turbine Control Word [CMD]
+
 /** DA references for reading operational data */
 static constexpr const char* POWER_MEAS = "WTUR1.W.f";            // Measured active power
 static constexpr const char* YAW_MEAS   = "WYAW1.YwAng.mag.f";  // Measured yaw angle
@@ -58,7 +60,7 @@ static constexpr const char* PITCH_VAL  = "WROT1.BlPthAngVal.f"; // Pitch Angle 
 
 static constexpr const char* SECR_S     = "SECR1.S.stVal";        // Secret LN [ST]
 
-static const std::vector<std::string> REQ_CMDS = {WTUR_DmdWSpt, XWYAW_YawSpt, WTUR_OP_CMD};
+static const std::vector<std::string> REQ_CMDS = {WTUR_DmdWSpt, XWYAW_YawSpt, WTUR_OP_CMD, WTUR_TURCTL};
 static const std::vector<std::string> REQ_REFS = {POWER_MEAS, YAW_MEAS, WS_MEAS, WD_MEAS, RPM_MEAS, TOT_W, PITCH_VAL, SECR_S};
 
 
@@ -182,6 +184,17 @@ public:
      * @brief Write only the yaw-angle setpoint to a turbine.
      * @param turbineId    Integer turbine ID (1-based).
      * @param yawSetpoint  Yaw-angle setpoint in degrees.
+     * @return IEC_OK on success, IEC_ERROR on failure.
+     */
+
+    IECReturnCode txTurbineController(int turbineId, int controllerId);
+    /**
+     * @brief Signal a turbine to use a specific turbine controller configuration
+     * 
+     * @param turbineId Integer turbine ID (1-based).
+     * @param controllerId Integer controller ID to use.
+     *                      0: ROSCO
+     *                      1: Lio Downregulation 
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 
