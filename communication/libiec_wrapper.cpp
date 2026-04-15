@@ -164,6 +164,15 @@ IECReturnCode libiec_wrapper::rxWindDirection(int turbineId, float& outWindDirec
     return IEC_ERROR;
 }
 
+IECReturnCode libiec_wrapper::rxYawOffset(int turbineId, float& outYawOffset) {
+    auto yaw = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::YAW_MEAS), IEC61850_FC_MX);
+    if (yaw) {
+        outYawOffset = *yaw;
+        return IEC_OK;
+    }
+    return IEC_ERROR;
+}
+
 IECReturnCode libiec_wrapper::rxRotorSpeed(int turbineId, float& outRPM) {
     auto rpm = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::RPM_MEAS), IEC61850_FC_MX);
     if (rpm) {

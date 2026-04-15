@@ -211,6 +211,7 @@ const CommunicationTask::RxDescriptor CommunicationTask::RX_DESCRIPTORS[] = {
     //  name              unit   IEC read fn                         AI type                   GDS last-value field     GDS history field          interval (ms)
     { "wind speed",      "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    2000 },
     { "wind direction",  "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    2000 },
+    { "yaw_offset",      "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, 2000 },
     { "rotor speed",     "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   500  },
     { "power_gen",       "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::Power_i,    &GlobalData::powerHistory, 500  },
 };

@@ -48,7 +48,7 @@ static constexpr const char* WROT_RotBlk  = "WROT1.RotBlk";  // Block Rotor Posi
 static constexpr const char* WTUR_TURCTL = "WTUR1.TurCtl";  // Turbine Control Word [CMD]
 
 /** DA references for reading operational data */
-static constexpr const char* POWER_MEAS = "WTUR1.W.f";            // Measured active power
+static constexpr const char* POWER_MEAS = "WTUR1.W.mag.f";            // Measured active power
 static constexpr const char* YAW_MEAS   = "WYAW1.YwAng.mag.f";  // Measured yaw angle
 static constexpr const char* WS_MEAS    = "WMET1.HorWdSpd.mag.f";  // Measured wind speed
 static constexpr const char* WD_MEAS    = "WMET1.HorWdDir.mag.f";  // Measured wind direction
@@ -151,6 +151,14 @@ public:
      * @brief Read the current wind direction measurement from a specific turbine.
      * @param turbineId          Integer turbine ID (1-based).
      * @param outWindDirection   Output float populated with the wind direction in degrees from north on success.
+     * @return IEC_OK on success, IEC_ERROR on failure.
+     */
+
+    IECReturnCode rxYawOffset(int turbineId, float& outYawOffset);
+    /**
+     * @brief Read the current yaw-offset measurement from a specific turbine.
+     * @param turbineId     Integer turbine ID (1-based).
+     * @param outYawOffset  Output float populated with the yaw offset in degrees on success.
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 

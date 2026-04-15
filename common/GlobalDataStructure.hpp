@@ -39,6 +39,7 @@ struct GlobalData
     // Read by SignalProcessingTask, ControlTask
     std::vector<double> lastWS = std::vector<double>(N_TURBINES, 0.0);  // m/s
     std::vector<double> lastWD = std::vector<double>(N_TURBINES, 0.0);  // degrees from north
+    std::vector<double> lastYawOffset = std::vector<double>(N_TURBINES, 0.0); // degrees
     std::vector<double> lastRPM = std::vector<double>(N_TURBINES, 0.0); // revolutions per minute
 
     // ── Measurement history buffers (last N_hist readings per turbine) ────────
@@ -47,6 +48,7 @@ struct GlobalData
 
     TurbineHistory<double> wsHistory  = makeTurbineHistory<double>(N_TURBINES, N_hist);
     TurbineHistory<double> wdHistory  = makeTurbineHistory<double>(N_TURBINES, N_hist);
+    TurbineHistory<double> yawOffsetHistory = makeTurbineHistory<double>(N_TURBINES, N_hist);
     TurbineHistory<double> rpmHistory = makeTurbineHistory<double>(N_TURBINES, N_hist);
     TurbineHistory<double> powerHistory = makeTurbineHistory<double>(N_TURBINES, N_hist);
 
@@ -89,11 +91,14 @@ struct GlobalData
 
         std::fill(lastWS.begin(), lastWS.end(), 0.0);
         std::fill(lastWD.begin(), lastWD.end(), 0.0);
+        std::fill(lastYawOffset.begin(), lastYawOffset.end(), 0.0);
         std::fill(lastRPM.begin(), lastRPM.end(), 0.0);
 
         for (auto& h : wsHistory)
             h.clear();
         for (auto& h : wdHistory)
+            h.clear();
+        for (auto& h : yawOffsetHistory)
             h.clear();
         for (auto& h : rpmHistory)
             h.clear();
