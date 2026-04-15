@@ -40,8 +40,9 @@ IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines,
 // ── start / stop ─────────────────────────────────────────────────────────
 
 void libiec_wrapper::start() { 
-    // manager_.connectAll(); 
-    manager_.connectTurbine(1);
+    // Connect every registered turbine so link intent is set for all and
+    // IEC61850Manager::ensureConnected can auto-reconnect during operation.
+    manager_.connectAll();
 
     // GooseReceiver_start(gooseReceiver);
     // if (!GooseReceiver_isRunning(gooseReceiver)) {
