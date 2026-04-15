@@ -338,6 +338,9 @@ bool IEC61850Manager::connectTurbine(int id)
     }
     TurbineConnection& tc = it->second;
     std::lock_guard<std::mutex> tcLock(tc.mutex);
+    // Mark this turbine as intentionally connected even if the first attempt
+    // fails, so subsequent ensureConnected() calls keep retrying.
+    tc.intentConnected = true;
     return doConnect(tc);
 }
 
