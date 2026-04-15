@@ -1,0 +1,10 @@
+On Linux/WSL do the following for internal GOOSE messaging:
+-----------------------------------------------------------
+
+sudo ip link add veth0 type veth peer name veth1
+sudo ip link set veth0 up
+sudo ip link set veth1 up
+
+# Verify
+ip link show veth0
+ip link show veth1
