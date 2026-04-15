@@ -38,13 +38,13 @@ void CommunicationTask::init()
 
     socketWrapper.AttachServerCallback([this](const uint8_t* data, size_t length) {
         // Reinterpret a uint32_t's bit pattern as an IEEE 754 float.
-        auto asFloat = [](uint32_t u) {
+        auto asFloat = [](const uint8_t *u) {
             float f;
-            std::memcpy(&f, &u, sizeof(f));
+            std::memcpy(&f, u, sizeof(f));
             return f;
         };
         if (length == 4) {
-            const float value = asFloat(*reinterpret_cast<const uint32_t*>(data));
+            const float value = asFloat(data);
             std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
             GlobalDataStructure::instance().data().RequestedReferencePower = value;
             COMMTASK_LOG_V1("Updated RequestedReferencePower to " << value);
