@@ -23,9 +23,9 @@ int main(int argc, char* argv[])
 
         // TODO: drop privileges (e.g. setuid/setgid) before spawning worker threads
 
-        // HmiTask              hmiTask(100ms);      // 10 Hz
+        HmiTask hmiTask(defaultHmiConfig(numTurbines), 100ms);  // 10 Hz
               // 0.25 Hz
-        // SignalProcessingTask signalTask(1ms);      // 1 kHz
+        SignalProcessingTask signalTask(500ms);      // 1 kHz
         // MonitoringTask       monitoringTask(50ms); // 20 Hz
 
         // All fields have sensible defaults – override only what you need.
@@ -53,9 +53,9 @@ int main(int argc, char* argv[])
         controlConfig.numTurbines = numTurbines;
         ControlTask controlTask(controlConfig);
 
-        // hmiTask.start();
+        hmiTask.start();
         controlTask.start();
-        // signalTask.start();
+        signalTask.start();
         // monitoringTask.start();
         commTask.start();
 
@@ -63,9 +63,9 @@ int main(int argc, char* argv[])
 
         std::cin.get();
 
-        // hmiTask.stop();
+        hmiTask.stop();
         controlTask.stop();
-        // signalTask.stop();
+        signalTask.stop();
         // monitoringTask.stop();
         commTask.stop();
 

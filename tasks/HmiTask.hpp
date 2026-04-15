@@ -1,15 +1,70 @@
 #pragma once
 
+#include "common/GlobalDataStructure.hpp"
 #include "common/PeriodicTask.hpp"
 
+#include <functional>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include <zmq.hpp>
+
 // ---------------------------------------------------------------------------
-// HmiTask – Human-Machine Interface update loop.
+// HmiSignalDef – one subplot in the HMI display.
+//
+//   lineLabels : display name for each line drawn in the subplot, e.g.
+//                {"T1","T2","T3"} for a per-turbine signal.
+//   accessor   : called every cycle; must return one value per label entry.
+// ---------------------------------------------------------------------------
+struct HmiSignalDef
+{
+    std::string name;   // subplot title
+    std::string unit;   // y-axis label (e.g. "W", "m/s", "RPM")
+    std::vector<std::string> lineLabels;
+    std::function<std::vector<double>(const GlobalData&)> accessor;
+};
+
+// ---------------------------------------------------------------------------
+// HmiConfig – top-level HMI configuration.
+//
+// Edit defaultHmiConfig() in HmiTask.cpp to add / remove signal groups.
+// ---------------------------------------------------------------------------
+struct HmiConfig
+{
+    int numTurbines   = 3;    ///< active turbines to track
+    int windowSize    = 100;  ///< rolling window length forwarded to the plotter
+    int publisherPort = 9004; ///< ZMQ PUB socket port
+    std::vector<HmiSignalDef> signals;
+};
+
+/// Build the default set of signal groups for @p numTurbines active turbines.
+HmiConfig defaultHmiConfig(int numTurbines = 3);
+
+// ---------------------------------------------------------------------------
+// HmiTask – samples GlobalDataStructure each cycle and publishes a msgpack
+// snapshot over a ZeroMQ PUB socket consumed by hmi_plot.py.
+//
+// Wire format (msgpack array):
+//   [tick, window_size, [[name, unit, [labels], [values]], ...]]
+//
+// The Python plotter maintains its own rolling history; C++ only sends the
+// latest snapshot each cycle (no history buffers needed here).
 // ---------------------------------------------------------------------------
 class HmiTask : public PeriodicTask
 {
 public:
-    explicit HmiTask(std::chrono::milliseconds period = std::chrono::milliseconds(100));
+    explicit HmiTask(HmiConfig                  config = defaultHmiConfig(),
+                     std::chrono::milliseconds  period = std::chrono::milliseconds(100));
 
 protected:
+    void onStart() override;
     void execute() override;
+    void onStop()  override;
+
+private:
+    HmiConfig                    config_;
+    int64_t                      tickCount_ = 0;
+    zmq::context_t               context_;
+    std::optional<zmq::socket_t> socket_;
 };

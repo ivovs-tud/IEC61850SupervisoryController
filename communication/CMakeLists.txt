@@ -1,22 +1,4 @@
 
-# ZeroMQ
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(ZMQ REQUIRED libzmq)
- 
-# cppzmq (header-only ZMQ C++ bindings)
-find_path(CPPZMQ_INCLUDE_DIR
-    NAMES zmq.hpp
-    PATHS /usr/local/include /usr/include
-    REQUIRED
-)
- 
-# msgpack
-find_path(MSGPACK_INCLUDE_DIR
-    NAMES msgpack.hpp
-    PATHS /usr/local/include /usr/include
-    REQUIRED
-)
-
 add_library(communication STATIC
     CommunicationTask.cpp
     libiec_wrapper.cpp
