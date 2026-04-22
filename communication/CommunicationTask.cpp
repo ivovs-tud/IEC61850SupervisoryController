@@ -8,7 +8,7 @@
 #include <map>
 #include <string>
 
-CommunicationTask::CommunicationTask(DataHistorian& dataHistorian, const CommConfig& config)
+CommunicationTask::CommunicationTask(const CommConfig& config)
     : PeriodicTask(config.orchestrationPeriod)
     , config_(config)
     , socketWrapper(config.operatorServer.port,
@@ -18,7 +18,6 @@ CommunicationTask::CommunicationTask(DataHistorian& dataHistorian, const CommCon
                     config.dataHistorian.port,
                     static_cast<int>(config.dataHistorian.pollPeriod.count()))
     , attackInterface(config.mms.turbines.size(), socketWrapper)
-    , dataHistorian_(dataHistorian)
 {
     // TODO: construct libiec_wrapper and SocketWrapper instances
 
@@ -58,7 +57,7 @@ void CommunicationTask::init()
                     // If simulation is stopping, also reset simConfigured to require reconfiguration for the next run
                     GlobalDataStructure::instance().data().simStarted = false;
                     GlobalDataStructure::instance().data().simConfigured = false;
-                    dataHistorian_.stopRun();
+                    DataHistorian::instance().stopRun();
                 }
             }
             COMMTASK_LOG_V1("Received simulation control message from operator server: simStarting = " << !simStopped);
@@ -75,7 +74,7 @@ void CommunicationTask::init()
 
         COMMTASK_LOG_V2("Received DataHistorian message of size " << length << " bytes");
 
-        dataHistorian_.log(std::string(reinterpret_cast<const char*>(data), length));
+        DataHistorian::instance().log(std::string(reinterpret_cast<const char*>(data), length));
     });
 
     attackInterface.setCfgCommandCallback([this](const AttackInterface::CfgDataMessage &cmd) {
@@ -94,18 +93,15 @@ void CommunicationTask::init()
     attackInterface.setSimCtrlCommandCallback([this](const AttackInterface::SimCtrlMessage& cmd) {
         // Handle simulator control commands from the test harness (e.g., start/stop simulation, switch scenarios)
         COMMTASK_LOG_V1("Received Simulator Control command: simStart " << cmd.simStart);
-        std::string runName;
+        DataHistorian::instance().log("Simulation started with scenario " + std::to_string(GlobalDataStructure::instance().data().simScenario) 
+                            + " and team " + GlobalDataStructure::instance().data().simTeamName);
         {
             std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
             auto& gds = GlobalDataStructure::instance().data();
             if (gds.simConfigured && cmd.simStart) {
                 gds.simStarted = true;
-                runName = "sim_scenario_" + std::to_string(gds.simScenario) + "_" + gds.simTeamName;
             }
         }
-
-        if (!runName.empty())
-            dataHistorian_.startNewRun(runName);
 
         // TODO: Also send start sim command to simulator PC
     });
@@ -279,6 +275,9 @@ void CommunicationTask::doTxSetpoint(int turbineId, int idx, const TxDescriptor&
         value = desc.gdsRead(GlobalDataStructure::instance().data(), idx);
     }
 
+    std::string logMsg = "[SC→WT" + std::to_string(turbineId) + "]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    DataHistorian::instance().log(logMsg);
+
     attackInterface.txData(turbineId, desc.txDataType, value);
 
     // Before storing, potentially allow attackInterface to overwrite the measurement
@@ -286,6 +285,9 @@ void CommunicationTask::doTxSetpoint(int turbineId, int idx, const TxDescriptor&
         COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
                      << " from turbine " << turbineId);
     }
+
+    logMsg = "[SC→WT" + std::to_string(turbineId) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    DataHistorian::instance().log(logMsg);
 
     if ((iecWrapper_.*desc.iecWrite)(turbineId, value) != IEC_OK) {
         COMMTASK_ERR("Failed to write " << desc.name << " to turbine " << turbineId);
@@ -316,6 +318,8 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
 
     COMMTASK_LOG_V2("Received (pre-overwrite)" << desc.name << " from turbine " << turbineId
                     << ": " << value << " " << desc.unit);
+std::string logMsg = "[WT" + std::to_string(turbineId) + "→SC]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    DataHistorian::instance().log(logMsg);
 
     // Then potentially transmit this data to an eavesdropper over the attack interface
     attackInterface.txData(turbineId, desc.txDataType, value);
@@ -327,6 +331,8 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
     }
     COMMTASK_LOG_V1("Received (post-overwrite) " << desc.name << " for turbine " << turbineId
                     << ": " << value << " " << desc.unit);
+logMsg = "[WT" + std::to_string(turbineId) + "→SC(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    DataHistorian::instance().log(logMsg);
 
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());

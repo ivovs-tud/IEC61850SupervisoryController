@@ -26,20 +26,36 @@
 class DataHistorian
 {
 public:
-    explicit DataHistorian(std::string experimentName = "run",
-                           std::filesystem::path outputDir = "data",
-                           std::size_t flushEvery = 64,
-                           std::chrono::milliseconds flushPeriod = std::chrono::milliseconds(5000))
-        : outputDir_(std::move(outputDir))
-        , flushEvery_(flushEvery == 0 ? 1 : flushEvery)
-        , flushPeriod_(flushPeriod)
+    static DataHistorian& instance()
     {
-        
+        static DataHistorian inst;
+        return inst;
     }
+
+    DataHistorian(const DataHistorian&) = delete;
+    DataHistorian& operator=(const DataHistorian&) = delete;
+    DataHistorian(DataHistorian&&) = delete;
+    DataHistorian& operator=(DataHistorian&&) = delete;
 
     ~DataHistorian()
     {
         flush();
+    }
+
+    void configure(std::string experimentName = "run",
+                   std::filesystem::path outputDir = "data",
+                   std::size_t flushEvery = 512,
+                   std::chrono::milliseconds flushPeriod = std::chrono::milliseconds(5000))
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        outputDir_ = std::move(outputDir);
+        flushEvery_ = (flushEvery == 0 ? 1 : flushEvery);
+        flushPeriod_ = flushPeriod;
+        currentExperimentName_ = sanitizeName(std::move(experimentName));
+    }
+
+    void start() {
+        startNewRun(currentExperimentName_); 
     }
 
     void startNewRun(std::string experimentName)
@@ -57,7 +73,7 @@ public:
         const auto timestampSeconds = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
 
-        filePath_ = outputDir_ / (currentExperimentName_ + "_" + std::to_string(timestampSeconds) + ".csv");
+        filePath_ = outputDir_ / (currentExperimentName_ + "_" + std::to_string(timestampSeconds) + ".log");
         file_.open(filePath_, std::ios::out | std::ios::trunc);
 
         if (!file_.is_open()) {
@@ -102,11 +118,12 @@ public:
             return;
         }
 
-        const auto timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
+        // const auto timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        //     std::chrono::system_clock::now().time_since_epoch()).count();
         ensureFileOpen();
 
-        buffer_ << timestampMs << ' ' << rawMessage << '\n';
+        // buffer_ << timestampMs << ' ' << rawMessage << '\n';
+        buffer_ << rawMessage << '\n';
         ++bufferedRecords_;
         maybeFlushUnlocked();
     }
@@ -124,6 +141,8 @@ public:
     }
 
 private:
+    DataHistorian() = default;
+
     static std::string sanitizeName(std::string name)
     {
         if (name.empty()) {
@@ -189,7 +208,7 @@ private:
     std::ofstream file_;
     std::mutex mutex_;
     std::ostringstream buffer_;
-    std::string currentExperimentName_;
+    std::string currentExperimentName_ {"run"};
     std::size_t flushEvery_ {64};
     std::chrono::milliseconds flushPeriod_{std::chrono::milliseconds(1000)};
     std::chrono::steady_clock::time_point lastFlushTime_{std::chrono::steady_clock::now()};

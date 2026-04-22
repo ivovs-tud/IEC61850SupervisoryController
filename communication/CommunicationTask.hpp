@@ -67,7 +67,7 @@ struct CommConfig
 class CommunicationTask : public PeriodicTask
 {
 public:
-    explicit CommunicationTask(DataHistorian& dataHistorian, const CommConfig& config = CommConfig{});
+    explicit CommunicationTask(const CommConfig& config = CommConfig{});
 
     void init();
 
@@ -90,7 +90,6 @@ private:
     libiec_wrapper iecWrapper_;
     SocketWrapper socketWrapper;
     AttackInterface::AttackInterface attackInterface;
-    DataHistorian& dataHistorian_;
 
     // Runtime state for descriptor scheduling (next execution times in UNIX ms)
     // Key: "turbineId:descriptorName" (e.g., "1:power setpoint")

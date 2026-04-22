@@ -1,6 +1,7 @@
 #include "SignalProcessingTask.hpp"
+#include "common/DataHistorian.hpp"
 #include "common/GlobalDataStructure.hpp"
-
+#include "common/TimeUtils.hpp"
 
 SignalProcessingTask::SignalProcessingTask(std::chrono::milliseconds period)
     : PeriodicTask(period)
@@ -45,4 +46,6 @@ void SignalProcessingTask::execute()
             GlobalDataStructure::instance().data().glob_wd_i = avg_wd;
         }
     }
+    std::string logMsg = "[SP]" + std::to_string(getCurrentTimeMs()) + ";GV=" + std::to_string(GlobalDataStructure::instance().data().glob_ws_i) + ";GD=" + std::to_string(GlobalDataStructure::instance().data().glob_wd_i);
+    DataHistorian::instance().log(logMsg);
 }

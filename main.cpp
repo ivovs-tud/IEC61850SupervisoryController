@@ -43,8 +43,9 @@ int main(int argc, char* argv[])
         };
         // cfg.goose.networkIface        = "eth1";
         cfg.orchestrationPeriod = 10ms;
-        DataHistorian dataHistorian("project_datahistorian");
-        CommunicationTask commTask(dataHistorian, cfg);
+        DataHistorian::instance().configure("project_datahistorian");
+DataHistorian::instance().start();
+        CommunicationTask commTask(cfg);
         commTask.init();
 
         ControlTask::Config controlConfig;
