@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-constexpr int N_TURBINES = 8;
+constexpr int N_TURBINES = 10;
 
 // Per-turbine circular-buffer history: one buffer per turbine, each holding
 // up to 'capacity' readings of type T.  Push new values with push_back().

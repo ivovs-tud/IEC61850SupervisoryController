@@ -40,6 +40,13 @@ int main(int argc, char* argv[])
             {"localhost", 102, "WTURBINE", "LD0"},
             {"localhost", 103, "WTURBINE", "LD0"},
             {"localhost", 104, "WTURBINE", "LD0"},
+            // {"localhost", 105, "WTURBINE", "LD0"},
+            // {"localhost", 106, "WTURBINE", "LD0"},
+            // {"localhost", 107, "WTURBINE", "LD0"},
+            // {"localhost", 108, "WTURBINE", "LD0"},
+            // {"localhost", 109, "WTURBINE", "LD0"},
+            // {"localhost", 110, "WTURBINE", "LD0"},
+            // {"localhost", 111, "WTURBINE", "LD0"},
         };
         // cfg.goose.networkIface        = "eth1";
         cfg.orchestrationPeriod = 10ms;
