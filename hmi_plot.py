@@ -2,7 +2,7 @@
 """
 Wind Farm HMI – real-time time-series plots.
 
-Subscribes to the supervisory controller's ZMQ PUB socket (port 9004 by
+Subscribes to the supervisory controller's ZMQ PUB socket (IPC endpoint by
 default), receives msgpack snapshots, and renders them with pyqtgraph for
 smooth, flicker-free incremental updates.
 
@@ -10,8 +10,9 @@ Dependencies:
     pip install pyzmq msgpack pyqtgraph pyqt5
 
 Usage:
-    python hmi_plot.py [host] [port]
-    python hmi_plot.py localhost 9004       # defaults
+    python hmi_plot.py
+    python hmi_plot.py tcp://localhost:9004
+    python hmi_plot.py ipc:///tmp/supervisory_controller_hmi.sock   # default
 """
 
 import sys
@@ -25,8 +26,7 @@ from pyqtgraph.Qt import QtCore, QtWidgets
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-HOST = sys.argv[1] if len(sys.argv) > 1 else "localhost"
-PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 9004
+ENDPOINT = sys.argv[1] if len(sys.argv) > 1 else "ipc:///tmp/supervisory_controller_hmi.sock"
 
 POLL_INTERVAL_MS = 50  # how often the Qt timer checks for new ZMQ messages
 LAYOUT_ROWS = 3
@@ -50,7 +50,7 @@ COLORS = [
 # ---------------------------------------------------------------------------
 ctx = zmq.Context()
 sock = ctx.socket(zmq.SUB)
-sock.connect(f"tcp://{HOST}:{PORT}")
+sock.connect(ENDPOINT)
 sock.setsockopt(zmq.SUBSCRIBE, b"")
 sock.setsockopt(zmq.RCVHWM, 5)   # drop stale frames if we fall behind
 
@@ -60,7 +60,7 @@ sock.setsockopt(zmq.RCVHWM, 5)   # drop stale frames if we fall behind
 pg.setConfigOptions(antialias=True, foreground="w", background="k")
 app = pg.mkQApp("Wind Farm HMI")
 
-win = pg.GraphicsLayoutWidget(title=f"Wind Farm HMI  —  {HOST}:{PORT}")
+win = pg.GraphicsLayoutWidget(title=f"Wind Farm HMI  —  {ENDPOINT}")
 win.resize(1280, 900)
 win.show()
 
@@ -160,7 +160,7 @@ def poll_and_update() -> None:
             histories[i][j].append(float(v))
             curves[i][j].setData(x=x_axis, y=list(histories[i][j]))
 
-    win.setWindowTitle(f"Wind Farm HMI  —  tick {tick}  —  {HOST}:{PORT}")
+    win.setWindowTitle(f"Wind Farm HMI  —  tick {tick}  —  {ENDPOINT}")
 
 
 # ---------------------------------------------------------------------------

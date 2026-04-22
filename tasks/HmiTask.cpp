@@ -1,9 +1,12 @@
 #include "HmiTask.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <string>
+
+#include <sys/stat.h>
 
 #include <msgpack.hpp>
 
@@ -34,9 +37,9 @@ HmiConfig defaultHmiConfig(int numTurbines)
     };
 
     HmiConfig cfg;
-    cfg.numTurbines   = numTurbines;
-    cfg.windowSize    = 100;   // last 100 samples (= 10 s at 100 ms period)
-    cfg.publisherPort = 9004;
+    cfg.numTurbines        = numTurbines;
+    cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
+    cfg.publisherEndpoint  = "ipc:///tmp/supervisory_controller_hmi.sock";
 
     cfg.signals = {
         // ── Per-turbine measured power and setpoints in one subplot ──────────
@@ -136,11 +139,29 @@ HmiTask::HmiTask(HmiConfig config, std::chrono::milliseconds period)
 void HmiTask::onStart()
 {
     try {
+        std::string ipcPath;
+        if (config_.publisherEndpoint.rfind("ipc://", 0) == 0) {
+            ipcPath = config_.publisherEndpoint.substr(6);
+            if (!ipcPath.empty()) {
+                // Remove stale socket node left by previous crashes/runs.
+                std::error_code ec;
+                std::filesystem::remove(ipcPath, ec);
+            }
+        }
+
         socket_.emplace(context_, zmq::socket_type::pub);
         // Drop oldest frame if the subscriber falls behind rather than blocking.
         socket_->set(zmq::sockopt::sndhwm, 5);
-        socket_->bind("tcp://*:" + std::to_string(config_.publisherPort));
-        std::cout << "[HmiTask] Publishing on tcp port " << config_.publisherPort << '\n';
+        socket_->bind(config_.publisherEndpoint);
+
+        if (!ipcPath.empty()) {
+            // Allow subscribers running as a different user (e.g., non-sudo HMI).
+            if (::chmod(ipcPath.c_str(), 0666) != 0) {
+                std::cerr << "[HmiTask] Warning: failed to chmod IPC socket " << ipcPath << '\n';
+            }
+        }
+
+        std::cout << "[HmiTask] Publishing on " << config_.publisherEndpoint << '\n';
     } catch (const std::exception& e) {
         std::cerr << "[HmiTask] Failed to bind publisher: " << e.what() << '\n';
         socket_.reset();

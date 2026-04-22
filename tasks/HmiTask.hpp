@@ -32,9 +32,9 @@ struct HmiSignalDef
 // ---------------------------------------------------------------------------
 struct HmiConfig
 {
-    int numTurbines   = 3;    ///< active turbines to track
-    int windowSize    = 100;  ///< rolling window length forwarded to the plotter
-    int publisherPort = 9004; ///< ZMQ PUB socket port
+    int numTurbines = 3;                 ///< active turbines to track
+    int windowSize  = 100;               ///< rolling window length forwarded to the plotter
+    std::string publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock"; ///< ZMQ PUB endpoint
     std::vector<HmiSignalDef> signals;
 };
 

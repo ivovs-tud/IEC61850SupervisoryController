@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
 
         // TODO: drop privileges (e.g. setuid/setgid) before spawning worker threads
 
-        HmiTask hmiTask(defaultHmiConfig(numTurbines), 100ms);  // 10 Hz
+        HmiTask hmiTask(defaultHmiConfig(numTurbines), 500ms);  // 10 Hz
               // 0.25 Hz
         SignalProcessingTask signalTask(500ms);      // 1 kHz
         // MonitoringTask       monitoringTask(50ms); // 20 Hz
@@ -51,7 +51,7 @@ int main(int argc, char* argv[])
         // cfg.goose.networkIface        = "eth1";
         cfg.orchestrationPeriod = 10ms;
         DataHistorian::instance().configure("project_datahistorian");
-DataHistorian::instance().start();
+        DataHistorian::instance().start();
         CommunicationTask commTask(cfg);
         commTask.init();
 
