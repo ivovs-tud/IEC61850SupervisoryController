@@ -147,8 +147,7 @@ void CommunicationTask::setRxNextExecutionTimeMs(int turbineId, const RxDescript
     std::lock_guard<std::mutex> lock(rxDescriptorMutex_);
     std::string key = getDescriptorKey(turbineId, desc.name);
     rxNextExecutionTimes_[key] = timeMs;
-    COMMTASK_LOG_V2("RX descriptor '" << desc.name << "' (turbine " << turbineId 
-                    << ") next execution time set to " << timeMs << " ms");
+    COMMTASK_LOG_V2("RX descriptor '" << desc.name << "' (turbine " << turbineId << ") next execution time set to " << timeMs << " ms");
 }
 
 void CommunicationTask::setTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc, uint64_t timeMs)
@@ -156,8 +155,7 @@ void CommunicationTask::setTxNextExecutionTimeMs(int turbineId, const TxDescript
     std::lock_guard<std::mutex> lock(txDescriptorMutex_);
     std::string key = getDescriptorKey(turbineId, desc.name);
     txNextExecutionTimes_[key] = timeMs;
-    COMMTASK_LOG_V2("TX descriptor '" << desc.name << "' (turbine " << turbineId 
-                    << ") next execution time set to " << timeMs << " ms");
+    COMMTASK_LOG_V2("TX descriptor '" << desc.name << "' (turbine " << turbineId << ") next execution time set to " << timeMs << " ms");
 }
 
 void CommunicationTask::onStart()
@@ -166,20 +164,22 @@ void CommunicationTask::onStart()
     if (socketWrapper.StartOperatorServer(config_.operatorServer.port) < SOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start operator server on port " << config_.operatorServer.port);
     }
+
     if (socketWrapper.StartAttackInterfaceServer(config_.attackInterface.port) < SOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start attack interface server on port " << config_.attackInterface.port);
     }
+
     if (socketWrapper.StartDataHistorianServer(config_.dataHistorian.port) < SOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start data historian server on port " << config_.dataHistorian.port);
     }
+
     state.socket_status.store(COMM_CONNECTED);
 
     state.iec_status.store(COMM_CONNECTING);
     iecWrapper_.start();
     state.iec_status.store(COMM_CONNECTED);
 
-    
-    iecWrapper_.printTurbineDataModel(1, 1000);  // print first 10 DA references of turbine 1 for sanity check
+    // iecWrapper_.printTurbineDataModel(1, 1000);  // print first 10 DA references of turbine 1 for sanity check
 
 #if SC_LOG_LEVEL_COMMTASK >= 3
     auto support = iecWrapper_.checkTurbineSupport(1, IEC_STRINGS::REQ_REFS);
@@ -204,18 +204,18 @@ void CommunicationTask::onStart()
 // =============================================================================
 
 const CommunicationTask::RxDescriptor CommunicationTask::RX_DESCRIPTORS[] = {
-    //  name              unit   IEC read fn                         AI type                   GDS last-value field     GDS history field          interval (ms)
-    { "wind speed",      "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    2000 },
-    { "wind direction",  "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    2000 },
-    { "yaw_offset",      "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, 2000 },
-    { "rotor speed",     "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   500  },
-    { "power_gen",       "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::Power_i,    &GlobalData::powerHistory, 500  },
+    //  name        unit    IEC read fn                         AI type                   GDS last-value field     GDS history field          interval (ms)
+    { "V",          "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    2000 },
+    { "D",          "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    2000 },
+    { "YawMeas",    "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, 2000 },
+    { "RSpd",       "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   500  },
+    { "W",          "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::Power_i,    &GlobalData::powerHistory, 500  },
 };
 
 const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
-    //  name            unit    GDS reader                                                                                  AI type                         IEC write fn                               interval (ms)
-    { "power setpoint", "W",    [](const GlobalData& d, int i) { return d.TurbinePowerSetpoints[i]; },                      AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,          5000 },
-    { "yaw setpoint",   "deg",  [](const GlobalData& d, int i) { return static_cast<float>(d.TurbineYawSetpoints[i]); },    AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,            10000 },
+    //  name        unit    GDS reader                                                                                  AI type                         IEC write fn                               interval (ms)
+    { "WSpt",       "W",    [](const GlobalData& d, int i) { return d.TurbinePowerSetpoints[i]; },                      AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,          5000 },
+    { "YawSpt",     "deg",  [](const GlobalData& d, int i) { return static_cast<float>(d.TurbineYawSetpoints[i]); },    AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,            10000 },
 };
 
 // =============================================================================
@@ -233,7 +233,7 @@ void CommunicationTask::execute()
     }
 
     for (int i = 0; i < static_cast<int>(config_.mms.turbines.size()); ++i) {
-        if (i > 0) continue;
+        // if (i > 0) continue;
         const int turbineId = i + 1;  // 1-based for IEC 61850
 
         // TX operations: check timestamp before executing.
@@ -316,9 +316,8 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
         return;
     }
 
-    COMMTASK_LOG_V2("Received (pre-overwrite)" << desc.name << " from turbine " << turbineId
-                    << ": " << value << " " << desc.unit);
-std::string logMsg = "[WT" + std::to_string(turbineId) + "→SC]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    COMMTASK_LOG_V2("Received (pre-overwrite)" << desc.name << " from turbine " << turbineId << ": " << value << " " << desc.unit);
+    std::string logMsg = "[WT" + std::to_string(turbineId) + "→SC]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
 
     // Then potentially transmit this data to an eavesdropper over the attack interface
@@ -326,12 +325,10 @@ std::string logMsg = "[WT" + std::to_string(turbineId) + "→SC]" + std::to_stri
 
     // Before storing, potentially allow attackInterface to overwrite the measurement
     if(attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
-        COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
-                     << " from turbine " << turbineId);
+        COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId);
     }
-    COMMTASK_LOG_V1("Received (post-overwrite) " << desc.name << " for turbine " << turbineId
-                    << ": " << value << " " << desc.unit);
-logMsg = "[WT" + std::to_string(turbineId) + "→SC(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    COMMTASK_LOG_V1("Received (post-overwrite) " << desc.name << " for turbine " << turbineId << ": " << value << " " << desc.unit);
+    logMsg = "[WT" + std::to_string(turbineId) + "→SC(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
 
     {

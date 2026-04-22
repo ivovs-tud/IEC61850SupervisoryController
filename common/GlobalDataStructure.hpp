@@ -141,10 +141,7 @@ public:
     std::mutex& mutex() { return mutex_; }
     GlobalData& data()  { return data_;  }
 
-    void resetForNewRun(const std::string& teamName,
-                        int scenarioId,
-                        int turbineControllerId)
-    {
+    void resetForNewRun(const std::string& teamName, int scenarioId, int turbineControllerId) {
         std::lock_guard<std::mutex> lock(mutex_);
         data_.resetForNewRunFields(teamName, scenarioId, turbineControllerId);
     }
