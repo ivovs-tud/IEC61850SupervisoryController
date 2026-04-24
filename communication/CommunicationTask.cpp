@@ -161,15 +161,13 @@ void CommunicationTask::setTxNextExecutionTimeMs(int turbineId, const TxDescript
 void CommunicationTask::onStart()
 {
     state.socket_status.store(COMM_CONNECTING);
-    if (socketWrapper.StartOperatorServer(config_.operatorServer.port) < SOCKET_CONNECTED) {
+    if (socketWrapper.StartOperatorServer(config_.operatorServer.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start operator server on port " << config_.operatorServer.port);
     }
-
-    if (socketWrapper.StartAttackInterfaceServer(config_.attackInterface.port) < SOCKET_CONNECTED) {
+    if (socketWrapper.StartAttackInterfaceServer(config_.attackInterface.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start attack interface server on port " << config_.attackInterface.port);
     }
-
-    if (socketWrapper.StartDataHistorianServer(config_.dataHistorian.port) < SOCKET_CONNECTED) {
+    if (socketWrapper.StartDataHistorianServer(config_.dataHistorian.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start data historian server on port " << config_.dataHistorian.port);
     }
 

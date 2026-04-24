@@ -13,7 +13,7 @@ SocketWrapper::OperatorServer::OperatorServer(std::chrono::milliseconds pollPeri
 
 void SocketWrapper::OperatorServer::setPort(int port)             { port_ = port; }
 void SocketWrapper::OperatorServer::setCallback(OperatorCallback cb) { callback_ = std::move(cb); }
-SocketStatus SocketWrapper::OperatorServer::status() const        { return status_.load(); }
+tcpSocketStatus SocketWrapper::OperatorServer::status() const        { return status_.load(); }
 
 void SocketWrapper::OperatorServer::onStart()
 {
@@ -22,16 +22,16 @@ void SocketWrapper::OperatorServer::onStart()
         socket_->set(zmq::sockopt::rcvhwm, 3);
         socket_->bind("tcp://*:" + std::to_string(port_));
         SOCKET_OP_LOG_V1("Operator server listening on port " << port_);
-        status_.store(SOCKET_CONNECTED);
+        status_.store(tcpSOCKET_CONNECTED);
     } catch (const std::exception& e) {
         SOCKET_OP_ERR("Failed to start operator server on port " << port_ << ": " << e.what());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
     }
 }
 
 void SocketWrapper::OperatorServer::execute()
 {
-    if (!socket_ || status_.load() < SOCKET_CONNECTED) return;
+    if (!socket_ || status_.load() < tcpSOCKET_CONNECTED) return;
 
     zmq::message_t message;
     const auto result = socket_->recv(message, zmq::recv_flags::dontwait);
@@ -52,7 +52,7 @@ void SocketWrapper::OperatorServer::execute()
 void SocketWrapper::OperatorServer::onStop()
 {
     socket_.reset();  // close socket before context is destroyed
-    status_.store(SOCKET_CLOSED);
+    status_.store(tcpSOCKET_CLOSED);
     SOCKET_OP_LOG_V1("Operator server stopped on port " << port_);
 }
 
@@ -64,7 +64,7 @@ SocketWrapper::AttackInterfaceServer::AttackInterfaceServer(std::chrono::millise
     : PeriodicTask(pollPeriod) {}
 
 void SocketWrapper::AttackInterfaceServer::setPort(int port) { port_ = port; }
-SocketStatus SocketWrapper::AttackInterfaceServer::status() const { return status_.load(); }
+tcpSocketStatus SocketWrapper::AttackInterfaceServer::status() const { return status_.load(); }
 void SocketWrapper::AttackInterfaceServer::setCallback(AttackCallback cb) { callback_ = std::move(cb); }
 
 void SocketWrapper::AttackInterfaceServer::onStart()
@@ -74,16 +74,16 @@ void SocketWrapper::AttackInterfaceServer::onStart()
         socket_->set(zmq::sockopt::rcvhwm, 3);
         socket_->bind("tcp://*:" + std::to_string(port_));
         SOCKET_AT_LOG_V1("Attack interface server listening on port " << port_);
-        status_.store(SOCKET_CONNECTED);
+        status_.store(tcpSOCKET_CONNECTED);
     } catch (const std::exception& e) {
         SOCKET_AT_ERR("Failed to start attack interface server on port " << port_ << ": " << e.what());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
     }
 }
 
 void SocketWrapper::AttackInterfaceServer::execute()
 {
-    if (!socket_ || status_.load() < SOCKET_CONNECTED) return;
+    if (!socket_ || status_.load() < tcpSOCKET_CONNECTED) return;
 
     zmq::message_t message;
     const auto result = socket_->recv(message, zmq::recv_flags::dontwait);
@@ -105,7 +105,7 @@ void SocketWrapper::AttackInterfaceServer::execute()
 void SocketWrapper::AttackInterfaceServer::onStop()
 {
     socket_.reset();
-    status_.store(SOCKET_CLOSED);
+    status_.store(tcpSOCKET_CLOSED);
     SOCKET_AT_LOG_V1("Attack interface server stopped on port " << port_);
 }
 
@@ -120,13 +120,13 @@ SocketWrapper::DataHistorianServer::DataHistorianServer(std::chrono::millisecond
 
 void SocketWrapper::DataHistorianServer::setPort(int port) { port_ = port; }
 void SocketWrapper::DataHistorianServer::setCallback(DataHistorianCallback cb) { callback_ = std::move(cb); }
-SocketStatus SocketWrapper::DataHistorianServer::status() const { return status_.load(); }
+tcpSocketStatus SocketWrapper::DataHistorianServer::status() const { return status_.load(); }
 
 void SocketWrapper::DataHistorianServer::onStart()
 {
     if (!socket_init()) {
         SOCKET_DH_ERR("Failed to initialize socket subsystem: " << socket_strerror());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
         return;
     }
 
@@ -135,7 +135,7 @@ void SocketWrapper::DataHistorianServer::onStart()
     tcpServer_.server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (tcpServer_.server_fd == INVALID_SOCKET_FD) {
         SOCKET_DH_ERR("Failed to create TCP socket: " << socket_strerror());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
         socket_cleanup();
         return;
     }
@@ -143,7 +143,7 @@ void SocketWrapper::DataHistorianServer::onStart()
     if (setsockopt(tcpServer_.server_fd, SOL_SOCKET, SO_REUSEADDR,
                    reinterpret_cast<const char*>(&tcpServer_.opt), sizeof(tcpServer_.opt)) < 0) {
         SOCKET_DH_ERR("Failed to set SO_REUSEADDR on TCP socket: " << socket_strerror());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
         socket_close(tcpServer_.server_fd);
         tcpServer_.server_fd = INVALID_SOCKET_FD;
         socket_cleanup();
@@ -157,7 +157,7 @@ void SocketWrapper::DataHistorianServer::onStart()
 
     if (bind(tcpServer_.server_fd, reinterpret_cast<struct sockaddr*>(&tcpServer_.address), sizeof(tcpServer_.address)) < 0) {
         SOCKET_DH_ERR("Failed to bind TCP socket to port " << port_ << ": " << socket_strerror());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
         socket_close(tcpServer_.server_fd);
         tcpServer_.server_fd = INVALID_SOCKET_FD;
         socket_cleanup();
@@ -166,7 +166,7 @@ void SocketWrapper::DataHistorianServer::onStart()
 
     if (!socket_set_nonblocking(tcpServer_.server_fd)) {
         SOCKET_DH_ERR("Failed to set non-blocking mode on server socket: " << socket_strerror());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
         socket_close(tcpServer_.server_fd);
         tcpServer_.server_fd = INVALID_SOCKET_FD;
         socket_cleanup();
@@ -176,20 +176,20 @@ void SocketWrapper::DataHistorianServer::onStart()
     // Start listening for incoming connections
     if (listen(tcpServer_.server_fd, TCP_MAX_CONNECTIONS) < 0) {
         SOCKET_DH_ERR("Failed to listen on TCP socket: " << socket_strerror());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
         socket_close(tcpServer_.server_fd);
         tcpServer_.server_fd = INVALID_SOCKET_FD;
         socket_cleanup();
         return;
     }
 
-    status_.store(SOCKET_CONNECTED);
+    status_.store(tcpSOCKET_CONNECTED);
     SOCKET_DH_LOG_V1("Data historian server listening on port " << port_);
 }
 
 void SocketWrapper::DataHistorianServer::execute()
 {
-    if (status_.load() < SOCKET_CONNECTED) return;
+    if (status_.load() < tcpSOCKET_CONNECTED) return;
 
     pollfd pfds[1 + TCP_MAX_CONNECTIONS];
     int nPfds = 0;
@@ -211,7 +211,7 @@ void SocketWrapper::DataHistorianServer::execute()
     const int ready = socket_poll(pfds, static_cast<std::size_t>(nPfds), 0);
     if (ready < 0) {
         SOCKET_DH_ERR("poll failed: " << socket_strerror());
-        status_.store(SOCKET_ERROR);
+        status_.store(tcpSOCKET_ERROR);
         return;
     }
     if (ready == 0) return;
@@ -239,7 +239,7 @@ void SocketWrapper::DataHistorianServer::acceptNewClients()
         if (clientFd == INVALID_SOCKET_FD) {
             if (socket_would_block()) break;
             SOCKET_DH_ERR("accept failed: " << socket_strerror());
-            status_.store(SOCKET_ERROR);
+            status_.store(tcpSOCKET_ERROR);
             break;
         }
 
@@ -318,7 +318,7 @@ void SocketWrapper::DataHistorianServer::onStop()
     }
 
     socket_cleanup();
-    status_.store(SOCKET_CLOSED);
+    status_.store(tcpSOCKET_CLOSED);
 }
 
 // ---------------------------------------------------------------------------
@@ -328,22 +328,22 @@ void SocketWrapper::DataHistorianServer::onStop()
 SocketWrapper::SocketWrapper()
     : lastActivityTime_(std::chrono::system_clock::now()) {}
 
-SocketStatus SocketWrapper::StartOperatorServer(int port)
+tcpSocketStatus SocketWrapper::StartOperatorServer(int port)
 {
-    if (opServer_.status() >= SOCKET_CONNECTED) {
+    if (opServer_.status() >= tcpSOCKET_CONNECTED) {
         SOCKET_OP_ERR("Operator server is already running.");
-        return SOCKET_ERROR;
+        return tcpSOCKET_ERROR;
     }
     if (port < 1024 || port > 65535) {
         SOCKET_OP_ERR("Invalid port number: " << port);
-        return SOCKET_ERROR;
+        return tcpSOCKET_ERROR;
     }
     opServer_.setPort(port);
     opServer_.start();
     return opServer_.status();
 }
 
-SocketStatus SocketWrapper::StopOperatorServer()
+tcpSocketStatus SocketWrapper::StopOperatorServer()
 {
     opServer_.stop();
     return opServer_.status();
@@ -359,22 +359,22 @@ void SocketWrapper::AttachAttackInterfaceCallback(AttackCallback callback)
     attackServer_.setCallback(std::move(callback));
 }
 
-SocketStatus SocketWrapper::StartAttackInterfaceServer(int port)
+tcpSocketStatus SocketWrapper::StartAttackInterfaceServer(int port)
 {
-    if (attackServer_.status() >= SOCKET_CONNECTED) {
+    if (attackServer_.status() >= tcpSOCKET_CONNECTED) {
         SOCKET_AT_ERR("Attack interface server is already running.");
-        return SOCKET_ERROR;
+        return tcpSOCKET_ERROR;
     }
     if (port < 1024 || port > 65535) {
         SOCKET_AT_ERR("Invalid port number: " << port);
-        return SOCKET_ERROR;
+        return tcpSOCKET_ERROR;
     }
     attackServer_.setPort(port);
     attackServer_.start();
     return attackServer_.status();
 }
 
-SocketStatus SocketWrapper::StopAttackInterfaceServer()
+tcpSocketStatus SocketWrapper::StopAttackInterfaceServer()
 {
     attackServer_.stop();
     return attackServer_.status();
@@ -395,15 +395,15 @@ void SocketWrapper::AttachDataHistorianCallback(DataHistorianCallback callback)
     dataHistorianServer_.setCallback(std::move(callback));
 }
 
-SocketStatus SocketWrapper::StartDataHistorianServer(int port)
+tcpSocketStatus SocketWrapper::StartDataHistorianServer(int port)
 {
-    if (dataHistorianServer_.status() >= SOCKET_CONNECTED) {
+    if (dataHistorianServer_.status() >= tcpSOCKET_CONNECTED) {
         SOCKET_DH_ERR("Data historian server is already running.");
-        return SOCKET_ERROR;
+        return tcpSOCKET_ERROR;
     }
     if (port < 1024 || port > 65535) {
         SOCKET_DH_ERR("Invalid port number: " << port);
-        return SOCKET_ERROR;
+        return tcpSOCKET_ERROR;
     }
 
     dataHistorianServer_.setPort(port);
@@ -411,7 +411,7 @@ SocketStatus SocketWrapper::StartDataHistorianServer(int port)
     return dataHistorianServer_.status();
 }
 
-SocketStatus SocketWrapper::StopDataHistorianServer()
+tcpSocketStatus SocketWrapper::StopDataHistorianServer()
 {
     dataHistorianServer_.stop();
     return dataHistorianServer_.status();

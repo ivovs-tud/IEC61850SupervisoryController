@@ -4,6 +4,7 @@
 
 using namespace std::chrono_literals;
 
+#include "common/ConsoleColors.hpp"
 #include "tasks/HmiTask.hpp"
 #include "tasks/ControlTask.hpp"
 #include "tasks/SignalProcessingTask.hpp"
@@ -13,6 +14,9 @@ using namespace std::chrono_literals;
 
 int main(int argc, char* argv[])
 {
+    // Initialize console colors for Windows (enables ANSI escape codes)
+    enableWindowsConsoleColors();
+    
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <yaw_lut.csv>\n";
         return 1;

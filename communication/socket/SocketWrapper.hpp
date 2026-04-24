@@ -18,14 +18,14 @@
 typedef enum rp { R_SOCKET_OK = 0, R_SOCKET_ALREADY_RUNNING = 0x01, R_SOCKET_ERROR = 0xFF } SocketReturnCode;
 
 typedef enum p {
-    SOCKET_ERROR         = -2,
-    SOCKET_DISCONNECTING = -1,
-    SOCKET_CLOSED        =  0,
-    SOCKET_CONNECTING    =  1,
-    SOCKET_CONNECTED     =  2,
-    SOCKET_RECEIVING     =  3,
-    SOCKET_TRANSMITTING  =  4,
-} SocketStatus;
+    tcpSOCKET_ERROR         = -2,
+    tcpSOCKET_DISCONNECTING = -1,
+    tcpSOCKET_CLOSED        =  0,
+    tcpSOCKET_CONNECTING    =  1,
+    tcpSOCKET_CONNECTED     =  2,
+    tcpSOCKET_RECEIVING     =  3,
+    tcpSOCKET_TRANSMITTING  =  4,
+} tcpSocketStatus;
 
 using OperatorCallback = std::function<void(const uint8_t*, size_t)>;
 using AttackCallback = std::function<void(const uint8_t*, size_t)>;
@@ -55,7 +55,7 @@ private:
         explicit OperatorServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
         void setPort(int port);
         void setCallback(OperatorCallback cb);
-        SocketStatus status() const;
+        tcpSocketStatus status() const;
 
     protected:
         void onStart()  override;
@@ -67,7 +67,7 @@ private:
         zmq::context_t               context_;
         std::optional<zmq::socket_t> socket_;
         OperatorCallback             callback_;
-        std::atomic<SocketStatus>    status_{SOCKET_CLOSED};
+        std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
     };
 
     // -----------------------------------------------------------------------
@@ -79,7 +79,7 @@ private:
         explicit AttackInterfaceServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
         void setPort(int port);
         void setCallback(AttackCallback cb);
-        SocketStatus status() const;
+        tcpSocketStatus status() const;
         void txData(const std::shared_ptr<void>&data, size_t dataSize);
 
     protected:
@@ -92,7 +92,7 @@ private:
         zmq::context_t               context_;
         std::optional<zmq::socket_t> socket_;
         AttackCallback               callback_;
-        std::atomic<SocketStatus>    status_{SOCKET_CLOSED};
+        std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
     };
 
     // -----------------------------------------------------------------------
@@ -105,7 +105,7 @@ private:
         explicit DataHistorianServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
         void setPort(int port);
         void setCallback(DataHistorianCallback cb);
-        SocketStatus status() const;
+        tcpSocketStatus status() const;
 
     protected:
         void onStart()  override;
@@ -128,7 +128,7 @@ private:
         } tcpServer_;
         
         DataHistorianCallback        callback_;
-        std::atomic<SocketStatus>    status_{SOCKET_CLOSED};
+        std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
 
     };
 
@@ -158,16 +158,16 @@ public:
         dataHistorianServer_.setPort(dataHistorianPort);
     }
 
-    SocketStatus StartOperatorServer(int port);
-    SocketStatus StopOperatorServer();
+    tcpSocketStatus StartOperatorServer(int port);
+    tcpSocketStatus StopOperatorServer();
     void         AttachServerCallback(OperatorCallback callback);
 
-    SocketStatus StartAttackInterfaceServer(int port);
-    SocketStatus StopAttackInterfaceServer();
+    tcpSocketStatus StartAttackInterfaceServer(int port);
+    tcpSocketStatus StopAttackInterfaceServer();
     void         AttachAttackInterfaceCallback(AttackCallback callback);
     void         txAttackInterfaceData(const std::shared_ptr<void>&data, size_t dataSize);
 
-    SocketStatus StartDataHistorianServer(int port);
-    SocketStatus StopDataHistorianServer();
+    tcpSocketStatus StartDataHistorianServer(int port);
+    tcpSocketStatus StopDataHistorianServer();
     void         AttachDataHistorianCallback(DataHistorianCallback callback);
 };
