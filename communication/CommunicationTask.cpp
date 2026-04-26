@@ -83,7 +83,7 @@ void CommunicationTask::init()
                         << ", ScenarioId " << cmd.scenarioId 
                         << ", TurbineController " << cmd.turbineController);
 
-        GlobalDataStructure::instance().resetForNewRun(std::string(cmd.teamName), cmd.scenarioId, cmd.turbineController);
+        // GlobalDataStructure::instance().resetForNewRun(std::string(cmd.teamName), cmd.scenarioId, cmd.turbineController);
 
         attackInterface.resetState();
 
@@ -205,32 +205,24 @@ void CommunicationTask::onStart()
 
 const CommunicationTask::RxDescriptor CommunicationTask::RX_DESCRIPTORS[] = {
     //  name        unit    IEC read fn                         AI type                   GDS last-value field     GDS history field          interval (ms)
-    { "V",          "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    2000 },
-    { "D",          "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    2000 },
+    { "V",          "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    1000 },
+    { "D",          "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    1000 },
     { "YawMeas",    "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, 2000 },
-    { "RSpd",       "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   500  },
+    { "RSpd",       "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   2000  },
     { "W",          "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::Power_i,    &GlobalData::powerHistory, 500  },
 };
 
 const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
-    //  name        unit    GDS reader                                                                                  AI type                         IEC write fn                               interval (ms)
-    { "WSpt",       "W",    [](const GlobalData& d, int i) { return d.TurbinePowerSetpoints[i]; },                      AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,          5000 },
-    { "YawSpt",     "deg",  [](const GlobalData& d, int i) { return static_cast<float>(d.TurbineYawSetpoints[i]); },    AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,            10000 },
+    //  name        unit    GDS reader                                                                                  AI type                         IEC write fn                        interval (ms)
+    { "WSpt",       "W",    [](const GlobalData& d, int i) { return d.TurbinePowerSetpoints[i]; },                      AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,   5000 },
+    { "YawSpt",     "deg",  [](const GlobalData& d, int i) { return static_cast<float>(d.TurbineYawSetpoints[i]); },    AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,     1000 },
+    { "OP_CMD",     "",     [](const GlobalData& d, int i) { return 1; },                                               AttackInterface::TX_OP_CMD,     &libiec_wrapper::txOpCommand,       UINT32_MAX },
 };
 
 // =============================================================================
 
 void CommunicationTask::execute()
 {
-
-    if (GlobalDataStructure::instance().data().simConfigured && !GlobalDataStructure::instance().data().simStarted) {
-        // If the simulation is configured but not started, skip exectuion, but we signal to the attackinterface that we are ready
-        attackInterface.signalReady();
-
-        // Then wait 1 second
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        return;
-    }
 
     for (int i = 0; i < static_cast<int>(config_.mms.turbines.size()); ++i) {
         // if (i > 0) continue;
