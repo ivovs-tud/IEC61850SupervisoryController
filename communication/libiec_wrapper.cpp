@@ -208,6 +208,12 @@ IECReturnCode libiec_wrapper::txTurbineController(int turbineId, int controllerI
     return ok ? IEC_OK : IEC_ERROR;
 }
 
+IECReturnCode libiec_wrapper::txOpCommand(int turbineId, float command) {
+    uint32_t cmdValue = command > 0 ? 1 : 0; // 1 to start, 0 to stop
+    bool ok = manager_.writeControlledEnum(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_OP_CMD), cmdValue, false);
+    return ok ? IEC_OK : IEC_ERROR;
+}
+
 // ── checkTurbineSupport ──────────────────────────────────────────────────────
 
 std::map<std::string, bool> libiec_wrapper::checkTurbineSupport(

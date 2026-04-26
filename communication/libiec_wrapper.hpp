@@ -195,6 +195,14 @@ public:
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 
+    IECReturnCode txOpCommand(int turbineId, float command);
+    /**
+     * @brief Write a turbine start/stop command.
+     * @param turbineId    Integer turbine ID (1-based).
+     * @param command      Operation command: 1 to start the turbine, 0 to stop.
+     * @return IEC_OK on success, IEC_ERROR on failure.
+     */
+
     IECReturnCode txTurbineController(int turbineId, int controllerId);
     /**
      * @brief Signal a turbine to use a specific turbine controller configuration

@@ -36,6 +36,7 @@ namespace AttackInterface
         TX_PTCH = 0x07,     // Pitch angle Data        
         TX_SPT_YAW = 0x08,   // Yaw setpoint Data
         TX_SPT_PWR = 0x09,   // Power setpoint Data
+        TX_OP_CMD = 0x0A,    // Operation command (e.g. for switching on/off the turbine)
         TX_ARRAY = 0xFF,    // Here for extensibility, not currently used
     } TxDataType;
 
@@ -412,7 +413,7 @@ namespace AttackInterface
 
                 // 2. Wait for AT_DATA response with a timeout
                 const auto startTime = std::chrono::steady_clock::now();
-                const auto timeout = std::chrono::milliseconds(100);
+                const auto timeout = std::chrono::milliseconds(500);
                 while(std::chrono::steady_clock::now() - startTime < timeout) {
                     {
                         std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
@@ -434,7 +435,7 @@ namespace AttackInterface
                     state.at_response_received = false;
                 }
 
-                ATTACK_LOG_V1("Overwrite request timed out");
+                ATTACK_LOG_V1("Overwrite request timed out after " << timeout.count() << " ms without receiving a response. (startime = " << startTime.time_since_epoch().count() << ", now = " << std::chrono::steady_clock::now().time_since_epoch().count() << ")");
                 return AI_TIMEOUT;
             }
 
