@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <thread>
 
 // ---------------------------------------------------------------------------
 // OperatorServer
@@ -21,7 +22,7 @@ void SocketWrapper::OperatorServer::onStart()
         socket_.emplace(context_, zmq::socket_type::pair);
         socket_->set(zmq::sockopt::rcvhwm, 3);
         socket_->bind("tcp://*:" + std::to_string(port_));
-        SOCKET_OP_LOG_V1("Operator server listening on port " << port_);
+        SOCKET_OP_ST("Operator server listening on port " << port_);
         status_.store(tcpSOCKET_CONNECTED);
     } catch (const std::exception& e) {
         SOCKET_OP_ERR("Failed to start operator server on port " << port_ << ": " << e.what());
@@ -53,7 +54,7 @@ void SocketWrapper::OperatorServer::onStop()
 {
     socket_.reset();  // close socket before context is destroyed
     status_.store(tcpSOCKET_CLOSED);
-    SOCKET_OP_LOG_V1("Operator server stopped on port " << port_);
+    SOCKET_OP_ST("Operator server stopped on port " << port_);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +74,7 @@ void SocketWrapper::AttackInterfaceServer::onStart()
         socket_.emplace(context_, zmq::socket_type::pair);
         socket_->set(zmq::sockopt::rcvhwm, 3);
         socket_->bind("tcp://*:" + std::to_string(port_));
-        SOCKET_AT_LOG_V1("Attack interface server listening on port " << port_);
+        SOCKET_AT_ST("Attack interface server listening on port " << port_);
         status_.store(tcpSOCKET_CONNECTED);
     } catch (const std::exception& e) {
         SOCKET_AT_ERR("Failed to start attack interface server on port " << port_ << ": " << e.what());
@@ -106,7 +107,7 @@ void SocketWrapper::AttackInterfaceServer::onStop()
 {
     socket_.reset();
     status_.store(tcpSOCKET_CLOSED);
-    SOCKET_AT_LOG_V1("Attack interface server stopped on port " << port_);
+    SOCKET_AT_ST("Attack interface server stopped on port " << port_);
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +185,7 @@ void SocketWrapper::DataHistorianServer::onStart()
     }
 
     status_.store(tcpSOCKET_CONNECTED);
-    SOCKET_DH_LOG_V1("Data historian server listening on port " << port_);
+    SOCKET_DH_ST("Data historian server listening on port " << port_);
 }
 
 void SocketWrapper::DataHistorianServer::execute()
@@ -319,6 +320,7 @@ void SocketWrapper::DataHistorianServer::onStop()
 
     socket_cleanup();
     status_.store(tcpSOCKET_CLOSED);
+    SOCKET_DH_ST("DataHistorian Socket Stopped");
 }
 
 // ---------------------------------------------------------------------------
@@ -340,6 +342,7 @@ tcpSocketStatus SocketWrapper::StartOperatorServer(int port)
     }
     opServer_.setPort(port);
     opServer_.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
     return opServer_.status();
 }
 
@@ -371,6 +374,7 @@ tcpSocketStatus SocketWrapper::StartAttackInterfaceServer(int port)
     }
     attackServer_.setPort(port);
     attackServer_.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
     return attackServer_.status();
 }
 
@@ -408,6 +412,7 @@ tcpSocketStatus SocketWrapper::StartDataHistorianServer(int port)
 
     dataHistorianServer_.setPort(port);
     dataHistorianServer_.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
     return dataHistorianServer_.status();
 }
 

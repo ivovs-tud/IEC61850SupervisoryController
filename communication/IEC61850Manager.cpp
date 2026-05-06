@@ -197,7 +197,7 @@ void IEC61850Manager::addTurbine(int id, const std::string& ip, int port, const 
     it->second.logicalDevice = logicalDevice;
     it->second.iedName = iedName;
     it->second.status = IEC_LINK_CLOSED;
-    IEC_LOG(id, "registered at " << ip << ":" << port);
+    IECMGR_ST(id, "registered at " << ip << ":" << port);
 }
 
 std::string IEC61850Manager::buildRef(int turbineId, const std::string& daReference)
@@ -276,7 +276,7 @@ bool IEC61850Manager::doConnect(TurbineConnection& tc)
 
     tc.status           = IEC_LINK_CONNECTED;
     tc.intentConnected  = true;
-    IEC_LOG(tc.id, "connected to " << tc.ip << ":" << tc.port);
+    IECMGR_ST(tc.id, "connected to " << tc.ip << ":" << tc.port);
     return true;
 }
 

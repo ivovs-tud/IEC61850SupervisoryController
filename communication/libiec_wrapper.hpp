@@ -68,6 +68,7 @@ static const std::vector<std::string> REQ_REFS = {POWER_MEAS, YAW_MEAS, WS_MEAS,
  * IMPORTANT: These should match the definition in the server
  */
 
+static constexpr const char* GOOSE_SUB_TEST =  "LLN0$gocb01";  // GOOSE test with LLN0.gocb01
 static constexpr const char* GOOSE_SUB_TurSt = "WTUR1$GO$TurSt";  // GOOSE with turbine state changes
 static constexpr const char* GOOSE_SUB_Alm   = "WTUR1$GO$Alm";    // GOOSE with turbine alarms
 };
@@ -121,7 +122,7 @@ public:
      * @return IECReturnCode IEC_OK on success, IEC_ERROR on failure.
      */
 
-    IECReturnCode txSetpoint(int turbineId, float powerSetpoint, int yawSetpoint);
+    IECReturnCode txSetpoint(int turbineId, float powerSetpoint, float yawSetpoint);
     /**
      * @brief Transmit power and yaw setpoints to a specific turbine.
      * @param turbineId      Integer turbine ID (1-based).

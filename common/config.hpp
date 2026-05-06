@@ -13,7 +13,7 @@
 // -----------------------------------------------------------------------------
 // 0: no logs, 1: errors only, 2: +verbosity-1, 3: +verbosity-2
 #ifndef SC_LOG_DEFAULT_LEVEL
-#define SC_LOG_DEFAULT_LEVEL 3
+#define SC_LOG_DEFAULT_LEVEL 1
 #endif
 
 // -----------------------------------------------------------------------------
@@ -34,6 +34,10 @@
 
 #ifndef SC_LOG_LEVEL_SOCKET_AT
 #define SC_LOG_LEVEL_SOCKET_AT SC_LOG_DEFAULT_LEVEL
+#endif
+
+#ifndef SC_LOG_LEVEL_SOCKET_DATA
+#define SC_LOG_LEVEL_SOCKET_DATA SC_LOG_DEFAULT_LEVEL
 #endif
 
 #ifndef SC_LOG_LEVEL_LIBIEC
@@ -125,6 +129,12 @@
 #define COMMTASK_ERR(msg) do {} while (0)
 #endif
 
+#if SC_LOG_LEVEL_COMMTASK >= 1
+#define COMMTASK_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_COMMTASK_V1, "[CommunicationTask][ST] ", msg)
+#else
+#define COMMTASK_ST(msg) do {} while (0)
+#endif
+
 #if SC_LOG_LEVEL_COMMTASK >= 2
 #define COMMTASK_LOG_V1(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_COMMTASK_V1, "[CommunicationTask] ", msg)
 #else
@@ -144,6 +154,12 @@
 #define ATTACK_ERR(msg) SC_LOG_EMIT_COLOR(std::cerr, SC_LOG_COLOR_ERROR, "[AT][ERR] ", msg)
 #else
 #define ATTACK_ERR(msg) do {} while (0)
+#endif
+
+#if SC_LOG_LEVEL_ATTACK >= 1
+#define ATTACK_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_ATTACK_V1, "[AT][ST] ", msg)
+#else
+#define ATTACK_ST(msg) do {} while (0)
 #endif
 
 #if SC_LOG_LEVEL_ATTACK >= 2
@@ -167,6 +183,12 @@
 #define SOCKET_OP_ERR(msg) do {} while (0)
 #endif
 
+#if SC_LOG_LEVEL_SOCKET_OP >= 1
+#define SOCKET_OP_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_SOCKET_OP_V1, "[OP][ST] ", msg)
+#else
+#define SOCKET_OP_ST(msg) do {} while (0)
+#endif
+
 #if SC_LOG_LEVEL_SOCKET_OP >= 2
 #define SOCKET_OP_LOG_V1(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_SOCKET_OP_V1, "[OP] ", msg)
 #else
@@ -188,6 +210,12 @@
 #define SOCKET_AT_ERR(msg) do {} while (0)
 #endif
 
+#if SC_LOG_LEVEL_SOCKET_AT >= 1
+#define SOCKET_AT_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_SOCKET_AT_V1, "[AT][ST] ", msg)
+#else
+#define SOCKET_AT_ST(msg) do {} while (0)
+#endif
+
 #if SC_LOG_LEVEL_SOCKET_AT >= 2
 #define SOCKET_AT_LOG_V1(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_SOCKET_AT_V1, "[AT] ", msg)
 #else
@@ -207,6 +235,12 @@
 #define SOCKET_DH_ERR(msg) SC_LOG_EMIT_COLOR(std::cerr, SC_LOG_COLOR_ERROR, "[DH][ERR] ", msg)
 #else
 #define SOCKET_DH_ERR(msg) do {} while (0)
+#endif
+
+#if SC_LOG_LEVEL_SOCKET_DATA >= 1
+#define SOCKET_DH_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_SOCKET_DH_V1, "[DH][ST] ", msg)
+#else
+#define SOCKET_DH_ST(msg) do {} while (0)
 #endif
 
 #if SC_LOG_LEVEL_SOCKET_DATA >= 2
@@ -231,6 +265,12 @@
 #define LIBIEC_ERR(msg) do {} while (0)
 #endif
 
+#if SC_LOG_LEVEL_LIBIEC >= 1
+#define LIBIEC_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_LIBIEC_V1, "[libiec_wrapper][ST] ", msg)
+#else
+#define LIBIEC_ST(msg) do {} while (0)
+#endif
+
 #if SC_LOG_LEVEL_LIBIEC >= 2
 #define LIBIEC_LOG_V1(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_LIBIEC_V1, "[libiec_wrapper] ", msg)
 #else
@@ -252,6 +292,12 @@
 #define IECMGR_ERR(id, msg) do {} while (0)
 #endif
 
+#if SC_LOG_LEVEL_IECMGR >= 1
+#define IECMGR_ST(id, msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_IECMGR_V1, "[IEC61850][" << (id) << "][ST] ", msg)
+#else
+#define IECMGR_ST(id, msg) do {} while (0)
+#endif
+
 #if SC_LOG_LEVEL_IECMGR >= 2
 #define IECMGR_LOG_V1(id, msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_IECMGR_V1, "[IEC61850][" << (id) << "] ", msg)
 #else
@@ -271,6 +317,12 @@
 #define CONTROL_ERR(msg) SC_LOG_EMIT_COLOR(std::cerr, SC_LOG_COLOR_ERROR, "[ControlTask][ERR] ", msg)
 #else
 #define CONTROL_ERR(msg) do {} while (0)
+#endif
+
+#if SC_LOG_LEVEL_CONTROL >= 1
+#define CONTROL_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_CONTROL_V1, "[ControlTask][ST] ", msg)
+#else
+#define CONTROL_ST(msg) do {} while (0)
 #endif
 
 #if SC_LOG_LEVEL_CONTROL >= 2

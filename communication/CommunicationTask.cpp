@@ -341,6 +341,6 @@ void CommunicationTask::onStop()
     iecWrapper_.stop();
     state.iec_status.store(COMM_DISCONNECTED);
 
-    COMMTASK_LOG_V1("Socket servers stopped.");
-    COMMTASK_LOG_V1("Stopped");
+    //COMMTASK_ST("Socket servers stopped.");
+    COMMTASK_ST("Stopped");
 }
