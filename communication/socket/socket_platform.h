@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "common/config.hpp"
 
 #if defined(PLATFORM_WINDOWS)
 
