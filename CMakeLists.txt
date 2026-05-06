@@ -25,6 +25,7 @@ find_package(Threads REQUIRED)
 # Boost – header-only components (circular_buffer, etc.)
 # vcpkg provides Boost via find_package on both Windows and Linux
 find_package(Boost 1.70 REQUIRED)
+find_package(Boost 1.70 REQUIRED COMPONENTS headers)
 message(STATUS "Boost ${Boost_VERSION} found at ${Boost_INCLUDE_DIRS}")
 
 # ZeroMQ + cppzmq + msgpack
