@@ -22,10 +22,24 @@ endif()
 # Threading support (works on both Windows and Linux with std::thread)
 find_package(Threads REQUIRED)
 
+# Default debugger argument: yaw LUT file placed in project root.
+# This file will be passed as the first argument when launching the executable
+# from Visual Studio's debugger. You can override at configure time with
+# -DDEFAULT_YAW_LUT="/path/to/file.csv".
+set(DEFAULT_YAW_LUT "${CMAKE_SOURCE_DIR}/yaw_lut.csv" CACHE PATH "Default yaw LUT CSV file passed as first argument to the executable when debugging in Visual Studio")
+if(WIN32)
+    if(EXISTS "${DEFAULT_YAW_LUT}")
+        message(STATUS "Using default yaw LUT for debugger args: ${DEFAULT_YAW_LUT}")
+    else()
+        message(WARNING "Default yaw LUT not found at ${DEFAULT_YAW_LUT}. Create the file or set -DDEFAULT_YAW_LUT to point to it.")
+    endif()
+endif()
+
 # Boost – header-only components (circular_buffer, etc.)
-# vcpkg provides Boost via find_package on both Windows and Linux
+# Only the header components are required (e.g. boost::circular_buffer).
+# Request the `headers` component so CMake provides the imported target
+# `Boost::headers` which can be linked to targets without linking libraries.
 find_package(Boost 1.70 REQUIRED)
-find_package(Boost 1.70 REQUIRED COMPONENTS headers)
 message(STATUS "Boost ${Boost_VERSION} found at ${Boost_INCLUDE_DIRS}")
 
 # ZeroMQ + cppzmq + msgpack
@@ -81,7 +95,7 @@ if(WIN32)
     set(LIBIEC61850_DIR "H:/libiec61850" CACHE PATH "Path to libiec61850 source")
     add_custom_command(TARGET supervisory_controller POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${LIBIEC61850_DIR}/build/src/Release/iec61850.dll"
+            "${LIBIEC61850_DIR}/build/src/Debug/iec61850.dll"
             $<TARGET_FILE_DIR:supervisory_controller>
         COMMENT "Copying iec61850.dll to output directory"
     )
@@ -98,13 +112,25 @@ if(WIN32)
     
     # Set debugging command arguments for Visual Studio
     # Edit these arguments as needed
+    # Visual Studio is a multi-config generator. Set both the generic and
+    # per-configuration debugger argument properties so the value is picked up
+    # regardless of the active configuration in the IDE.
     set_target_properties(supervisory_controller PROPERTIES
-        VS_DEBUGGER_COMMAND_ARGUMENTS "arg1 arg2 arg3"
+        VS_DEBUGGER_COMMAND_ARGUMENTS "${DEFAULT_YAW_LUT}"
+        VS_DEBUGGER_COMMAND_ARGUMENTS_DEBUG "${DEFAULT_YAW_LUT}"
+        VS_DEBUGGER_COMMAND_ARGUMENTS_RELEASE "${DEFAULT_YAW_LUT}"
+        VS_DEBUGGER_COMMAND_ARGUMENTS_RELWITHDEBINFO "${DEFAULT_YAW_LUT}"
+        VS_DEBUGGER_COMMAND_ARGUMENTS_MINSIZEREL "${DEFAULT_YAW_LUT}"
+        VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        VS_DEBUGGER_WORKING_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}"
+        VS_DEBUGGER_WORKING_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}"
+        VS_DEBUGGER_WORKING_DIRECTORY_RELWITHDEBINFO "${CMAKE_SOURCE_DIR}"
+        VS_DEBUGGER_WORKING_DIRECTORY_MINSIZEREL "${CMAKE_SOURCE_DIR}"
     )
     
     # Optional: Add a custom target to run with arguments
     add_custom_target(run
-        COMMAND supervisory_controller arg1 arg2 arg3
+        COMMAND supervisory_controller "${DEFAULT_YAW_LUT}"
         DEPENDS supervisory_controller
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Running supervisory_controller with arguments"

@@ -17,18 +17,18 @@ if(WIN32)
     
     # For multi-config generators (Visual Studio), set per-configuration properties
     set_target_properties(iec61850 PROPERTIES
-        IMPORTED_LOCATION_RELEASE "${LIBIEC61850_DIR}/build/src/Release/iec61850.dll"
-        IMPORTED_LOCATION_DEBUG "${LIBIEC61850_DIR}/build/src/Release/iec61850.dll"
-        IMPORTED_IMPLIB_RELEASE "${LIBIEC61850_DIR}/build/src/Release/iec61850.lib"
-        IMPORTED_IMPLIB_DEBUG "${LIBIEC61850_DIR}/build/src/Release/iec61850.lib"
+        IMPORTED_LOCATION_Debug "${LIBIEC61850_DIR}/build/src/Debug/iec61850.dll"
+        IMPORTED_LOCATION_DEBUG "${LIBIEC61850_DIR}/build/src/Debug/iec61850.dll"
+        IMPORTED_IMPLIB_Debug "${LIBIEC61850_DIR}/build/src/Debug/iec61850.lib"
+        IMPORTED_IMPLIB_DEBUG "${LIBIEC61850_DIR}/build/src/Debug/iec61850.lib"
         INTERFACE_INCLUDE_DIRECTORIES "${LIBIEC61850_DIR}/src/common/inc;${LIBIEC61850_DIR}/src/iec61850/inc;${LIBIEC61850_DIR}/src/mms/inc;${LIBIEC61850_DIR}/src/goose;${LIBIEC61850_DIR}/src/r_session;${LIBIEC61850_DIR}/hal/inc;${LIBIEC61850_DIR}/src/logging"
     )
     
-    # Fallback to Release if Debug doesn't exist
-    if(NOT EXISTS "${LIBIEC61850_DIR}/build/src/Release/iec61850.dll")
+    # Fallback to Debug if Debug doesn't exist
+    if(NOT EXISTS "${LIBIEC61850_DIR}/build/src/Debug/iec61850.dll")
         set_target_properties(iec61850 PROPERTIES
-            IMPORTED_LOCATION_DEBUG "${LIBIEC61850_DIR}/build/src/Release/iec61850.dll"
-            IMPORTED_IMPLIB_DEBUG "${LIBIEC61850_DIR}/build/src/Release/iec61850.lib"
+            IMPORTED_LOCATION_DEBUG "${LIBIEC61850_DIR}/build/src/Debug/iec61850.dll"
+            IMPORTED_IMPLIB_DEBUG "${LIBIEC61850_DIR}/build/src/Debug/iec61850.lib"
         )
     endif()
 else()

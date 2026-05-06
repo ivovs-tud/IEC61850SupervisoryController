@@ -32,13 +32,18 @@ int main(int argc, char* argv[])
         ~WinTimerResolutionGuard() { timeEndPeriod(1); }
     } _winTimerGuard;
 #endif
+    
+    char yaw_str[256];
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <yaw_lut.csv>\n";
-        return 1;
+		strcpy(yaw_str, "yaw_lut.csv");
+        //return 1;
+    } else {
+		strcpy(yaw_str, argv[1]);
     }
 
     try {
-        const int numTurbines = 3;
+        const int numTurbines = 12;
 
         // TODO: drop privileges (e.g. setuid/setgid) before spawning worker threads
 
@@ -76,7 +81,7 @@ int main(int argc, char* argv[])
 
         ControlTask::Config controlConfig;
         controlConfig.period = 4000ms;
-        controlConfig.yawLutCsvPath = argv[1];
+        controlConfig.yawLutCsvPath = yaw_str;
         controlConfig.numTurbines = numTurbines;
         ControlTask controlTask(controlConfig);
 
