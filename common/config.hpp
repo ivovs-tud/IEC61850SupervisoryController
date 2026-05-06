@@ -2,6 +2,12 @@
 
 #include <iostream>
 
+#if defined(_WIN32) || defined(_WIN64)
+#define PLATFORM_WINDOWS
+#else
+#define PLATFORM_POSIX
+#endif
+
 // -----------------------------------------------------------------------------
 // Global logging defaults
 // -----------------------------------------------------------------------------

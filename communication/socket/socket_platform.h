@@ -5,8 +5,8 @@
 #include <cstdio>
 #include <cstring>
 
-#if defined(_WIN32) || defined(_WIN64)
-#define PLATFORM_WINDOWS
+
+#if defined(PLATFORM_WINDOWS)
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -87,7 +87,6 @@ inline int socket_poll(pollfd* pfds, std::size_t nfds, int timeout_ms)
 }
 
 #else
-#define PLATFORM_POSIX
 
 #include <arpa/inet.h>
 #include <fcntl.h>

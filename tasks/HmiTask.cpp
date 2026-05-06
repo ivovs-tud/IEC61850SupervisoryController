@@ -39,7 +39,11 @@ HmiConfig defaultHmiConfig(int numTurbines)
     HmiConfig cfg;
     cfg.numTurbines        = numTurbines;
     cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
-    cfg.publisherEndpoint  = "ipc:///tmp/supervisory_controller_hmi.sock";
+#if defined(_WIN32) || defined(_WIN64)
+        cfg.publisherEndpoint  = "tcp://localhost:5555";
+#else
+        cfg.publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock";   
+#endif  
 
     cfg.signals = {
         // ── Per-turbine measured power and setpoints in one subplot ──────────
@@ -153,13 +157,15 @@ void HmiTask::onStart()
         // Drop oldest frame if the subscriber falls behind rather than blocking.
         socket_->set(zmq::sockopt::sndhwm, 5);
         socket_->bind(config_.publisherEndpoint);
-
+ 
+#if defined(PLATFORM_POSIX)
         if (!ipcPath.empty()) {
             // Allow subscribers running as a different user (e.g., non-sudo HMI).
             if (::chmod(ipcPath.c_str(), 0666) != 0) {
                 std::cerr << "[HmiTask] Warning: failed to chmod IPC socket " << ipcPath << '\n';
             }
         }
+#endif
 
         std::cout << "[HmiTask] Publishing on " << config_.publisherEndpoint << '\n';
     } catch (const std::exception& e) {
