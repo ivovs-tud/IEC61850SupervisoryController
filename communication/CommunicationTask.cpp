@@ -73,8 +73,19 @@ void CommunicationTask::init()
         }
 
         COMMTASK_LOG_V2("Received DataHistorian message of size " << length << " bytes");
+        DH_TCP_DATA out;
+        if (length < sizeof(DH_TCP_DATA)) {
+               COMMTASK_ERR("Received Invalid DataHistorian Message Length. Expected " << sizeof(DH_TCP_DATA) << " bytes, got " << length << " bytes");
+            return;
+        }
 
-        DataHistorian::instance().log(std::string(reinterpret_cast<const char*>(data), length));
+        memcpy(&out, data, sizeof(DH_TCP_DATA));
+
+		char logMsg[512];
+        snprintf(logMsg, sizeof(logMsg), "[WT%u]%lu;YawAng=%.1f;YawSpt=%.1f;W=%.1f;WSpt=%.1f;V=%.1f;D=%.1f;RotSpd=%.1f;Pth=%.1f;PthSpt=%.1f",
+			out.nID, out.nUnixTime, out.YwAng, out.YwAngSpt, out.W, out.WSpt, out.HorWdSpd, out.HorWdDir, out.RotSpd, out.PitchAngle, out.PitchAngleSpt);
+
+        DataHistorian::instance().log(std::string(logMsg));
     });
 
     attackInterface.setCfgCommandCallback([this](const AttackInterface::CfgDataMessage &cmd) {

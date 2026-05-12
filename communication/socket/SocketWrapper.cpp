@@ -1,9 +1,11 @@
 #include "SocketWrapper.hpp"
+#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <thread>
+#include <chrono>
 
 // ---------------------------------------------------------------------------
 // OperatorServer
@@ -215,6 +217,35 @@ void SocketWrapper::DataHistorianServer::execute()
         status_.store(tcpSOCKET_ERROR);
         return;
     }
+    // Periodically verify that connected clients are still alive by peeking on the socket.
+    const auto now = std::chrono::steady_clock::now();
+    if (now - lastConnectivityCheck_ >= connectivityCheckInterval_) {
+        SOCKET_DH_LOG_V2("Check Connectivity TCP");
+        lastConnectivityCheck_ = now;
+        char peekBuf[1];
+        for (socket_t fd : tcpServer_.client_fds) {
+            if (fd == INVALID_SOCKET_FD) continue;
+
+            // Use MSG_PEEK to check connection without consuming data. Sockets are non-blocking.
+#if defined(PLATFORM_WINDOWS)
+            int r = recv(fd, peekBuf, 1, MSG_PEEK);
+#else
+            ssize_t r = recv(fd, peekBuf, 1, MSG_PEEK);
+#endif
+            if (r == 0) {
+                // orderly shutdown by peer
+                removeClient(fd);
+                continue;
+            }
+            if (r < 0) {
+                if (!socket_would_block()) {
+                    SOCKET_DH_ERR("Connectivity check failed on client socket: " << socket_strerror());
+                    removeClient(fd);
+                }
+            }
+        }
+    }
+
     if (ready == 0) return;
 
     if ((pfds[0].revents & POLLIN) != 0) {
@@ -262,7 +293,7 @@ void SocketWrapper::DataHistorianServer::acceptNewClients()
         }
 
         *free_slot = clientFd;
-        SOCKET_DH_LOG_V2("Accepted data historian client");
+        SOCKET_DH_ST("Accepted data historian client");
     }
 }
 
@@ -298,7 +329,7 @@ void SocketWrapper::DataHistorianServer::removeClient(socket_t client_fd)
     if (slot != std::end(tcpServer_.client_fds)) {
         socket_close(client_fd);
         *slot = INVALID_SOCKET_FD;
-        SOCKET_DH_LOG_V2("Data historian client disconnected");
+        SOCKET_DH_ST("Data historian client disconnected");
     }
 }
 

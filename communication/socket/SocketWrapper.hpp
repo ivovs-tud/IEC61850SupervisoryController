@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -31,7 +32,7 @@ using OperatorCallback = std::function<void(const uint8_t*, size_t)>;
 using AttackCallback = std::function<void(const uint8_t*, size_t)>;
 using DataHistorianCallback = std::function<void(const uint8_t*, size_t)>;
 constexpr int TCP_BUFFER_SIZE = 1024;
-constexpr int TCP_MAX_CONNECTIONS = 10;
+constexpr int TCP_MAX_CONNECTIONS = 1;
 // ---------------------------------------------------------------------------
 // SocketWrapper – owns two PeriodicTask-based socket servers.
 //
@@ -129,6 +130,9 @@ private:
         
         DataHistorianCallback        callback_;
         std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
+        // Periodically check client connectivity by peeking on the socket.
+        std::chrono::steady_clock::time_point lastConnectivityCheck_ = std::chrono::steady_clock::now();
+        std::chrono::milliseconds connectivityCheckInterval_{5000};
 
     };
 
