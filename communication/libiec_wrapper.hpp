@@ -36,8 +36,8 @@ namespace IEC_STRINGS {
 // IEC 61850 DA references — LN.DO.DA paths WITHOUT the Logical Device (LD)
 // prefix.  The LD is configured per turbine via TurbineEndpoint::logicalDevice
 // and prepended automatically by libiec_wrapper using IEC61850Manager::buildRef().
-static constexpr const char* WTUR_DmdWSpt = "WTUR1.DmdWSpt";   // APC – active-power setpoint
-static constexpr const char* XWYAW_YawSpt = "WYAW1.YwAngSpt";    // APC – yaw-angle setpoint
+static constexpr const char* WTUR_DmdWSpt = "WTUR1.DmdWSpt.val";   // APC – active-power setpoint
+static constexpr const char* XWYAW_YawSpt = "WYAW1.YwAngSpt.val";    // APC – yaw-angle setpoint
 
 static constexpr const char* WTUR_TurSt   = "WTUR1.TurSt";   // Wind Turbine State [ST]
 static constexpr const char* WTUR_OP_CMD  = "WTUR1.TurOp";   // Wind Turbine Operation Command [CMD]
