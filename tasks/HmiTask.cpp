@@ -1,6 +1,7 @@
 #include "HmiTask.hpp"
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <iostream>
 #include <mutex>
@@ -41,8 +42,10 @@ HmiConfig defaultHmiConfig(int numTurbines)
     cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
 #if defined(_WIN32) || defined(_WIN64)
         cfg.publisherEndpoint  = "tcp://localhost:5555";
+        cfg.commandEndpoint = "tcp://localhost:5556";
 #else
         cfg.publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock";   
+        cfg.commandEndpoint = "ipc:///tmp/supervisory_controller_hmi_cmd.sock";
 #endif  
 
     cfg.signals = {
@@ -143,65 +146,139 @@ HmiTask::HmiTask(HmiConfig config, std::chrono::milliseconds period)
 void HmiTask::onStart()
 {
     try {
-        std::string ipcPath;
+        std::string pubIpcPath;
         if (config_.publisherEndpoint.rfind("ipc://", 0) == 0) {
-            ipcPath = config_.publisherEndpoint.substr(6);
-            if (!ipcPath.empty()) {
+            pubIpcPath = config_.publisherEndpoint.substr(6);
+            if (!pubIpcPath.empty()) {
                 // Remove stale socket node left by previous crashes/runs.
                 std::error_code ec;
-                std::filesystem::remove(ipcPath, ec);
+                std::filesystem::remove(pubIpcPath, ec);
             }
         }
 
-        socket_.emplace(context_, zmq::socket_type::pub);
+        std::string cmdIpcPath;
+        if (config_.commandEndpoint.rfind("ipc://", 0) == 0) {
+            cmdIpcPath = config_.commandEndpoint.substr(6);
+            if (!cmdIpcPath.empty()) {
+                std::error_code ec;
+                std::filesystem::remove(cmdIpcPath, ec);
+            }
+        }
+
+        pubSocket_.emplace(context_, zmq::socket_type::pub);
         // Drop oldest frame if the subscriber falls behind rather than blocking.
-        socket_->set(zmq::sockopt::sndhwm, 5);
-        socket_->bind(config_.publisherEndpoint);
- 
+        pubSocket_->set(zmq::sockopt::sndhwm, 5);
+        pubSocket_->bind(config_.publisherEndpoint);
+        
+        cmdSocket_.emplace(context_, zmq::socket_type::pull);
+        cmdSocket_->set(zmq::sockopt::rcvhwm, 10);
+        cmdSocket_->bind(config_.commandEndpoint);
 #if defined(PLATFORM_POSIX)
-        if (!ipcPath.empty()) {
+        if (!pubIpcPath.empty()) {
             // Allow subscribers running as a different user (e.g., non-sudo HMI).
-            if (::chmod(ipcPath.c_str(), 0666) != 0) {
-                std::cerr << "[HmiTask] Warning: failed to chmod IPC socket " << ipcPath << '\n';
+            if (::chmod(pubIpcPath.c_str(), 0666) != 0) {
+                std::cerr << "[HmiTask] Warning: failed to chmod IPC socket " << pubIpcPath << '\n';
+            }
+        }
+
+        if (!cmdIpcPath.empty()) {
+            if (::chmod(cmdIpcPath.c_str(), 0666) != 0) {
+                std::cerr << "[HmiTask] Warning: failed to chmod command IPC socket " << cmdIpcPath << '\n';
             }
         }
 #endif
-
-        std::cout << "[HmiTask] Publishing on " << config_.publisherEndpoint << '\n';
+        std::cout << "[HmiTask] Publishing on " << config_.publisherEndpoint
+                  << " | Command input on " << config_.commandEndpoint << '\n';
     } catch (const std::exception& e) {
         std::cerr << "[HmiTask] Failed to bind publisher: " << e.what() << '\n';
-        socket_.reset();
+        pubSocket_.reset();
+        cmdSocket_.reset();
     }
 }
 
 void HmiTask::onStop()
 {
-    socket_.reset();
+    pubSocket_.reset();
+    cmdSocket_.reset();
+}
+
+void HmiTask::handleCommands()
+{
+    if (!cmdSocket_) return;
+
+    while (true) {
+        zmq::message_t cmdMsg;
+        const auto result = cmdSocket_->recv(cmdMsg, zmq::recv_flags::dontwait);
+        if (!result) break;
+
+        try {
+            const auto* data = static_cast<const char*>(cmdMsg.data());
+            msgpack::object_handle oh = msgpack::unpack(data, cmdMsg.size());
+            msgpack::object obj = oh.get();
+
+            if (obj.type != msgpack::type::ARRAY || obj.via.array.size < 2) {
+                continue;
+            }
+
+            const std::string cmd = obj.via.array.ptr[0].as<std::string>();
+            if (cmd == "set_mode") {
+                int requestedMode = obj.via.array.ptr[1].as<int>();
+                requestedMode = std::max(0, std::min(2, requestedMode));
+
+                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+                GlobalData& d = GlobalDataStructure::instance().data();
+                d.operationMode = requestedMode;
+
+                if (requestedMode == 0) d.statusMessage = "Mode: Auto";
+                if (requestedMode == 1) d.statusMessage = "Mode: Curtailment";
+                if (requestedMode == 2) d.statusMessage = "Mode: Safe Shutdown";
+            }
+        } catch (const std::exception&) {
+            // Ignore malformed commands and continue.
+        }
+    }
 }
 
 void HmiTask::execute()
 {
+    handleCommands();
+
     // ── 1. Sample current values from shared state ────────────────────────────
     std::vector<std::vector<double>> snap(config_.signals.size());
+    int operationMode = 0;
+    bool alarmPowerTracking = false;
+    bool alarmYawMisalignment = false;
+    bool alarmCommunication = false;
+    bool alarmEmergencyStop = false;
+    bool systemRunning = false;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         const GlobalData& d = GlobalDataStructure::instance().data();
         for (std::size_t i = 0; i < config_.signals.size(); ++i)
             snap[i] = config_.signals[i].accessor(d);
+
+        operationMode = d.operationMode;
+        alarmPowerTracking = d.alarmPowerTracking;
+        alarmYawMisalignment = d.alarmYawMisalignment;
+        alarmCommunication = d.alarmCommunication;
+        alarmEmergencyStop = d.alarmEmergencyStop;
+        systemRunning = d.systemRunning;
     }
 
     ++tickCount_;
 
-    if (!socket_) return;
+    if (!pubSocket_) return;
 
     // ── 2. Pack snapshot as msgpack and publish ───────────────────────────────
-    // Format: [tick, window_size, [[name, unit, [labels], [values]], ...]]
+    // Format:
+    // [tick, window_size, [[name, unit, [labels], [values]], ...],
+    //  [[light_name, is_on, color], ...], [operation_mode, [mode_labels...]]]
     // The Python subscriber maintains the rolling window; we send only the
     // latest values each cycle.
     msgpack::sbuffer buf;
     msgpack::packer<msgpack::sbuffer> pk(buf);
 
-    pk.pack_array(3);
+    pk.pack_array(5);
     pk.pack(tickCount_);
     pk.pack(static_cast<int32_t>(config_.windowSize));
 
@@ -215,8 +292,21 @@ void HmiTask::execute()
         pk.pack(snap[i]);
     }
 
+    const std::array<const char*, 3> modeLabels{{"Auto", "Curtailment", "Safe\nShutdown"}};
+
+    pk.pack_array(5);
+    pk.pack_array(3); pk.pack("System Running");    pk.pack(systemRunning);      pk.pack("green");
+    pk.pack_array(3); pk.pack("Power Tracking");    pk.pack(alarmPowerTracking); pk.pack("red");
+    pk.pack_array(3); pk.pack("Yaw Misalignment");  pk.pack(alarmYawMisalignment); pk.pack("amber");
+    pk.pack_array(3); pk.pack("Communication");     pk.pack(alarmCommunication);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Emergency Stop");    pk.pack(alarmEmergencyStop);  pk.pack("red");
+
+    pk.pack_array(2);
+    pk.pack(operationMode);
+    pk.pack(modeLabels);
+
     zmq::message_t msg(buf.data(), buf.size());
-    socket_->send(msg, zmq::send_flags::dontwait);
+    pubSocket_->send(msg, zmq::send_flags::dontwait);
 }
 
 

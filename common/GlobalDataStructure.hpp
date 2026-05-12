@@ -73,6 +73,15 @@ struct GlobalData
     // -- Data from the grid operator
     float RequestedReferencePower = 0.0f; 
 
+    // -- HMI control + annunciator state
+    // operationMode values:
+    //   0 = Auto, 1 = Curtailment, 2 = Safe Shutdown
+    int  operationMode = 0;
+    bool alarmPowerTracking = false;
+    bool alarmYawMisalignment = false;
+    bool alarmCommunication = false;
+    bool alarmEmergencyStop = false;
+
 
 
     // Fields for property coordination with the simulator
@@ -119,6 +128,12 @@ struct GlobalData
         std::fill(TurbineYawSetpoints.begin(), TurbineYawSetpoints.end(), 0);
 
         RequestedReferencePower = 0.0f;
+
+        operationMode = 0;
+        alarmPowerTracking = false;
+        alarmYawMisalignment = false;
+        alarmCommunication = false;
+        alarmEmergencyStop = false;
 
         simStarted = false;
         simConfigured = true;

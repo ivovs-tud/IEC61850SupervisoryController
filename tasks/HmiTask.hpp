@@ -35,6 +35,7 @@ struct HmiConfig
     int numTurbines = 3;                 ///< active turbines to track
     int windowSize  = 100;               ///< rolling window length forwarded to the plotter
     std::string publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock"; ///< ZMQ PUB endpoint
+    std::string commandEndpoint   = "ipc:///tmp/supervisory_controller_hmi_cmd.sock"; ///< ZMQ PULL endpoint (mode commands)
     std::vector<HmiSignalDef> signals;
 };
 
@@ -46,7 +47,8 @@ HmiConfig defaultHmiConfig(int numTurbines = 3);
 // snapshot over a ZeroMQ PUB socket consumed by hmi_plot.py.
 //
 // Wire format (msgpack array):
-//   [tick, window_size, [[name, unit, [labels], [values]], ...]]
+//   [tick, window_size, [[name, unit, [labels], [values]], ...],
+//    [[light_name, is_on, color], ...], [operation_mode, [mode_labels...]]]
 //
 // The Python plotter maintains its own rolling history; C++ only sends the
 // latest snapshot each cycle (no history buffers needed here).
@@ -63,8 +65,11 @@ protected:
     void onStop()  override;
 
 private:
+    void handleCommands();
+
     HmiConfig                    config_;
     int64_t                      tickCount_ = 0;
     zmq::context_t               context_;
-    std::optional<zmq::socket_t> socket_;
+    std::optional<zmq::socket_t> pubSocket_;
+    std::optional<zmq::socket_t> cmdSocket_;
 };
