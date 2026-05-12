@@ -69,3 +69,14 @@ vcpkg_installed/
 Testing/
 .cache/
 .github/
+
+# Visual Studio
+.vs/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+.vscode/

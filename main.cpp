@@ -4,6 +4,8 @@
 
 using namespace std::chrono_literals;
 
+#include "common/config.hpp"
+#include "common/ConsoleColors.hpp"
 #include "tasks/HmiTask.hpp"
 #include "tasks/ControlTask.hpp"
 #include "tasks/SignalProcessingTask.hpp"
@@ -11,15 +13,37 @@ using namespace std::chrono_literals;
 #include "communication/CommunicationTask.hpp"
 #include "common/DataHistorian.hpp"
 
+#ifdef PLATFORM_WINDOWS
+#include <windows.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm")
+#endif
 int main(int argc, char* argv[])
 {
+    // Initialize console colors for Windows (enables ANSI escape codes)
+    enableWindowsConsoleColors();
+    
+#ifdef _WIN32
+    // Increase timer resolution on Windows so short sleeps are accurate.
+    // This requests a 1 ms timer resolution for the process; it's restored
+    // automatically when the guard object is destroyed.
+    struct WinTimerResolutionGuard {
+        WinTimerResolutionGuard() { timeBeginPeriod(1); }
+        ~WinTimerResolutionGuard() { timeEndPeriod(1); }
+    } _winTimerGuard;
+#endif
+    
+    char yaw_str[256];
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <yaw_lut.csv>\n";
-        return 1;
+		strcpy(yaw_str, "yaw_lut.csv");
+        //return 1;
+    } else {
+		strcpy(yaw_str, argv[1]);
     }
 
     try {
-        const int numTurbines = 3;
+        const int numTurbines = 12;
 
         // TODO: drop privileges (e.g. setuid/setgid) before spawning worker threads
 
@@ -57,7 +81,7 @@ int main(int argc, char* argv[])
 
         ControlTask::Config controlConfig;
         controlConfig.period = 4000ms;
-        controlConfig.yawLutCsvPath = argv[1];
+        controlConfig.yawLutCsvPath = yaw_str;
         controlConfig.numTurbines = numTurbines;
         ControlTask controlTask(controlConfig);
 

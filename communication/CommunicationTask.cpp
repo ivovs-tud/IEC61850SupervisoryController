@@ -73,8 +73,19 @@ void CommunicationTask::init()
         }
 
         COMMTASK_LOG_V2("Received DataHistorian message of size " << length << " bytes");
+        DH_TCP_DATA out;
+        if (length < sizeof(DH_TCP_DATA)) {
+               COMMTASK_ERR("Received Invalid DataHistorian Message Length. Expected " << sizeof(DH_TCP_DATA) << " bytes, got " << length << " bytes");
+            return;
+        }
 
-        DataHistorian::instance().log(std::string(reinterpret_cast<const char*>(data), length));
+        memcpy(&out, data, sizeof(DH_TCP_DATA));
+
+		char logMsg[512];
+        snprintf(logMsg, sizeof(logMsg), "[WT%u]%lu;YawAng=%.1f;YawSpt=%.1f;W=%.1f;WSpt=%.1f;V=%.1f;D=%.1f;RotSpd=%.1f;Pth=%.1f;PthSpt=%.1f",
+			out.nID, out.nUnixTime, out.YwAng, out.YwAngSpt, out.W, out.WSpt, out.HorWdSpd, out.HorWdDir, out.RotSpd, out.PitchAngle, out.PitchAngleSpt);
+
+        DataHistorian::instance().log(std::string(logMsg));
     });
 
     attackInterface.setCfgCommandCallback([this](const AttackInterface::CfgDataMessage &cmd) {
@@ -161,15 +172,13 @@ void CommunicationTask::setTxNextExecutionTimeMs(int turbineId, const TxDescript
 void CommunicationTask::onStart()
 {
     state.socket_status.store(COMM_CONNECTING);
-    if (socketWrapper.StartOperatorServer(config_.operatorServer.port) < SOCKET_CONNECTED) {
+    if (socketWrapper.StartOperatorServer(config_.operatorServer.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start operator server on port " << config_.operatorServer.port);
     }
-
-    if (socketWrapper.StartAttackInterfaceServer(config_.attackInterface.port) < SOCKET_CONNECTED) {
+    if (socketWrapper.StartAttackInterfaceServer(config_.attackInterface.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start attack interface server on port " << config_.attackInterface.port);
     }
-
-    if (socketWrapper.StartDataHistorianServer(config_.dataHistorian.port) < SOCKET_CONNECTED) {
+    if (socketWrapper.StartDataHistorianServer(config_.dataHistorian.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start data historian server on port " << config_.dataHistorian.port);
     }
 
@@ -343,6 +352,6 @@ void CommunicationTask::onStop()
     iecWrapper_.stop();
     state.iec_status.store(COMM_DISCONNECTED);
 
-    COMMTASK_LOG_V1("Socket servers stopped.");
-    COMMTASK_LOG_V1("Stopped");
+    //COMMTASK_ST("Socket servers stopped.");
+    COMMTASK_ST("Stopped");
 }

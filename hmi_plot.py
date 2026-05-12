@@ -26,7 +26,14 @@ from pyqtgraph.Qt import QtCore, QtWidgets
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-ENDPOINT = sys.argv[1] if len(sys.argv) > 1 else "ipc:///tmp/supervisory_controller_hmi.sock"
+if len(sys.argv) > 1:
+    ENDPOINT = sys.argv[1] 
+else:
+    if sys.platform == "win32":  # covers both 32 and 64-bit Windows
+        ENDPOINT = "tcp://localhost:5555"
+    else:
+        ENDPOINT = "ipc:///tmp/supervisory_controller_hmi.sock"
+#"ipc:///tmp/supervisory_controller_hmi.sock"
 
 POLL_INTERVAL_MS = 50  # how often the Qt timer checks for new ZMQ messages
 LAYOUT_ROWS = 3

@@ -36,8 +36,8 @@ namespace IEC_STRINGS {
 // IEC 61850 DA references — LN.DO.DA paths WITHOUT the Logical Device (LD)
 // prefix.  The LD is configured per turbine via TurbineEndpoint::logicalDevice
 // and prepended automatically by libiec_wrapper using IEC61850Manager::buildRef().
-static constexpr const char* WTUR_DmdWSpt = "WTUR1.DmdWSpt";   // APC – active-power setpoint
-static constexpr const char* XWYAW_YawSpt = "WYAW1.YwAngSpt";    // APC – yaw-angle setpoint
+static constexpr const char* WTUR_DmdWSpt = "WTUR1.DmdWSpt.val";   // APC – active-power setpoint
+static constexpr const char* XWYAW_YawSpt = "WYAW1.YwAngSpt.val";    // APC – yaw-angle setpoint
 
 static constexpr const char* WTUR_TurSt   = "WTUR1.TurSt";   // Wind Turbine State [ST]
 static constexpr const char* WTUR_OP_CMD  = "WTUR1.TurOp";   // Wind Turbine Operation Command [CMD]
@@ -68,6 +68,7 @@ static const std::vector<std::string> REQ_REFS = {POWER_MEAS, YAW_MEAS, WS_MEAS,
  * IMPORTANT: These should match the definition in the server
  */
 
+static constexpr const char* GOOSE_SUB_TEST =  "LLN0$gocb01";  // GOOSE test with LLN0.gocb01
 static constexpr const char* GOOSE_SUB_TurSt = "WTUR1$GO$TurSt";  // GOOSE with turbine state changes
 static constexpr const char* GOOSE_SUB_Alm   = "WTUR1$GO$Alm";    // GOOSE with turbine alarms
 };
@@ -121,7 +122,7 @@ public:
      * @return IECReturnCode IEC_OK on success, IEC_ERROR on failure.
      */
 
-    IECReturnCode txSetpoint(int turbineId, float powerSetpoint, int yawSetpoint);
+    IECReturnCode txSetpoint(int turbineId, float powerSetpoint, float yawSetpoint);
     /**
      * @brief Transmit power and yaw setpoints to a specific turbine.
      * @param turbineId      Integer turbine ID (1-based).

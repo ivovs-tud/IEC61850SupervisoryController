@@ -1,0 +1,13 @@
+{
+  "name": "supervisorycontroller",
+  "version": "0.1.0",
+  "dependencies": [
+    "zeromq",
+    "cppzmq",
+    "msgpack",
+    "boost-circular-buffer",
+    "boost-headers",
+    "boost-predef",
+    "boost"
+  ]
+}

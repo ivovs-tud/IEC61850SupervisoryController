@@ -10,6 +10,27 @@
 #include <string>
 #include <utility>
 
+
+#include <stdint.h>
+
+//#pragma pack(push, 1)
+typedef struct
+{
+    uint32_t nID;
+    uint64_t nUnixTime;
+    float    YwAng;
+    float    YwAngSpt;
+    float    W;
+    float    WSpt;
+    float    HorWdSpd;
+    float    HorWdDir;
+    float    RotSpd;
+    float    PitchAngle;
+    float    PitchAngleSpt;
+    // float GenTorque; // commented out like original
+} DH_TCP_DATA;
+//#pragma pack(pop)
+
 // ---------------------------------------------------------------------------
 // DataHistorian – lightweight CSV logger.
 //
@@ -23,6 +44,7 @@
 // File format: CSV with columns `timestamp_ms,key,value`
 // Example filename: data/baseline_run_1775551234.csv
 // ---------------------------------------------------------------------------
+
 class DataHistorian
 {
 public:

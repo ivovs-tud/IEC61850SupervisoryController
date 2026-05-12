@@ -33,7 +33,7 @@ IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines,
     });
 
     
-    LIBIEC_LOG_V1("registered " << turbines.size() << " turbine(s)");
+    LIBIEC_ST("registered " << turbines.size() << " turbine(s)");
     return IEC_OK;
 }
 
@@ -131,7 +131,7 @@ IECReturnCode libiec_wrapper::startGooseSubscription(int turbineId, const std::s
 
 // ── txSetpoint ───────────────────────────────────────────────────────────
 
-IECReturnCode libiec_wrapper::txSetpoint(int turbineId, float powerSetpoint, int yawSetpoint) {
+IECReturnCode libiec_wrapper::txSetpoint(int turbineId, float powerSetpoint, float yawSetpoint) {
     bool ok = true;
     ok &= manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_DmdWSpt), powerSetpoint, false);
     ok &= manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::XWYAW_YawSpt), yawSetpoint, false);
