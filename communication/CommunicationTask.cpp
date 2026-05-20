@@ -218,7 +218,7 @@ const CommunicationTask::RxDescriptor CommunicationTask::RX_DESCRIPTORS[] = {
     { "D",          "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    1000 },
     { "YawMeas",    "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, 2000 },
     { "RSpd",       "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   2000  },
-    { "W",          "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::Power_i,    &GlobalData::powerHistory, 500  },
+    { "W",          "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::lastPower,    &GlobalData::powerHistory, 500  },
 };
 
 const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
@@ -324,6 +324,13 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
     // Then potentially transmit this data to an eavesdropper over the attack interface
     attackInterface.txData(turbineId, desc.txDataType, value);
 
+    // If we requested power, we store the true value too, since it is used later to compute the total power generated as measured here.
+    if (strcmp(desc.name, "W") == 0) {
+        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+        auto& gds = GlobalDataStructure::instance().data();
+		gds._W[turbineId - 1] = value;
+    }
+
     // Before storing, potentially allow attackInterface to overwrite the measurement
     if(attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
         COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId);
@@ -339,6 +346,8 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
         (gds.*desc.historyField)[idx].push_back(value);
     }
 }
+
+
 
 void CommunicationTask::onStop()
 {

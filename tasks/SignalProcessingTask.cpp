@@ -1,3 +1,6 @@
+#include <vector>
+#include <numeric>
+
 #include "SignalProcessingTask.hpp"
 #include "common/DataHistorian.hpp"
 #include "common/GlobalDataStructure.hpp"
@@ -20,7 +23,13 @@ void SignalProcessingTask::execute()
     // Example:
     //   std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
     //   GlobalDataStructure::instance().data().measuredVoltage = readAdc();
-    
+    {
+        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+		auto& gds = GlobalDataStructure::instance().data();
+		gds.Wtotal_meas.push_back(std::accumulate(gds._W.begin(), gds._W.end(), 0.0));
+        gds.TotalPower_recv = 0;
+        for (int i = 0; i < N_TURBINES; ++i) gds.TotalPower_recv += gds.lastPower[i];
+    }
 
     // The global wind speed and direction is determined based on the average of all latest received data from each turbine
     float ws_sum = 0.0f;

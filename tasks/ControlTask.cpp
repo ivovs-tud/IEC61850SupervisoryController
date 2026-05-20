@@ -43,12 +43,14 @@ void ControlTask::execute()
     
     if (powerSetpoint < 0.0f) {
         // This means power maximization, i.e. yaw steering --> Use LUT and round to nearest int
+        
         const auto yaw_sp_float = yawLut_.lookup(glob_ws_i, glob_wd_i);
         yaw_sp.clear();
         yaw_sp.reserve(yaw_sp_float.size());
         for (const float value : yaw_sp_float) {
             yaw_sp.push_back(static_cast<int>(std::lround(value)));
         }
+        
     } else {
         // This means power tracking --> For now we split equally accross all turbines,
         power_sp = std::vector<float>(numTurbines_, static_cast<float>(powerSetpoint / numTurbines_));

@@ -13,6 +13,24 @@ public:
 protected:
     void execute() override;
 
+	// ---------------------------------------------------------------------------
+    // Simple detection + consistency checks for monitored parameters
+	// ---------------------------------------------------------------------------
+    bool checkConsistencyPowerGeneratedVsReceived();
+    /**
+        @brief Uses the moving average power generated as received from each turbine, 
+            v.s. the 'locally measured total power' for consistency check.
+    */
+
+    /*bool checkConsistencyPowerGeneratedVsAvailable();
+	bool checkConsistencyPowerReceivedVsAvailableAll();
+    
+    bool detectorWindSpeed();
+    bool detectorWindDir();*/
+
+
+
+
 private:
     // GOOSE message callback placeholder.
     // TODO: replace void* params with GooseSubscriber* / GooseMessage* from libiec61850

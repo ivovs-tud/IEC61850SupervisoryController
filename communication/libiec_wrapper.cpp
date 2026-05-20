@@ -1,5 +1,6 @@
 #include "libiec_wrapper.hpp"
 #include "common/config.hpp"
+#include "common/GlobalDataStructure.hpp"
 #include <iostream>
 
 extern "C" {
@@ -43,6 +44,13 @@ void libiec_wrapper::start() {
     // Connect every registered turbine so link intent is set for all and
     // IEC61850Manager::ensureConnected can auto-reconnect during operation.
     manager_.connectAll();
+
+    // If all connected -> Indicate system is running
+    if (manager_.status() == IEC_LINK_CONNECTED) {
+        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+        auto& gds = GlobalDataStructure::instance().data();
+		gds.systemRunning = true;
+    }
 
     // GooseReceiver_start(gooseReceiver);
     // if (!GooseReceiver_isRunning(gooseReceiver)) {

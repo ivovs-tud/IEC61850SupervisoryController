@@ -20,11 +20,11 @@ typedef struct sIedConnection* IedConnection;
 
 // Connection lifecycle status for a single IEC 61850 turbine link.
 typedef enum {
-    IEC_LINK_CLOSED       =  0,
-    IEC_LINK_CONNECTING   =  1,
-    IEC_LINK_CONNECTED    =  2,
-    IEC_LINK_RECONNECTING =  3,
     IEC_LINK_ERROR        = -1,
+    IEC_LINK_CLOSED       =  0,
+    IEC_LINK_RECONNECTING =  1,
+    IEC_LINK_CONNECTING   =  2,
+    IEC_LINK_CONNECTED    =  3,
 } IecConnectionStatus;
 
 // ---------------------------------------------------------------------------
@@ -111,6 +111,12 @@ public:
 
     void disconnectAll();
     /** @brief Disconnect from all registered turbines. */
+
+    IecConnectionStatus status();
+    /** 
+     *  @brief Checks the connection status of all turbines. 
+     *  Returns the 'least' code found for any turbine.  
+    */
 
     // ── Read / Write ────────────────────────────────────────────────────────
 

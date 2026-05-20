@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
         hmiTask.start();
         controlTask.start();
         signalTask.start();
-        // monitoringTask.start();
+         monitoringTask.start();
         commTask.start();
 
         std::cout << "Server running. Press Enter to stop.\n";

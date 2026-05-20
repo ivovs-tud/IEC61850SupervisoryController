@@ -40,7 +40,7 @@ static constexpr const char* WTUR_DmdWSpt = "WTUR1.DmdWSpt.val";   // APC – ac
 static constexpr const char* XWYAW_YawSpt = "WYAW1.YwAngSpt.val";    // APC – yaw-angle setpoint
 
 static constexpr const char* WTUR_TurSt   = "WTUR1.TurSt";   // Wind Turbine State [ST]
-static constexpr const char* WTUR_OP_CMD  = "WTUR1.TurOp";   // Wind Turbine Operation Command [CMD]
+static constexpr const char* WTUR_OP_CMD  = "WTUR1.TurOp.st";   // Wind Turbine Operation Command [CMD]
 
 static constexpr const char* WROT_RotBlk  = "WROT1.RotBlk";  // Block Rotor Position Command [CMD]
 // static constexpr const char* WROT_PthEmgChk = "WROT1.PthEmgChk";

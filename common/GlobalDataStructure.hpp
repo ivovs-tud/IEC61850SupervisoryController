@@ -41,6 +41,7 @@ struct GlobalData
     std::vector<double> lastWD = std::vector<double>(N_TURBINES, 0.0);  // degrees from north
     std::vector<double> lastYawOffset = std::vector<double>(N_TURBINES, 0.0); // degrees
     std::vector<double> lastRPM = std::vector<double>(N_TURBINES, 0.0); // revolutions per minute
+    std::vector<double> lastPower = std::vector<double>(N_TURBINES, 0.0);
 
     // ── Measurement history buffers (last N_hist readings per turbine) ────────
     // Written by CommunicationTask, read by SignalProcessingTask, ControlTask
@@ -53,10 +54,16 @@ struct GlobalData
     TurbineHistory<double> powerHistory = makeTurbineHistory<double>(N_TURBINES, N_hist);
 
 
+    // Values stored to compute other quantities which are measured locally. Crucially these are not used directly
+	std::vector<double> _W = std::vector<double>(N_TURBINES, 0.0); 
+    History<double> Wtotal_meas = History<double>(N_hist);
+
+
     // ── Processed Data
     std::vector<double> Power_i = std::vector<double>(N_TURBINES, 0.0); // instantaneous power per turbine in watts
     std::vector<double> Power_avg20 = std::vector<double>(N_TURBINES, 0.0); // 20-s moving average of power per turbine in watts
     std::vector<double> AvailablePower = std::vector<double>(N_TURBINES, 0.0); // available power per turbine in watts (from power curve)
+    double TotalPower_recv = 0.0f;
     std::vector<double> rpm_i = std::vector<double>(N_TURBINES, 0.0); // instantaneous RPM per turbine
     std::vector<double> rpm_avg20 = std::vector<double>(N_TURBINES, 0.0); // 20-s moving average of RPM per turbine
     float glob_ws_i = 0.0f; // global instantaneous wind speed (e.g. farm-level average)

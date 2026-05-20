@@ -63,13 +63,18 @@ HmiConfig defaultHmiConfig(int numTurbines)
             }(),
             [numTurbines](const GlobalData& d) {
                 int n = std::min(numTurbines,
-                                 std::min(static_cast<int>(d.Power_i.size()),
+                                 std::min(static_cast<int>(d.lastPower.size()),
                                           static_cast<int>(d.TurbinePowerSetpoints.size())));
                 std::vector<double> v;
                 v.reserve(static_cast<std::size_t>(n * 2));
                 for (int i = 0; i < n; ++i) {
-                    v.push_back(d.Power_i[i]);
-                    v.push_back(static_cast<double>(d.TurbinePowerSetpoints[i]));
+                    v.push_back(d.lastPower[i]);
+                    if (d.TurbinePowerSetpoints[i] < 0.0f) {
+						// This means, maximize power generation -> We push back NaN to indicate this 
+						v.push_back(std::numeric_limits<double>::quiet_NaN());
+                    } else {
+                        v.push_back(static_cast<double>(d.TurbinePowerSetpoints[i]));
+                    }
                 }
                 return v;
             }
@@ -102,13 +107,13 @@ HmiConfig defaultHmiConfig(int numTurbines)
         // ── Farm-level reference vs. total delivered power ────────────────────
         {
             "Farm Reference vs. Total Power", "W",
-            {"Reference", "Total Delivered"},
+            {"Reference", "Total (Meas)", "Total (Received)"},
             [numTurbines](const GlobalData& d) {
                 double total = 0.0;
                 int n = std::min(numTurbines, static_cast<int>(d.Power_i.size()));
-                for (int i = 0; i < n; ++i) total += d.Power_i[i];
+                //for (int i = 0; i < n; ++i) total += d.Power_i[i];
                 return std::vector<double>{
-                    static_cast<double>(d.RequestedReferencePower), total
+					static_cast<double>(d.RequestedReferencePower), d.Wtotal_meas.back(), d.TotalPower_recv
                 };
             }
         },
@@ -229,8 +234,8 @@ void HmiTask::handleCommands()
                 GlobalData& d = GlobalDataStructure::instance().data();
                 d.operationMode = requestedMode;
 
-                if (requestedMode == 0) d.statusMessage = "Mode: Auto";
-                if (requestedMode == 1) d.statusMessage = "Mode: Curtailment";
+                if (requestedMode == 0) d.statusMessage = "Mode: ROSCO";
+                if (requestedMode == 1) d.statusMessage = "Mode: Lio-Downregulation";
                 if (requestedMode == 2) d.statusMessage = "Mode: Safe Shutdown";
             }
         } catch (const std::exception&) {
@@ -292,7 +297,7 @@ void HmiTask::execute()
         pk.pack(snap[i]);
     }
 
-    const std::array<const char*, 3> modeLabels{{"Auto", "Curtailment", "Safe\nShutdown"}};
+    const std::array<const char*, 3> modeLabels{{"ROSCO", "Lio\nDownregulation", "Safe\nShutdown"}};
 
     pk.pack_array(5);
     pk.pack_array(3); pk.pack("System Running");    pk.pack(systemRunning);      pk.pack("green");
