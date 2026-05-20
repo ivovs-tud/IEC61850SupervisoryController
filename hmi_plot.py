@@ -20,7 +20,7 @@ import sys
 from collections import deque
 
 # Prefer XCB unless the user already chose a Qt platform plugin.
-os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+#os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
 import msgpack
 import pyqtgraph as pg
