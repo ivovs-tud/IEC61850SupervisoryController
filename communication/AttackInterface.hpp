@@ -155,6 +155,8 @@ namespace AttackInterface
             SocketWrapper& socket;
             CfgCommandCallback cfgCommandCallback_;
             SimCtrlCommandCallback simCtrlCommandCallback_;
+            int tx_fails = 0;
+            const int max_fails = 3;
 
             void parseCTCommand(const uint8_t* data, size_t length) {
                 // Native-layout wire format used by the harness:
@@ -343,6 +345,7 @@ namespace AttackInterface
                         linkState.fdiEnabled[dataType] = false;
                     }
                 }
+                tx_fails = 0;
             }
 
             void signalReady() {
@@ -422,6 +425,7 @@ namespace AttackInterface
                             state.awaiting_at_response = false;
                             state.at_response_received = false;
                             ATTACK_LOG_V1("Received overwrite " << val);
+							tx_fails = 0;
                             return AI_OK;
                         }
                     }
@@ -433,6 +437,11 @@ namespace AttackInterface
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                     state.awaiting_at_response = false;
                     state.at_response_received = false;
+                    tx_fails += 1;
+                    if (tx_fails >= max_fails) {
+                        ATTACK_ERR("Attack Interface Disconnected");
+                        resetState();
+					}
                 }
 
                 ATTACK_LOG_V1("Overwrite request timed out after " << timeout.count() << " ms without receiving a response. (startime = " << startTime.time_since_epoch().count() << ", now = " << std::chrono::steady_clock::now().time_since_epoch().count() << ")");
