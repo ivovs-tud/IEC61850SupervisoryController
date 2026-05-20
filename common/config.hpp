@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include "common/TimeUtils.hpp"
+
 #if defined(_WIN32) || defined(_WIN64)
 #define PLATFORM_WINDOWS
 #else
@@ -111,12 +113,12 @@
 // -----------------------------------------------------------------------------
 #define SC_LOG_EMIT(stream, tag, msg) \
 	do {                              \
-		stream << tag << msg << "\n"; \
+		stream << "(" << getCurrentTimeFormatted() << ")" << tag << msg << "\n"; \
 	} while (0)
 
 #define SC_LOG_EMIT_COLOR(stream, color, tag, msg)   \
 	do {                                               \
-		stream << color << tag << msg                    \
+		stream << color << "(" << getCurrentTimeFormatted() << ")" <<  tag << msg                    \
 		       << SC_LOG_COLOR_RESET << "\n";          \
 	} while (0)
 
