@@ -50,7 +50,7 @@ int main(int argc, char* argv[])
         HmiTask hmiTask(defaultHmiConfig(numTurbines), 500ms);  // 10 Hz
               // 0.25 Hz
         SignalProcessingTask signalTask(500ms);      // 1 kHz
-        // MonitoringTask       monitoringTask(50ms); // 20 Hz
+        MonitoringTask       monitoringTask(50ms); // 20 Hz
 
         // All fields have sensible defaults – override only what you need.
         CommConfig cfg;
@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
         hmiTask.start();
         controlTask.start();
         signalTask.start();
-         monitoringTask.start();
+        monitoringTask.start();
         commTask.start();
 
         std::cout << "Server running. Press Enter to stop.\n";
