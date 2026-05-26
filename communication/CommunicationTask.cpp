@@ -35,7 +35,7 @@ void CommunicationTask::init()
         COMMTASK_ERR("IEC61850 init failed - check CommConfig::mms.turbines");
     }
 
-    socketWrapper.AttachServerCallback([this](const uint8_t* data, size_t length) {
+    socketWrapper.AttachOpServerCallback([this](const uint8_t* data, size_t length) {
         // Reinterpret a uint32_t's bit pattern as an IEEE 754 float.
         auto asFloat = [](const uint8_t *u) {
             float f;
@@ -214,11 +214,11 @@ void CommunicationTask::onStart()
 
 const CommunicationTask::RxDescriptor CommunicationTask::RX_DESCRIPTORS[] = {
     //  name        unit    IEC read fn                         AI type                   GDS last-value field     GDS history field          interval (ms)
-    { "V",          "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    1000 },
-    { "D",          "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    1000 },
-    { "YawMeas",    "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, 2000 },
-    { "RSpd",       "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   2000  },
-    { "W",          "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::lastPower,    &GlobalData::powerHistory, 500  },
+    { "V",          "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    &GlobalData::lastWS_t, 1000 },
+    { "D",          "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    &GlobalData::lastWD_t, 1000 },
+    { "YawMeas",    "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 2000 },
+    { "RSpd",       "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   &GlobalData::lastRPM_t, 2000  },
+    { "W",          "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::lastPower,    &GlobalData::powerHistory, &GlobalData::lastPower_t, 500  },
 };
 
 const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
@@ -344,6 +344,7 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
         auto& gds = GlobalDataStructure::instance().data();
         (gds.*desc.lastField)[idx]    = value;
         (gds.*desc.historyField)[idx].push_back(value);
+        (gds.*desc.lastTimestamp)[idx] = getCurrentTimeMs();
     }
 }
 

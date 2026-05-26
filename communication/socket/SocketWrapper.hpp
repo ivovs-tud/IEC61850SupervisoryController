@@ -100,8 +100,7 @@ private:
     // DataHistorian Server 
     // Uses Pure TCP since it should be supported by a large range of devices
     // -----------------------------------------------------------------------
-    class DataHistorianServer : public PeriodicTask
-    {
+    class DataHistorianServer : public PeriodicTask {
     public:
         explicit DataHistorianServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
         void setPort(int port);
@@ -130,6 +129,7 @@ private:
         
         DataHistorianCallback        callback_;
         std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
+        
         // Periodically check client connectivity by peeking on the socket.
         std::chrono::steady_clock::time_point lastConnectivityCheck_ = std::chrono::steady_clock::now();
         std::chrono::milliseconds connectivityCheckInterval_{5000};
@@ -144,10 +144,7 @@ private:
 public:
     SocketWrapper();
 
-    SocketWrapper(int opPort, int op_ms, int attackPort, int attack_ms)
-        : opServer_(std::chrono::milliseconds(op_ms)),
-          attackServer_(std::chrono::milliseconds(attack_ms))
-    {
+    SocketWrapper(int opPort, int op_ms, int attackPort, int attack_ms) : opServer_(std::chrono::milliseconds(op_ms)), attackServer_(std::chrono::milliseconds(attack_ms)) {
         opServer_.setPort(opPort);
         attackServer_.setPort(attackPort);
     }
@@ -155,8 +152,7 @@ public:
     SocketWrapper(int opPort, int op_ms, int attackPort, int attack_ms, int dataHistorianPort, int dataHistorian_ms)
         : opServer_(std::chrono::milliseconds(op_ms)),
           attackServer_(std::chrono::milliseconds(attack_ms)),
-          dataHistorianServer_(std::chrono::milliseconds(dataHistorian_ms))
-    {
+          dataHistorianServer_(std::chrono::milliseconds(dataHistorian_ms)) {
         opServer_.setPort(opPort);
         attackServer_.setPort(attackPort);
         dataHistorianServer_.setPort(dataHistorianPort);
@@ -164,7 +160,7 @@ public:
 
     tcpSocketStatus StartOperatorServer(int port);
     tcpSocketStatus StopOperatorServer();
-    void         AttachServerCallback(OperatorCallback callback);
+    void         AttachOpServerCallback(OperatorCallback callback);
 
     tcpSocketStatus StartAttackInterfaceServer(int port);
     tcpSocketStatus StopAttackInterfaceServer();

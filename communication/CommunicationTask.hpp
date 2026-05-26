@@ -119,6 +119,7 @@ private:
         AttackInterface::TxDataType              txDataType;
         std::vector<double> GlobalData::*        lastField;
         TurbineHistory<double> GlobalData::*     historyField;
+        std::vector<uint64_t> GlobalData::*      lastTimestamp;  ///< pointer to the timestamp of the last received measurement for this descriptor
         uint32_t                                 intervalMs;  ///< interval between RX operations in milliseconds
     };
 

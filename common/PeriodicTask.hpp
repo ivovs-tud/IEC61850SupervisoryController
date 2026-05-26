@@ -63,9 +63,10 @@ protected:
     virtual void execute() = 0;  // called every period
     virtual void onStart() {}    // called once before the loop (in worker thread)
     virtual void onStop()  {}    // called once after  the loop (in worker thread)
-
-private:
     std::chrono::milliseconds period_;
     std::atomic<bool>         running_{false};
     std::thread               thread_;
+private:
+
+
 };

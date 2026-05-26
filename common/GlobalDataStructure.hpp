@@ -38,10 +38,19 @@ struct GlobalData
     // Written by CommunicationTask
     // Read by SignalProcessingTask, ControlTask
     std::vector<double> lastWS = std::vector<double>(N_TURBINES, 0.0);  // m/s
+    std::vector<uint64_t> lastWS_t = std::vector<uint64_t>(N_TURBINES, 0); // timestamp of the last received wind speed measurement (UNIX time in seconds)
+
     std::vector<double> lastWD = std::vector<double>(N_TURBINES, 0.0);  // degrees from north
+    std::vector<uint64_t> lastWD_t = std::vector<uint64_t>(N_TURBINES, 0); // timestamp of the last received wind direction measurement (UNIX time in seconds)
+
     std::vector<double> lastYawOffset = std::vector<double>(N_TURBINES, 0.0); // degrees
+    std::vector<uint64_t> lastYawOffset_t = std::vector<uint64_t>(N_TURBINES, 0); // timestamp of the last received yaw offset measurement (UNIX time in seconds)
+
     std::vector<double> lastRPM = std::vector<double>(N_TURBINES, 0.0); // revolutions per minute
+    std::vector<uint64_t> lastRPM_t = std::vector<uint64_t>(N_TURBINES, 0); // timestamp of the last received RPM measurement (UNIX time in seconds)
+
     std::vector<double> lastPower = std::vector<double>(N_TURBINES, 0.0);
+    std::vector<uint64_t> lastPower_t = std::vector<uint64_t>(N_TURBINES, 0); // timestamp of the last received power measurement (UNIX time in seconds)
 
     // ── Measurement history buffers (last N_hist readings per turbine) ────────
     // Written by CommunicationTask, read by SignalProcessingTask, ControlTask
@@ -84,10 +93,12 @@ struct GlobalData
     // operationMode values:
     //   0 = Auto, 1 = Curtailment, 2 = Safe Shutdown
     int  operationMode = 0;
-    bool alarmPowerTracking = false;
-    bool alarmYawMisalignment = false;
-    bool alarmCommunication = false;
-    bool alarmEmergencyStop = false;
+    bool alarmWRecMeas = false;
+    bool alarmOrientationMisalign = false;
+    bool alarmWTorqueRotSpd = false;
+    bool alarmHorWdDir = false;
+    bool alarmHorWdDirChg = false;
+    bool alarmHorWdSpdChg = false;
 
 
 
@@ -131,16 +142,18 @@ struct GlobalData
         glob_wd_i = 0.0f;
         glob_wd_avg20 = 0.0f;
 
-        std::fill(TurbinePowerSetpoints.begin(), TurbinePowerSetpoints.end(), -1.0f);
+        std::fill(TurbinePowerSetpoints.begin(), TurbinePowerSetpoints.end(), 0.0f);
         std::fill(TurbineYawSetpoints.begin(), TurbineYawSetpoints.end(), 0);
 
         RequestedReferencePower = 0.0f;
 
         operationMode = 0;
-        alarmPowerTracking = false;
-        alarmYawMisalignment = false;
-        alarmCommunication = false;
-        alarmEmergencyStop = false;
+        alarmWRecMeas = false;
+        alarmOrientationMisalign = false;
+        alarmWTorqueRotSpd = false;
+        alarmHorWdDir = false;
+        alarmHorWdDirChg = false;
+        alarmHorWdSpdChg = false;
 
         simStarted = false;
         simConfigured = true;

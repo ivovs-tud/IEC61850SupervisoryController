@@ -249,8 +249,7 @@ namespace AttackInterface
 
             void parseCFGCommand(const uint8_t* data, size_t length) {
                 if (length < sizeof(CfgDataMessage)) {
-                    ATTACK_ERR("Invalid CFG_DATA length: " << length
-                               << ", expected at least " << sizeof(CfgDataMessage));
+                    ATTACK_ERR("Invalid CFG_DATA length: " << length << ", expected at least " << sizeof(CfgDataMessage));
                     return;
                 }
 
@@ -261,6 +260,8 @@ namespace AttackInterface
                 parsed.teamName[sizeof(parsed.teamName) - 1] = '\0';
                 parsed.scenarioId = msg->scenarioId;
                 parsed.turbineController = msg->turbineController;
+                
+                resetState();
 
                 ATTACK_LOG_V1("Parsed CFG_DATA command: teamName='" << parsed.teamName
                               << "', scenarioId=" << parsed.scenarioId
@@ -288,7 +289,7 @@ namespace AttackInterface
                     simCtrlCommandCallback_(parsed);
                 }
 
-
+                socket.txAttackInterfaceData(std::make_shared<SimCtrlMessage>(parsed), sizeof(SimCtrlMessage));                
             }
 
             void AttackHandler(const uint8_t* data, size_t length) {

@@ -1,4 +1,5 @@
 #include "HmiTask.hpp"
+#include "common/config.hpp"
 
 #include <algorithm>
 #include <array>
@@ -40,7 +41,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
     HmiConfig cfg;
     cfg.numTurbines        = numTurbines;
     cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
-#if defined(_WIN32) || defined(_WIN64)
+#ifdef PLATFORM_WINDOWS
         cfg.publisherEndpoint  = "tcp://localhost:5555";
         cfg.commandEndpoint = "tcp://localhost:5556";
 #else
@@ -178,7 +179,7 @@ void HmiTask::onStart()
         cmdSocket_.emplace(context_, zmq::socket_type::pull);
         cmdSocket_->set(zmq::sockopt::rcvhwm, 10);
         cmdSocket_->bind(config_.commandEndpoint);
-#if defined(PLATFORM_POSIX)
+#ifdef PLATFORM_POSIX
         if (!pubIpcPath.empty()) {
             // Allow subscribers running as a different user (e.g., non-sudo HMI).
             if (::chmod(pubIpcPath.c_str(), 0666) != 0) {
@@ -251,10 +252,10 @@ void HmiTask::execute()
     // ── 1. Sample current values from shared state ────────────────────────────
     std::vector<std::vector<double>> snap(config_.signals.size());
     int operationMode = 0;
-    bool alarmPowerTracking = false;
-    bool alarmYawMisalignment = false;
-    bool alarmCommunication = false;
-    bool alarmEmergencyStop = false;
+    bool alarmWRecMeas = false;
+    bool alarmOrientationMisalign = false;
+    bool alarmWTorqueRotSpd = false;
+    bool alarmHorWdDir = false;
     bool systemRunning = false;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
@@ -263,10 +264,10 @@ void HmiTask::execute()
             snap[i] = config_.signals[i].accessor(d);
 
         operationMode = d.operationMode;
-        alarmPowerTracking = d.alarmPowerTracking;
-        alarmYawMisalignment = d.alarmYawMisalignment;
-        alarmCommunication = d.alarmCommunication;
-        alarmEmergencyStop = d.alarmEmergencyStop;
+        alarmWRecMeas = d.alarmWRecMeas;
+        alarmOrientationMisalign = d.alarmOrientationMisalign;
+        alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;
+        alarmHorWdDir = d.alarmHorWdDir;
         systemRunning = d.systemRunning;
     }
 
@@ -301,10 +302,10 @@ void HmiTask::execute()
 
     pk.pack_array(5);
     pk.pack_array(3); pk.pack("System Running");    pk.pack(systemRunning);      pk.pack("green");
-    pk.pack_array(3); pk.pack("Power Tracking");    pk.pack(alarmPowerTracking); pk.pack("red");
-    pk.pack_array(3); pk.pack("Yaw Misalignment");  pk.pack(alarmYawMisalignment); pk.pack("amber");
-    pk.pack_array(3); pk.pack("Communication");     pk.pack(alarmCommunication);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Emergency Stop");    pk.pack(alarmEmergencyStop);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Power Tracking");    pk.pack(alarmWRecMeas); pk.pack("red");
+    pk.pack_array(3); pk.pack("Yaw Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("amber");
+    pk.pack_array(3); pk.pack("Communication");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Emergency Stop");    pk.pack(alarmHorWdDir);  pk.pack("red");
 
     pk.pack_array(2);
     pk.pack(operationMode);
