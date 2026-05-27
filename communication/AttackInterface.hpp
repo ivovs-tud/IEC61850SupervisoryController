@@ -37,6 +37,7 @@ namespace AttackInterface
         TX_SPT_YAW = 0x08,   // Yaw setpoint Data
         TX_SPT_PWR = 0x09,   // Power setpoint Data
         TX_OP_CMD = 0x0A,    // Operation command (e.g. for switching on/off the turbine)
+		TX_NONE = 0xFE,     // Used for control messages that should not be visible to the attack interface.
         TX_ARRAY = 0xFF,    // Here for extensibility, not currently used
     } TxDataType;
 
@@ -156,7 +157,7 @@ namespace AttackInterface
             CfgCommandCallback cfgCommandCallback_;
             SimCtrlCommandCallback simCtrlCommandCallback_;
             int tx_fails = 0;
-            const int max_fails = 3;
+            const int max_fails = 10;
 
             void parseCTCommand(const uint8_t* data, size_t length) {
                 // Native-layout wire format used by the harness:
@@ -270,6 +271,8 @@ namespace AttackInterface
                 if (cfgCommandCallback_) {
                     cfgCommandCallback_(parsed);
                 }
+
+                ATTACK_ST("Client connected by team " << parsed.teamName);
             }
 
             void parseSimCtrlCommand(const uint8_t* data, size_t length) {
@@ -290,6 +293,7 @@ namespace AttackInterface
                 }
 
                 socket.txAttackInterfaceData(std::make_shared<SimCtrlMessage>(parsed), sizeof(SimCtrlMessage));                
+                ATTACK_ST("Started.");
             }
 
             void AttackHandler(const uint8_t* data, size_t length) {
@@ -357,6 +361,7 @@ namespace AttackInterface
             }
 
             void txData(unsigned int turbineId, TxDataType dataType, float value) {
+                if (dataType == TX_NONE) return;
                 if (turbineId < 1 || turbineId > state.LinkStates.size()) {
                     ATTACK_ERR("Invalid turbine ID: " << turbineId);
                     return;
@@ -383,8 +388,9 @@ namespace AttackInterface
                  * How this works: If enabled, a RQ_Message is send to the client to provide a new value to overwrite with. 
                  * The attack interface then waits for a response from the client with the new value, and returns it. If no response is received within a timeout, or if an error occurs, an error code is returned.
                  */
+				if (dataType == TX_NONE) return AI_OK; 
 
-                 if (turbineId < 1 || turbineId > state.LinkStates.size()) {
+                if (turbineId < 1 || turbineId > state.LinkStates.size()) {
                           ATTACK_ERR("Invalid turbine ID: " << turbineId);
                     return AI_ERROR;
                 }
@@ -399,7 +405,7 @@ namespace AttackInterface
                 rqMsg.turbineId = turbineId;
                 rqMsg.dataType = dataType;
                 rqMsg.rq_time = static_cast<TimeStamp>(getCurrentTimeMs());
-                rqMsg.exp_time = rqMsg.rq_time + 100; // Request expires after 100 milliseconds. TODO: Make this configurable
+                rqMsg.exp_time = rqMsg.rq_time + 250; // Request expires after 100 milliseconds. TODO: Make this configurable
 
                 {
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
@@ -434,18 +440,18 @@ namespace AttackInterface
                 }
 
                 // If we timed out, return an error
+                ATTACK_LOG_V1("Overwrite request timed out after " << timeout.count() << " ms without receiving a response. (startime = " << startTime.time_since_epoch().count() << ", now = " << std::chrono::steady_clock::now().time_since_epoch().count() << ")");
                 {
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                     state.awaiting_at_response = false;
                     state.at_response_received = false;
                     tx_fails += 1;
                     if (tx_fails >= max_fails) {
-                        ATTACK_ERR("Attack Interface Disconnected");
+                        ATTACK_ST("Attack Interface Disconnected");
                         resetState();
 					}
                 }
 
-                ATTACK_LOG_V1("Overwrite request timed out after " << timeout.count() << " ms without receiving a response. (startime = " << startTime.time_since_epoch().count() << ", now = " << std::chrono::steady_clock::now().time_since_epoch().count() << ")");
                 return AI_TIMEOUT;
             }
 

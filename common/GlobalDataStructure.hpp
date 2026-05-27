@@ -92,7 +92,8 @@ struct GlobalData
     // -- HMI control + annunciator state
     // operationMode values:
     //   0 = Auto, 1 = Curtailment, 2 = Safe Shutdown
-    int  operationMode = 0;
+    int TurbineController = 0;
+    
     bool alarmWRecMeas = false;
     bool alarmOrientationMisalign = false;
     bool alarmWTorqueRotSpd = false;
@@ -106,8 +107,8 @@ struct GlobalData
     bool simStarted = false;
     bool simConfigured = false;
     std::string simTeamName;
-    int simScenario = -1;
-    int simTurbineController = -1;
+    int simScenario = 0;
+    
 
     void resetForNewRunFields(const std::string& teamName,
                               int scenarioId,
@@ -147,7 +148,6 @@ struct GlobalData
 
         RequestedReferencePower = 0.0f;
 
-        operationMode = 0;
         alarmWRecMeas = false;
         alarmOrientationMisalign = false;
         alarmWTorqueRotSpd = false;
@@ -159,7 +159,7 @@ struct GlobalData
         simConfigured = true;
         simTeamName = teamName;
         simScenario = scenarioId;
-        simTurbineController = turbineControllerId;
+        TurbineController = turbineControllerId;
     }
 };
 

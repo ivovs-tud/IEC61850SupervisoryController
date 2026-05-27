@@ -233,7 +233,7 @@ void HmiTask::handleCommands()
 
                 std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
                 GlobalData& d = GlobalDataStructure::instance().data();
-                d.operationMode = requestedMode;
+                d.TurbineController = requestedMode;
 
                 if (requestedMode == 0) d.statusMessage = "Mode: ROSCO";
                 if (requestedMode == 1) d.statusMessage = "Mode: Lio-Downregulation";
@@ -263,7 +263,7 @@ void HmiTask::execute()
         for (std::size_t i = 0; i < config_.signals.size(); ++i)
             snap[i] = config_.signals[i].accessor(d);
 
-        operationMode = d.operationMode;
+        operationMode = d.TurbineController;
         alarmWRecMeas = d.alarmWRecMeas;
         alarmOrientationMisalign = d.alarmOrientationMisalign;
         alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;
@@ -302,10 +302,10 @@ void HmiTask::execute()
 
     pk.pack_array(5);
     pk.pack_array(3); pk.pack("System Running");    pk.pack(systemRunning);      pk.pack("green");
-    pk.pack_array(3); pk.pack("Power Tracking");    pk.pack(alarmWRecMeas); pk.pack("red");
-    pk.pack_array(3); pk.pack("Yaw Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("amber");
-    pk.pack_array(3); pk.pack("Communication");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Emergency Stop");    pk.pack(alarmHorWdDir);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Power: Received vs Measured");    pk.pack(alarmWRecMeas); pk.pack("red");
+    pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("amber");
+    pk.pack_array(3); pk.pack("Power vs Torque*RotorSpeed");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Direction Consistency");    pk.pack(alarmHorWdDir);  pk.pack("red");
 
     pk.pack_array(2);
     pk.pack(operationMode);
