@@ -211,13 +211,32 @@ IECReturnCode libiec_wrapper::txYawSetpoint(int turbineId, float yawSetpoint) {
 }
 
 IECReturnCode libiec_wrapper::txTurbineController(int turbineId, int controllerId) {
-    uint32_t controlWord = static_cast<uint32_t>(controllerId); // Placeholder encoding
+    uint32_t controlWord = static_cast<uint32_t>(controllerId);
+
+    // For this command, first we read the value to see if has already been set/reached
+    auto cmdRead = manager_.readInt(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_TURCTL_VAL), IEC61850_FC_ST);
+    if (cmdRead == std::nullopt) {
+        return IEC_ERROR;
+    } else if (cmdRead == controlWord) {
+        LIBIEC_ST("Turbine Op already set to " << controlWord << ". Skipping write.");
+        return IEC_OK;
+    }
     bool ok = manager_.writeControlledEnum(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_TURCTL), controlWord, false);
     return ok ? IEC_OK : IEC_ERROR;
 }
 
 IECReturnCode libiec_wrapper::txOpCommand(int turbineId, float command) {
     uint32_t cmdValue = command > 0 ? 1 : 0; // 1 to start, 0 to stop
+
+    // For this command, first we read the value to see if has already been set/reached
+    auto cmdRead = manager_.readInt(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_OP_CMD_VAL), IEC61850_FC_ST);
+    if (cmdRead == std::nullopt) {
+        return IEC_ERROR;    
+    } else if (cmdRead == cmdValue) {
+        LIBIEC_ST("Turbine Op already set to " << cmdValue << ". Skipping write.");
+        return IEC_OK;
+    }
+
     bool ok = manager_.writeControlledEnum(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_OP_CMD), cmdValue, false);
     return ok ? IEC_OK : IEC_ERROR;
 }

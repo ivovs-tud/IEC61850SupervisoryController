@@ -36,29 +36,30 @@ namespace IEC_STRINGS {
 // IEC 61850 DA references — LN.DO.DA paths WITHOUT the Logical Device (LD)
 // prefix.  The LD is configured per turbine via TurbineEndpoint::logicalDevice
 // and prepended automatically by libiec_wrapper using IEC61850Manager::buildRef().
+
+/** DA references for setpoints and commands */
 static constexpr const char* WTUR_DmdWSpt = "WTUR1.DmdWSpt.val";   // APC – active-power setpoint
 static constexpr const char* XWYAW_YawSpt = "WYAW1.YwAngSpt.val";    // APC – yaw-angle setpoint
 
-static constexpr const char* WTUR_TurSt   = "WTUR1.TurSt";   // Wind Turbine State [ST]
-static constexpr const char* WTUR_OP_CMD  = "WTUR1.TurOp.st";   // Wind Turbine Operation Command [CMD]
-
-static constexpr const char* WROT_RotBlk  = "WROT1.RotBlk";  // Block Rotor Position Command [CMD]
-// static constexpr const char* WROT_PthEmgChk = "WROT1.PthEmgChk";
-
-static constexpr const char* WTUR_TURCTL = "WTUR1.TurCtl";  // Turbine Control Word [CMD]
+static constexpr const char* WTUR_OP_CMD  = "WTUR1.TurOp.st";           // Wind Turbine Operation Command [CMD]
+static constexpr const char* WTUR_OP_CMD_VAL = "WTUR1.TurOp.st.stVal";  // Wind Turbine Operation Command Val [ST]
+static constexpr const char* WTUR_TURCTL = "WTUR1.TurCtl.st";           // Turbine Control Enum [CMD]
+static constexpr const char* WTUR_TURCTL_VAL = "WTUR1.TurCtl.st.stVal"; // Turbine Control Enum Val [ST]
+//static constexpr const char* WROT_RotBlk  = "WROT1.RotBlk";  // Block Rotor Position Command [CMD]
 
 /** DA references for reading operational data */
-static constexpr const char* POWER_MEAS = "WTUR1.W.mag.f";            // Measured active power
-static constexpr const char* YAW_MEAS   = "WYAW1.YwAng.mag.f";  // Measured yaw angle
-static constexpr const char* WS_MEAS    = "WMET1.HorWdSpd.mag.f";  // Measured wind speed
-static constexpr const char* WD_MEAS    = "WMET1.HorWdDir.mag.f";  // Measured wind direction
-static constexpr const char* RPM_MEAS   = "WROT1.RotSpd.mag.f";    // Measured rotor speed
-static constexpr const char* TOT_W      = "WTUR1.TotWh.f";       // Measured total power
+static constexpr const char* WTUR_TurSt = "WTUR1.TurSt";            // Wind Turbine State [ST]
+static constexpr const char* POWER_MEAS = "WTUR1.W.mag.f";          // Measured active power
+static constexpr const char* YAW_MEAS   = "WYAW1.YwAng.mag.f";      // Measured yaw angle
+static constexpr const char* WS_MEAS    = "WMET1.HorWdSpd.mag.f";   // Measured wind speed
+static constexpr const char* WD_MEAS    = "WMET1.HorWdDir.mag.f";   // Measured wind direction
+static constexpr const char* RPM_MEAS   = "WROT1.RotSpd.mag.f";     // Measured rotor speed
+static constexpr const char* TOT_W      = "WTUR1.TotWh.f";          // Measured total power
 
-static constexpr const char* PITCH_SP   = "WROT1.BlPthAngTgt.f"; // Pitch Angle Target Value
-static constexpr const char* PITCH_VAL  = "WROT1.BlPthAngVal.f"; // Pitch Angle Feedback
+static constexpr const char* PITCH_SP   = "WROT1.BlPthAngTgt.f";    // Pitch Angle Target Value
+static constexpr const char* PITCH_VAL  = "WROT1.BlPthAngVal.f";    // Pitch Angle Feedback
 
-static constexpr const char* SECR_S     = "SECR1.S.stVal";        // Secret LN [ST]
+static constexpr const char* SECR_S     = "SECR1.S.stVal";          // Secret LN [ST]
 
 static const std::vector<std::string> REQ_CMDS = {WTUR_DmdWSpt, XWYAW_YawSpt, WTUR_OP_CMD, WTUR_TURCTL};
 static const std::vector<std::string> REQ_REFS = {POWER_MEAS, YAW_MEAS, WS_MEAS, WD_MEAS, RPM_MEAS, TOT_W, PITCH_VAL, SECR_S};

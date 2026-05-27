@@ -9,22 +9,15 @@
 #include <string>
 
 CommunicationTask::CommunicationTask(const CommConfig& config)
-    : PeriodicTask(config.orchestrationPeriod)
-    , config_(config)
-    , socketWrapper(config.operatorServer.port,
-                    static_cast<int>(config.operatorServer.pollPeriod.count()),
-                    config.attackInterface.port,
-                    static_cast<int>(config.attackInterface.pollPeriod.count()),
-                    config.dataHistorian.port,
-                    static_cast<int>(config.dataHistorian.pollPeriod.count()))
-    , attackInterface(config.mms.turbines.size(), socketWrapper)
-{
-    // TODO: construct libiec_wrapper and SocketWrapper instances
-
+    : PeriodicTask(config.orchestrationPeriod), config_(config), 
+        socketWrapper(
+            config.operatorServer.port, static_cast<int>(config.operatorServer.pollPeriod.count()),
+            config.attackInterface.port, static_cast<int>(config.attackInterface.pollPeriod.count()),
+            config.dataHistorian.port, static_cast<int>(config.dataHistorian.pollPeriod.count())), 
+        attackInterface(config.mms.turbines.size(), socketWrapper) {
     state.iec_status.store(COMM_DISCONNECTED);
     state.socket_status.store(COMM_DISCONNECTED);
     state.lastActivityTime = std::chrono::system_clock::now();
-    // attackInterface = AttackInterface::AttackInterface(config.mms.turbines.size(), socketWrapper);
 }
 
 void CommunicationTask::init()
