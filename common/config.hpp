@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-#include "common/TimeUtils.hpp"
+#include "common/util.hpp"
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PLATFORM_WINDOWS

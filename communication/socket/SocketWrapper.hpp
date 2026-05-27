@@ -130,9 +130,9 @@ private:
         DataHistorianCallback        callback_;
         std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
         
-        // Periodically check client connectivity by peeking on the socket.
-        std::chrono::steady_clock::time_point lastConnectivityCheck_ = std::chrono::steady_clock::now();
-        std::chrono::milliseconds connectivityCheckInterval_{5000};
+        // Track last packet received time per client for timeout detection.
+        std::chrono::steady_clock::time_point lastPacketTime_[TCP_MAX_CONNECTIONS];
+        std::chrono::milliseconds clientTimeoutInterval_{2000};
 
     };
 

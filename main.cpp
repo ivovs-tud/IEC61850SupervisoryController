@@ -31,6 +31,7 @@ int main(int argc, char* argv[])
         WinTimerResolutionGuard() { timeBeginPeriod(1); }
         ~WinTimerResolutionGuard() { timeEndPeriod(1); }
     } _winTimerGuard;
+    SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 #endif
     
     char yaw_str[256];

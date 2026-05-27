@@ -9,6 +9,7 @@
 
 SocketWrapper::DataHistorianServer::DataHistorianServer(std::chrono::milliseconds pollPeriod) : PeriodicTask(pollPeriod) {
     std::fill(std::begin(tcpServer_.client_fds), std::end(tcpServer_.client_fds), INVALID_SOCKET_FD);
+    std::fill(std::begin(lastPacketTime_), std::end(lastPacketTime_), std::chrono::steady_clock::now());
 }
 
 void SocketWrapper::DataHistorianServer::setPort(int port) { port_ = port; }
@@ -105,32 +106,16 @@ void SocketWrapper::DataHistorianServer::execute() {
         status_.store(tcpSOCKET_ERROR);
         return;
     }
-    // Periodically verify that connected clients are still alive by peeking on the socket.
-    const auto now = std::chrono::steady_clock::now();
-    if (now - lastConnectivityCheck_ >= connectivityCheckInterval_) {
-        SOCKET_DH_LOG_V2("Check Connectivity TCP");
-        lastConnectivityCheck_ = now;
-        char peekBuf[1];
-        for (socket_t fd : tcpServer_.client_fds) {
-            if (fd == INVALID_SOCKET_FD) continue;
 
-            // Use MSG_PEEK to check connection without consuming data. Sockets are non-blocking.
-#if defined(PLATFORM_WINDOWS)
-            int r = recv(fd, peekBuf, 1, MSG_PEEK);
-#else
-            ssize_t r = recv(fd, peekBuf, 1, MSG_PEEK);
-#endif
-            if (r == 0) {
-                // orderly shutdown by peer
-                removeClient(fd);
-                continue;
-            }
-            if (r < 0) {
-                if (!socket_would_block()) {
-                    SOCKET_DH_ERR("Connectivity check failed on client socket: " << socket_strerror());
-                    removeClient(fd);
-                }
-            }
+    // Check for client timeouts based on last packet received.
+    const auto now = std::chrono::steady_clock::now();
+    for (int i = 0; i < TCP_MAX_CONNECTIONS; ++i) {
+        socket_t fd = tcpServer_.client_fds[i];
+        if (fd == INVALID_SOCKET_FD) continue;
+
+        if (now - lastPacketTime_[i] >= clientTimeoutInterval_) {
+            SOCKET_DH_LOG_V2("Client timeout detected, disconnecting client");
+            removeClient(fd);
         }
     }
 
@@ -179,7 +164,9 @@ void SocketWrapper::DataHistorianServer::acceptNewClients() {
             continue;
         }
 
+        int slot_index = std::distance(std::begin(tcpServer_.client_fds), free_slot);
         *free_slot = clientFd;
+        lastPacketTime_[slot_index] = std::chrono::steady_clock::now();
         SOCKET_DH_ST("Accepted data historian client");
     }
 }
@@ -188,6 +175,16 @@ void SocketWrapper::DataHistorianServer::readFromClient(socket_t fd) {
     const ssize_t bytes_read = socket_read(fd, tcpServer_.buffer, sizeof(tcpServer_.buffer));
 
     if (bytes_read > 0) {
+        // Update last packet received time.
+        socket_t* slot = std::find(
+            std::begin(tcpServer_.client_fds),
+            std::end(tcpServer_.client_fds),
+            fd);
+        if (slot != std::end(tcpServer_.client_fds)) {
+            int slot_index = std::distance(std::begin(tcpServer_.client_fds), slot);
+            lastPacketTime_[slot_index] = std::chrono::steady_clock::now();
+        }
+
         if (callback_) {
             callback_(reinterpret_cast<const uint8_t*>(tcpServer_.buffer), static_cast<size_t>(bytes_read));
         }

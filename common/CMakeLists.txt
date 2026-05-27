@@ -1,9 +1,13 @@
-# common is a header-only module; INTERFACE avoids creating an empty archive.
-add_library(common INTERFACE)
+# common includes both header and implementation files
+add_library(common 
+    PeriodicTask.cpp
+)
 
-target_include_directories(common INTERFACE
+target_include_directories(common PUBLIC
     ${PROJECT_SOURCE_DIR}   # consumers include as "common/GlobalDataStructure.hpp"
 )
 
 # Expose Boost headers to all consumers of common (tasks, communication, main).
-target_link_libraries(common INTERFACE Boost::headers)
+target_link_libraries(common PUBLIC Boost::headers)
+
+

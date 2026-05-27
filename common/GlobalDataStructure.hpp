@@ -83,7 +83,7 @@ struct GlobalData
     // ── Per-turbine setpoints (written by ControlTask, read by CommunicationTask)
     //    Sized to N_TURBINES; power in watts, yaw in degrees.
     std::vector<float> TurbinePowerSetpoints = std::vector<float>(N_TURBINES, -1.0f);
-    std::vector<int>   TurbineYawSetpoints   = std::vector<int>  (N_TURBINES,  0);
+    std::vector<float> TurbineYawSetpoints   = std::vector<float>(N_TURBINES,  0.0f);
 
 
     // -- Data from the grid operator
@@ -92,7 +92,8 @@ struct GlobalData
     // -- HMI control + annunciator state
     // operationMode values:
     //   0 = Auto, 1 = Curtailment, 2 = Safe Shutdown
-    int TurbineController = 0;
+	std::vector<uint32_t> enableTurbine = std::vector<uint32_t>(N_TURBINES, 1); // Per-turbine enable/disable flags (1 = enabled, 0 = disabled)
+	std::vector<uint32_t> TurbineController = std::vector<uint32_t>(N_TURBINES, 0); // Per-turbine operation mode (0 = Auto, 1 = Curtailment, 2 = Safe Shutdown)
     
     bool alarmWRecMeas = false;
     bool alarmOrientationMisalign = false;
@@ -159,7 +160,7 @@ struct GlobalData
         simConfigured = true;
         simTeamName = teamName;
         simScenario = scenarioId;
-        TurbineController = turbineControllerId;
+        //TurbineController = turbineControllerId;
     }
 };
 
@@ -190,3 +191,4 @@ private:
     std::mutex mutex_;
     GlobalData data_;
 };
+

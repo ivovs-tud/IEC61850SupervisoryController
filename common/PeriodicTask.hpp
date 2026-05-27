@@ -3,6 +3,9 @@
 #include <atomic>
 #include <chrono>
 #include <thread>
+#include "common/config.hpp"
+
+
 
 // ---------------------------------------------------------------------------
 // PeriodicTask – base class for all fixed-rate tasks.
@@ -35,21 +38,15 @@ public:
     PeriodicTask(const PeriodicTask&)            = delete;
     PeriodicTask& operator=(const PeriodicTask&) = delete;
 
-    // Spawns the worker thread and begins periodic execution.
-    void start()
-    {
-        running_.store(true);
-        thread_ = std::thread([this]() {
-            onStart();
-            auto nextWakeup = std::chrono::steady_clock::now();
-            while (running_.load()) {
-                execute();
-                nextWakeup += period_;
-                std::this_thread::sleep_until(nextWakeup);
-            }
-            onStop();
-        });
-    }
+
+    void start();
+    /**
+	Start the periodic task by spawning a worker thread that executes the task's main loop. 
+    The loop will call the execute() method at a fixed interval defined by the period_ member variable.
+    The onStart() method is called once before entering the loop, 
+    and onStop() is called once after exiting the loop. 
+    The running_ atomic boolean is used to signal the loop to stop when needed.
+    */
 
     // Signals the loop to stop and blocks until the worker thread exits.
     void stop()
@@ -66,7 +63,9 @@ protected:
     std::chrono::milliseconds period_;
     std::atomic<bool>         running_{false};
     std::thread               thread_;
-private:
 
+    static void SetThreadPriorityHelper();
+
+private:
 
 };

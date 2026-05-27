@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <sstream>
 #include <iomanip>
+#include <variant>
 
 inline uint64_t getCurrentTimeMs()
 {

@@ -4,7 +4,7 @@
 #include "SignalProcessingTask.hpp"
 #include "common/DataHistorian.hpp"
 #include "common/GlobalDataStructure.hpp"
-#include "common/TimeUtils.hpp"
+#include "common/util.hpp"
 
 SignalProcessingTask::SignalProcessingTask(std::chrono::milliseconds period)
     : PeriodicTask(period)

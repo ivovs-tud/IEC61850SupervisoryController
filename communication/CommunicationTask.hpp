@@ -1,5 +1,8 @@
 #pragma once
 
+#include <variant>
+#include <functional>
+
 #include "common/PeriodicTask.hpp"
 #include "common/GlobalDataStructure.hpp"
 #include "common/DataHistorian.hpp"
@@ -98,6 +101,15 @@ private:
     std::map<std::string, uint64_t> rxNextExecutionTimes_;  ///< maps descriptor key to next execution time (UNIX ms)
     std::map<std::string, uint64_t> txNextExecutionTimes_;  ///< maps descriptor key to next execution time (UNIX ms)
 
+
+    typedef enum eIECValueType {
+        IEC_FLOAT32,
+        IEC_INT32,
+        IEC_UINT32,
+        IEC_BOOL,
+        IEC_ENUM,
+    } IECValueType;
+
     // -----------------------------------------------------------------------
     // Descriptor-driven per-turbine operation helpers called by execute().
     //
@@ -119,21 +131,33 @@ private:
         AttackInterface::TxDataType              txDataType;
         std::vector<double> GlobalData::*        lastField;
         TurbineHistory<double> GlobalData::*     historyField;
-        std::vector<uint64_t> GlobalData::*      lastTimestamp;  ///< pointer to the timestamp of the last received measurement for this descriptor
-        uint32_t                                 intervalMs;  ///< interval between RX operations in milliseconds
+        std::vector<uint64_t> GlobalData::*      lastTimestamp;     ///< pointer to the timestamp of the last received measurement for this descriptor
+        uint32_t                                 intervalMs;        ///< interval between RX operations in milliseconds
     };
 
     struct TxDescriptor {
         const char*                                  name;
-        const char*                                  unit;
-        std::function<float(const GlobalData&, int)> gdsRead;
-        AttackInterface::TxDataType                  txDataType;
-        IECReturnCode (libiec_wrapper::*iecWrite)(int, float);
-        uint32_t                                     intervalMs;  ///< interval between TX operations in milliseconds
+        IECValueType                                 type;
+        // Function that returns a pointer to the element inside a GlobalData instance for index i
+        std::function<void*(GlobalData&, int)>       gdsPtr;
+        AttackInterface::TxDataType                  txDataType;    ///< Data type to use when transmitting this setpoint over the attack interface
+        IECReturnCode (libiec_wrapper::*iecWrite)(int, void*);     ///< Function responsible for the IEC61850 Write Operation
+        uint32_t                                     intervalMs;    ///< Interval between TX operations in milliseconds
     };
 
     static const RxDescriptor RX_DESCRIPTORS[];
     static const TxDescriptor TX_DESCRIPTORS[];
+
+    static inline std::string descToString(void * value, const TxDescriptor& desc) {
+        switch (desc.type) {
+            case IEC_FLOAT32: return std::to_string(*static_cast<float*>(value));
+            case IEC_INT32:   return std::to_string(* static_cast<int*>(value));
+            case IEC_UINT32:  return std::to_string(*static_cast<uint32_t*>(value));
+            case IEC_BOOL:    return *static_cast<bool*>(value) ? "True" : "False";
+            //case IEC_ENUM:    return std::to_string(*static_cast<float*>(value));
+            default:          return "unknown";
+        }
+	}
 
     // -----------------------------------------------------------------------
     // Timestamp control methods: allow prescribing RX/TX frequencies

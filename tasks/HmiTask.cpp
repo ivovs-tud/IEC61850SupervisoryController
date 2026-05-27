@@ -233,7 +233,7 @@ void HmiTask::handleCommands()
 
                 std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
                 GlobalData& d = GlobalDataStructure::instance().data();
-                d.TurbineController = requestedMode;
+                std::fill(d.TurbineController.begin(), d.TurbineController.end(), requestedMode);
 
                 if (requestedMode == 0) d.statusMessage = "Mode: ROSCO";
                 if (requestedMode == 1) d.statusMessage = "Mode: Lio-Downregulation";
@@ -263,7 +263,7 @@ void HmiTask::execute()
         for (std::size_t i = 0; i < config_.signals.size(); ++i)
             snap[i] = config_.signals[i].accessor(d);
 
-        operationMode = d.TurbineController;
+        operationMode = d.TurbineController.empty() ? 0 : static_cast<int>(d.TurbineController[0]);
         alarmWRecMeas = d.alarmWRecMeas;
         alarmOrientationMisalign = d.alarmOrientationMisalign;
         alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;

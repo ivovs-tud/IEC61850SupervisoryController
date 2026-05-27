@@ -8,7 +8,7 @@
 #include <cstring>
 
 #include "common/config.hpp"
-#include "common/TimeUtils.hpp"
+#include "common/util.hpp"
 #include "libiec_wrapper.hpp"
 #include "socket/SocketWrapper.hpp"
 
@@ -360,7 +360,7 @@ namespace AttackInterface
                 ATTACK_LOG_V1("Signaled readiness to start simulation to the attack interface client.");
             }
 
-            void txData(unsigned int turbineId, TxDataType dataType, float value) {
+            void txData(unsigned int turbineId, TxDataType dataType, void* value) {
                 if (dataType == TX_NONE) return;
                 if (turbineId < 1 || turbineId > state.LinkStates.size()) {
                     ATTACK_ERR("Invalid turbine ID: " << turbineId);
@@ -376,7 +376,7 @@ namespace AttackInterface
                 TxDataMessage msg;
                 msg.turbineId = turbineId;
                 msg.dataType = dataType;
-                msg.value = value;
+                msg.value = *static_cast<float *>(value);
                 socket.txAttackInterfaceData(std::make_shared<TxDataMessage>(msg), sizeof(TxDataMessage));
             }
 

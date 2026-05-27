@@ -2,7 +2,7 @@
 #include "socket/SocketWrapper.hpp"
 #include "AttackInterface.hpp"
 #include "common/config.hpp"
-#include "common/TimeUtils.hpp"
+#include "common/util.hpp"
 
 #include <cstring>
 #include <map>
@@ -206,19 +206,20 @@ void CommunicationTask::onStart()
 // =============================================================================
 
 const CommunicationTask::RxDescriptor CommunicationTask::RX_DESCRIPTORS[] = {
-    //  name        unit    IEC read fn                         AI type                   GDS last-value field     GDS history field          interval (ms)
-    { "V",          "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    &GlobalData::lastWS_t, 1000 },
-    { "D",          "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    &GlobalData::lastWD_t, 1000 },
-    { "YawMeas",    "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 2000 },
-    { "RSpd",       "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   &GlobalData::lastRPM_t, 2000  },
+    //  name        unit    IEC read fn                         AI type                   GDS last-value field     GDS history field          Interval (ms)
+    { "V",          "m/s",  &libiec_wrapper::rxWindSpeed,      AttackInterface::TX_WS,    &GlobalData::lastWS,     &GlobalData::wsHistory,    &GlobalData::lastWS_t, 500 },
+    { "D",          "deg",  &libiec_wrapper::rxWindDirection,  AttackInterface::TX_WD,    &GlobalData::lastWD,     &GlobalData::wdHistory,    &GlobalData::lastWD_t, 500 },
+    { "YawMeas",    "deg",  &libiec_wrapper::rxYawOffset,      AttackInterface::TX_YAW,   &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 500 },
+    { "RSpd",       "RPM",  &libiec_wrapper::rxRotorSpeed,     AttackInterface::TX_RPM,   &GlobalData::lastRPM,    &GlobalData::rpmHistory,   &GlobalData::lastRPM_t, 500  },
     { "W",          "W",    &libiec_wrapper::rxPowerGen,       AttackInterface::TX_PW,    &GlobalData::lastPower,    &GlobalData::powerHistory, &GlobalData::lastPower_t, 500  },
 };
 
 const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
-    //  name        unit    GDS reader                                                                                  AI type                         IEC write fn                        interval (ms)
-    { "WSpt",       "W",    [](const GlobalData& d, int i) { return d.TurbinePowerSetpoints[i]; },                      AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,   5000 },
-    { "YawSpt",     "deg",  [](const GlobalData& d, int i) { return static_cast<float>(d.TurbineYawSetpoints[i]); },    AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,     1000 },
-    { "OP_CMD",     "",     [](const GlobalData& d, int i) { return 1; },                                               AttackInterface::TX_OP_CMD,     &libiec_wrapper::txOpCommand,       UINT32_MAX },
+    //  name        unit    GDS reader                                                                AI type                         IEC write fn                            Interval (ms)
+    { "WSpt",       IEC_FLOAT32, [](GlobalData& d, int i)->void* { return &d.TurbinePowerSetpoints[i]; },  AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,       5000},
+    { "YawSpt",     IEC_FLOAT32, [](GlobalData& d, int i)->void* { return &d.TurbineYawSetpoints[i]; },    AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,         1000 },
+    { "OP_CMD",     IEC_UINT32,  [](GlobalData& d, int i)->void* { return &d.enableTurbine[i]; },         AttackInterface::TX_NONE,       &libiec_wrapper::txOpCommand,           1000 },
+    { "TUR_CTL",    IEC_UINT32,  [](GlobalData& d, int i)->void* { return &d.TurbineController[i]; },      AttackInterface::TX_NONE,       &libiec_wrapper::txTurbineController,   1000 },
 };
 
 // =============================================================================
@@ -263,31 +264,36 @@ void CommunicationTask::execute()
 
 void CommunicationTask::doTxSetpoint(int turbineId, int idx, const TxDescriptor& desc)
 {
-    float value;
+    // Acquire pointer to the value inside the global data structure
+    void* value = nullptr;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        value = desc.gdsRead(GlobalDataStructure::instance().data(), idx);
+        value = desc.gdsPtr(GlobalDataStructure::instance().data(), idx);
     }
 
-    std::string logMsg = "[SC→WT" + std::to_string(turbineId) + "]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    std::string logMsg = "[SC→WT" + std::to_string(turbineId) + "]" + std::to_string(getCurrentTimeMs()) + ";" + descToString(value, desc);
     DataHistorian::instance().log(logMsg);
 
     attackInterface.txData(turbineId, desc.txDataType, value);
 
     // Before storing, potentially allow attackInterface to overwrite the measurement
-    if(attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
-        COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
-                     << " from turbine " << turbineId);
+    // overwrite expects a float& for numeric types; handle based on descriptor type
+    if (desc.type == IEC_FLOAT32) {
+        float& f = *static_cast<float*>(value);
+        if (attackInterface.overwrite(turbineId, desc.txDataType, f) < 0) {
+            COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
+                         << " from turbine " << turbineId);
+        }
     }
 
-    logMsg = "[SC→WT" + std::to_string(turbineId) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    logMsg = "[SC→WT" + std::to_string(turbineId) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + descToString(value, desc);
     DataHistorian::instance().log(logMsg);
 
     if ((iecWrapper_.*desc.iecWrite)(turbineId, value) != IEC_OK) {
         COMMTASK_ERR("Failed to write " << desc.name << " to turbine " << turbineId);
     } else {
         COMMTASK_LOG_V1("Sent " << desc.name << " to turbine " << turbineId
-                        << ": " << value << " " << desc.unit);
+                        << ": " << descToString(value, desc));
     }
 }
 
@@ -315,7 +321,7 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
     DataHistorian::instance().log(logMsg);
 
     // Then potentially transmit this data to an eavesdropper over the attack interface
-    attackInterface.txData(turbineId, desc.txDataType, value);
+    attackInterface.txData(turbineId, desc.txDataType, &value);
 
     // If we requested power, we store the true value too, since it is used later to compute the total power generated as measured here.
     if (strcmp(desc.name, "W") == 0) {

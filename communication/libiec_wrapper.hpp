@@ -4,6 +4,7 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <variant>
 
 
 #include "IEC61850Manager.hpp"
@@ -21,13 +22,13 @@ extern "C" {
 // libiec_wrapper – high-level C++ wrapper around IEC61850Manager.
 // ---------------------------------------------------------------------------
 
-typedef enum r 
-{
+typedef enum r {
     IEC_OK = 0,
     IEC_ERROR = -1,
 } IECReturnCode;
 
 using GooseCallback = std::function<void(const std::string&, void*)>;
+
 
 // typedef GooseCallback (*GooseCallback)(std::string& ref, void* value);
 
@@ -181,7 +182,7 @@ public:
      */
 
 
-    IECReturnCode txPowerSetpoint(int turbineId, float powerSetpoint);
+    IECReturnCode txPowerSetpoint(int turbineId, void* powerSetpoint);
     /**
      * @brief Write only the active-power setpoint to a turbine.
      * @param turbineId      Integer turbine ID (1-based).
@@ -189,7 +190,7 @@ public:
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 
-    IECReturnCode txYawSetpoint(int turbineId, float yawSetpoint);
+    IECReturnCode txYawSetpoint(int turbineId, void* yawSetpoint);
     /**
      * @brief Write only the yaw-angle setpoint to a turbine.
      * @param turbineId    Integer turbine ID (1-based).
@@ -197,7 +198,7 @@ public:
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 
-    IECReturnCode txOpCommand(int turbineId, float command);
+    IECReturnCode txOpCommand(int turbineId, void* command);
     /**
      * @brief Write a turbine start/stop command.
      * @param turbineId    Integer turbine ID (1-based).
@@ -205,7 +206,7 @@ public:
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 
-    IECReturnCode txTurbineController(int turbineId, int controllerId);
+    IECReturnCode txTurbineController(int turbineId, void* controllerId);
     /**
      * @brief Signal a turbine to use a specific turbine controller configuration
      * 
