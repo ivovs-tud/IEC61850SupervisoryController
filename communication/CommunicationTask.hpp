@@ -2,6 +2,7 @@
 
 #include <variant>
 #include <functional>
+#include <mutex>
 
 #include "common/PeriodicTask.hpp"
 #include "common/GlobalDataStructure.hpp"
@@ -82,26 +83,6 @@ protected:
     void onStop()  override;  // stops socket servers after the loop exits
 
 private:
-    struct CommunicationState
-    {
-        std::atomic<CommStatus> iec_status;
-        std::atomic<CommStatus> socket_status;
-        std::chrono::system_clock::time_point lastActivityTime;
-    } state;
-
-    CommConfig    config_;
-    libiec_wrapper iecWrapper_;
-    SocketWrapper socketWrapper;
-    AttackInterface::AttackInterface attackInterface;
-
-    // Runtime state for descriptor scheduling (next execution times in UNIX ms)
-    // Key: "turbineId:descriptorName" (e.g., "1:power setpoint")
-    mutable std::mutex rxDescriptorMutex_;
-    mutable std::mutex txDescriptorMutex_;
-    std::map<std::string, uint64_t> rxNextExecutionTimes_;  ///< maps descriptor key to next execution time (UNIX ms)
-    std::map<std::string, uint64_t> txNextExecutionTimes_;  ///< maps descriptor key to next execution time (UNIX ms)
-
-
     typedef enum eIECValueType {
         IEC_FLOAT32,
         IEC_INT32,
@@ -123,6 +104,9 @@ private:
     //
     // turbineId is 1-based (IEC 61850 convention).
     // idx       is 0-based (GlobalDataStructure array index).
+    //
+    // Thread safety: Each (turbineId, descriptor) pair has its own execution
+    // time entry, protected by rxDescriptorMutex_ or txDescriptorMutex_.
     // -----------------------------------------------------------------------
     struct RxDescriptor {
         const char*                              name;
@@ -144,6 +128,25 @@ private:
         IECReturnCode (libiec_wrapper::*iecWrite)(int, void*);     ///< Function responsible for the IEC61850 Write Operation
         uint32_t                                     intervalMs;    ///< Interval between TX operations in milliseconds
     };
+
+    struct CommunicationState
+    {
+        std::atomic<CommStatus> iec_status;
+        std::atomic<CommStatus> socket_status;
+        std::chrono::system_clock::time_point lastActivityTime;
+    } state;
+
+    CommConfig    config_;
+    libiec_wrapper iecWrapper_;
+    SocketWrapper socketWrapper;
+    AttackInterface::AttackInterface attackInterface;
+
+    // Runtime state for descriptor scheduling (next execution times in UNIX ms)
+    // Key: pair<turbineId, descriptorPtr> ensures per-turbine/per-descriptor scheduling
+    mutable std::mutex rxDescriptorMutex_;
+    mutable std::mutex txDescriptorMutex_;
+    std::map<std::pair<int, const RxDescriptor*>, uint64_t> rxNextExecutionTimes_;  ///< maps (turbineId, descriptor*) to next execution time (UNIX ms)
+    std::map<std::pair<int, const TxDescriptor*>, uint64_t> txNextExecutionTimes_;  ///< maps (turbineId, descriptor*) to next execution time (UNIX ms)
 
     static const RxDescriptor RX_DESCRIPTORS[];
     static const TxDescriptor TX_DESCRIPTORS[];
@@ -181,4 +184,11 @@ private:
     void doRxMeasurement(int turbineId, int idx, const RxDescriptor& desc);
     void doTxSetpoint   (int turbineId, int idx, const TxDescriptor& desc);
     void doRxSecret     (int turbineId);
+    void processTurbine (int turbineId, int idx);
+    uint64_t getRxNextExecutionTimeMs(int turbineId, const RxDescriptor* desc) const;
+    uint64_t getTxNextExecutionTimeMs(int turbineId, const TxDescriptor* desc) const;
+    void setRxNextExecutionTimeMs(int turbineId, const RxDescriptor* desc, uint64_t timeMs);
+    void setTxNextExecutionTimeMs(int turbineId, const TxDescriptor* desc, uint64_t timeMs);
+
+    std::mutex attackInterfaceMutex_;
 };

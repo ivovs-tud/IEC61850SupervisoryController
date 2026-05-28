@@ -5,8 +5,10 @@
 #include "common/util.hpp"
 
 #include <cstring>
+#include <future>
 #include <map>
 #include <string>
+#include <vector>
 
 CommunicationTask::CommunicationTask(const CommConfig& config)
     : PeriodicTask(config.orchestrationPeriod), config_(config), 
@@ -114,52 +116,48 @@ void CommunicationTask::init()
 }
 
 // =============================================================================
-// Descriptor Timestamp Control Methods
+// Descriptor Execution Time Control Methods
+// Each (turbineId, descriptor*) pair gets its own execution time entry.
 // =============================================================================
 
-std::string CommunicationTask::getDescriptorKey(int turbineId, const char* descriptorName) const
-{
-    return std::to_string(turbineId) + ":" + std::string(descriptorName);
-}
-
-uint64_t CommunicationTask::getRxNextExecutionTimeMs(int turbineId, const RxDescriptor& desc) const
+uint64_t CommunicationTask::getRxNextExecutionTimeMs(int turbineId, const RxDescriptor* desc) const
 {
     std::lock_guard<std::mutex> lock(rxDescriptorMutex_);
-    std::string key = getDescriptorKey(turbineId, desc.name);
+    auto key = std::make_pair(turbineId, desc);
     auto it = rxNextExecutionTimes_.find(key);
     if (it == rxNextExecutionTimes_.end()) {
         // First time: initialize to now (allow immediate execution)
-        return getCurrentTimeMs();
+        return 0;
     }
     return it->second;
 }
 
-uint64_t CommunicationTask::getTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc) const
+uint64_t CommunicationTask::getTxNextExecutionTimeMs(int turbineId, const TxDescriptor* desc) const
 {
     std::lock_guard<std::mutex> lock(txDescriptorMutex_);
-    std::string key = getDescriptorKey(turbineId, desc.name);
+    auto key = std::make_pair(turbineId, desc);
     auto it = txNextExecutionTimes_.find(key);
     if (it == txNextExecutionTimes_.end()) {
         // First time: initialize to now (allow immediate execution)
-        return getCurrentTimeMs();
+        return 0;
     }
     return it->second;
 }
 
-void CommunicationTask::setRxNextExecutionTimeMs(int turbineId, const RxDescriptor& desc, uint64_t timeMs)
+void CommunicationTask::setRxNextExecutionTimeMs(int turbineId, const RxDescriptor* desc, uint64_t timeMs)
 {
     std::lock_guard<std::mutex> lock(rxDescriptorMutex_);
-    std::string key = getDescriptorKey(turbineId, desc.name);
+    auto key = std::make_pair(turbineId, desc);
     rxNextExecutionTimes_[key] = timeMs;
-    COMMTASK_LOG_V2("RX descriptor '" << desc.name << "' (turbine " << turbineId << ") next execution time set to " << timeMs << " ms");
+    COMMTASK_LOG_V2("RX descriptor '" << desc->name << "' (turbine " << turbineId << ") next execution time set to " << timeMs << " ms");
 }
 
-void CommunicationTask::setTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc, uint64_t timeMs)
+void CommunicationTask::setTxNextExecutionTimeMs(int turbineId, const TxDescriptor* desc, uint64_t timeMs)
 {
     std::lock_guard<std::mutex> lock(txDescriptorMutex_);
-    std::string key = getDescriptorKey(turbineId, desc.name);
+    auto key = std::make_pair(turbineId, desc);
     txNextExecutionTimes_[key] = timeMs;
-    COMMTASK_LOG_V2("TX descriptor '" << desc.name << "' (turbine " << turbineId << ") next execution time set to " << timeMs << " ms");
+    COMMTASK_LOG_V2("TX descriptor '" << desc->name << "' (turbine " << turbineId << ") next execution time set to " << timeMs << " ms");
 }
 
 void CommunicationTask::onStart()
@@ -226,35 +224,52 @@ const CommunicationTask::TxDescriptor CommunicationTask::TX_DESCRIPTORS[] = {
 
 void CommunicationTask::execute()
 {
-
-    for (int i = 0; i < static_cast<int>(config_.mms.turbines.size()); ++i) {
-        // if (i > 0) continue;
-        const int turbineId = i + 1;  // 1-based for IEC 61850
-
-        // TX operations: check timestamp before executing.
-        // Capture the current time immediately before each comparison so that
-        // first-use descriptors (which default to "now") are handled
-        // deterministically instead of occasionally missing their first cycle.
-        for (const auto& desc : TX_DESCRIPTORS) {
-            const uint64_t nextExecTime = getTxNextExecutionTimeMs(turbineId, desc);
-            const uint64_t currentTimeMs = getCurrentTimeMs();
-            if (currentTimeMs >= nextExecTime) {
-                doTxSetpoint(turbineId, i, desc);
-                setTxNextExecutionTimeMs(turbineId, desc, currentTimeMs + desc.intervalMs);
-            }
+    const int turbineCount = static_cast<int>(config_.mms.turbines.size());
+    if (turbineCount <= 1) {
+        for (int i = 0; i < turbineCount; ++i) {
+            processTurbine(i + 1, i);
         }
+        return;
+    }
 
-        // RX operations: check timestamp before executing
-        // doRxSecret(turbineId);
+    std::vector<std::future<void>> futures;
+    futures.reserve(turbineCount);
 
-        for (const auto& desc : RX_DESCRIPTORS) {
-            const uint64_t nextExecTime = getRxNextExecutionTimeMs(turbineId, desc);
-            const uint64_t currentTimeMs = getCurrentTimeMs();
-            if (currentTimeMs >= nextExecTime) {
-                doRxMeasurement(turbineId, i, desc);
-                setRxNextExecutionTimeMs(turbineId, desc, currentTimeMs + desc.intervalMs);
-            }
+    for (int i = 0; i < turbineCount; ++i) {
+        futures.emplace_back(std::async(std::launch::async, &CommunicationTask::processTurbine, this, i + 1, i));
+    }
+
+    for (auto& future : futures) {
+        future.wait();
+    }
+}
+
+void CommunicationTask::processTurbine(int turbineId, int idx)
+{
+    const uint64_t currentTimeMs = getCurrentTimeMs();
+    const int txDescCount = sizeof(TX_DESCRIPTORS) / sizeof(TX_DESCRIPTORS[0]);
+    const int rxDescCount = sizeof(RX_DESCRIPTORS) / sizeof(RX_DESCRIPTORS[0]);
+
+    for (int i = 0; i < txDescCount; ++i) {
+        const TxDescriptor* desc = &TX_DESCRIPTORS[i];
+        const uint64_t nextExecTime = getTxNextExecutionTimeMs(turbineId, desc);
+        if (currentTimeMs >= nextExecTime) {
+            doTxSetpoint(turbineId, idx, *desc);
+            setTxNextExecutionTimeMs(turbineId, desc, currentTimeMs + desc->intervalMs);
         }
+    }
+
+    for (int i = 0; i < rxDescCount; ++i) {
+        const RxDescriptor* desc = &RX_DESCRIPTORS[i];
+        const uint64_t nextExecTime = getRxNextExecutionTimeMs(turbineId, desc);
+        if (currentTimeMs >= nextExecTime) {
+            doRxMeasurement(turbineId, idx, *desc);
+            setRxNextExecutionTimeMs(turbineId, desc, currentTimeMs + desc->intervalMs);
+        } 
+        // else if (idx == 0){
+        //     COMMTASK_ST("Skipping RX descriptor '" << desc->name << "' for turbine " << turbineId 
+        //                     << " (current time " << currentTimeMs << " ms, next exec time " << nextExecTime << " ms)");
+        // }
     }
 }
 
@@ -274,15 +289,16 @@ void CommunicationTask::doTxSetpoint(int turbineId, int idx, const TxDescriptor&
     std::string logMsg = "[SC→WT" + std::to_string(turbineId) + "]" + std::to_string(getCurrentTimeMs()) + ";" + descToString(value, desc);
     DataHistorian::instance().log(logMsg);
 
-    attackInterface.txData(turbineId, desc.txDataType, value);
+    {
+        std::lock_guard<std::mutex> lock(attackInterfaceMutex_);
+        attackInterface.txData(turbineId, desc.txDataType, value);
 
-    // Before storing, potentially allow attackInterface to overwrite the measurement
-    // overwrite expects a float& for numeric types; handle based on descriptor type
-    if (desc.type == IEC_FLOAT32) {
-        float& f = *static_cast<float*>(value);
-        if (attackInterface.overwrite(turbineId, desc.txDataType, f) < 0) {
-            COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
-                         << " from turbine " << turbineId);
+        if (desc.type == IEC_FLOAT32) {
+            float& f = *static_cast<float*>(value);
+            if (attackInterface.overwrite(turbineId, desc.txDataType, f) < 0) {
+                COMMTASK_ERR("Failed to get overwrite decision for " << desc.name
+                             << " from turbine " << turbineId);
+            }
         }
     }
 
@@ -320,20 +336,22 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
     std::string logMsg = "[WT" + std::to_string(turbineId) + "→SC]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
 
-    // Then potentially transmit this data to an eavesdropper over the attack interface
-    attackInterface.txData(turbineId, desc.txDataType, &value);
+    {
+        std::lock_guard<std::mutex> lock(attackInterfaceMutex_);
+        attackInterface.txData(turbineId, desc.txDataType, &value);
+
+        if (attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
+            COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId);
+        }
+    }
 
     // If we requested power, we store the true value too, since it is used later to compute the total power generated as measured here.
     if (strcmp(desc.name, "W") == 0) {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         auto& gds = GlobalDataStructure::instance().data();
-		gds._W[turbineId - 1] = value;
+        gds._W[turbineId - 1] = value;
     }
 
-    // Before storing, potentially allow attackInterface to overwrite the measurement
-    if(attackInterface.overwrite(turbineId, desc.txDataType, value) < 0) {
-        COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId);
-    }
     COMMTASK_LOG_V1("Received (post-overwrite) " << desc.name << " for turbine " << turbineId << ": " << value << " " << desc.unit);
     logMsg = "[WT" + std::to_string(turbineId) + "→SC(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
@@ -346,8 +364,6 @@ void CommunicationTask::doRxMeasurement(int turbineId, int idx, const RxDescript
         (gds.*desc.lastTimestamp)[idx] = getCurrentTimeMs();
     }
 }
-
-
 
 void CommunicationTask::onStop()
 {
