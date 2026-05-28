@@ -77,7 +77,7 @@ int main(int argc, char* argv[])
         cfg.orchestrationPeriod = 10ms;
         DataHistorian::instance().configure("project_datahistorian");
         DataHistorian::instance().start();
-        CommunicationTask commTask(cfg);
+        CommunicationOrchestrator commTask(cfg);
         commTask.init();
 
         ControlTask::Config controlConfig;

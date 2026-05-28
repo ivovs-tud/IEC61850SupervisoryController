@@ -1,6 +1,7 @@
 
 add_library(communication STATIC
     CommunicationTask.cpp
+    IECCommunicator.cpp
     libiec_wrapper.cpp
     IEC61850Manager.cpp
     socket/SocketWrapper.cpp

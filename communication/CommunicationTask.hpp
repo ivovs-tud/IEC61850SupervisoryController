@@ -1,194 +1,49 @@
 #pragma once
 
-#include <variant>
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <mutex>
+#include <string>
+#include <vector>
 
-#include "common/PeriodicTask.hpp"
 #include "common/GlobalDataStructure.hpp"
 #include "common/DataHistorian.hpp"
-#include "communication/libiec_wrapper.hpp"
+#include "communication/CommunicationTypes.hpp"
 #include "communication/socket/SocketWrapper.hpp"
-#include "AttackInterface.hpp"
+#include "communication/AttackInterface.hpp"
 
-typedef enum rc
-{
-    COMM_OK = 0,
-    COMM_ERROR = -1,
-} CommReturnCode;
+class IECCommunicator;
 
-typedef enum cs
-{
-    COMM_DISCONNECTED = -1,
-    COMM_CONNECTING = 0,
-    COMM_CONNECTED = 1,
-} CommStatus;
-
-// ---------------------------------------------------------------------------
-// CommConfig – single-argument configuration for the entire communication
-// stack.  Each link has its own port and poll/update period so they can be
-// tuned independently.  All fields carry ready-to-use defaults.
-// ---------------------------------------------------------------------------
-struct CommConfig
-{
-    // ZeroMQ operator server (HMI → controller)
-    struct OperatorServer {
-        int                       port        {9001};
-        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
-    } operatorServer;
-
-    // ZeroMQ attack-interface server (test harness → controller)
-    struct AttackInterface {
-        int                       port        {9002};
-        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
-    } attackInterface;
-
-    // TCP data historian server (external device/test source -> controller)
-    struct DataHistorian {
-        int                       port        {9003};
-        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
-    } dataHistorian;
-
-    // IEC 61850 MMS client
-    struct Mms {
-        std::vector<TurbineEndpoint>  turbines;   ///< one entry per turbine; IDs are 1-based
-        std::chrono::milliseconds     pollPeriod  {std::chrono::milliseconds(100)};
-    } mms;
-
-    // IEC 61850 GOOSE subscriber (future)
-    struct Goose {
-        std::string               networkInterface{"veth1"};
-        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(4)};
-    } goose;
-
-    // CommunicationTask orchestration loop cadence
-    std::chrono::milliseconds orchestrationPeriod{std::chrono::milliseconds(100)};
-};
-
-// ---------------------------------------------------------------------------
-// CommunicationTask – orchestrates IEC 61850 and TCP socket communications.
-// ---------------------------------------------------------------------------
-class CommunicationTask : public PeriodicTask
+class CommunicationOrchestrator
 {
 public:
-    explicit CommunicationTask(const CommConfig& config = CommConfig{});
+    explicit CommunicationOrchestrator(const CommConfig& config = CommConfig{});
+    ~CommunicationOrchestrator();
 
     void init();
+    bool start();
+    void stop();
 
+    struct CommunicatorState {
+        int turbineId;
+        CommStatus iecStatus;
+        std::chrono::system_clock::time_point lastActivityTime;
+    };
 
-
-protected:
-    void onStart() override;  // starts socket servers before entering the loop
-    void execute() override;  // periodic comms polling
-    void onStop()  override;  // stops socket servers after the loop exits
+    std::vector<CommunicatorState> communicatorStates() const;
+    CommStatus socketStatus() const;
+    CommStatus iecStatus() const;
 
 private:
-    typedef enum eIECValueType {
-        IEC_FLOAT32,
-        IEC_INT32,
-        IEC_UINT32,
-        IEC_BOOL,
-        IEC_ENUM,
-    } IECValueType;
+    void createCommunicators();
 
-    // -----------------------------------------------------------------------
-    // Descriptor-driven per-turbine operation helpers called by execute().
-    //
-    // RxDescriptor: one float measurement to read from a turbine, eavesdrop
-    //   via AttackInterface, and store in GlobalDataStructure.
-    // TxDescriptor: one float setpoint to read from GlobalDataStructure,
-    //   eavesdrop/intercept via AttackInterface, and write to a turbine.
-    //
-    // To register a new measurement : append a row to RX_DESCRIPTORS in .cpp.
-    // To register a new setpoint    : append a row to TX_DESCRIPTORS in .cpp.
-    //
-    // turbineId is 1-based (IEC 61850 convention).
-    // idx       is 0-based (GlobalDataStructure array index).
-    //
-    // Thread safety: Each (turbineId, descriptor) pair has its own execution
-    // time entry, protected by rxDescriptorMutex_ or txDescriptorMutex_.
-    // -----------------------------------------------------------------------
-    struct RxDescriptor {
-        const char*                              name;
-        const char*                              unit;
-        IECReturnCode (libiec_wrapper::*iecRead)(int, float&);
-        AttackInterface::TxDataType              txDataType;
-        std::vector<double> GlobalData::*        lastField;
-        TurbineHistory<double> GlobalData::*     historyField;
-        std::vector<uint64_t> GlobalData::*      lastTimestamp;     ///< pointer to the timestamp of the last received measurement for this descriptor
-        uint32_t                                 intervalMs;        ///< interval between RX operations in milliseconds
-    };
-
-    struct TxDescriptor {
-        const char*                                  name;
-        IECValueType                                 type;
-        // Function that returns a pointer to the element inside a GlobalData instance for index i
-        std::function<void*(GlobalData&, int)>       gdsPtr;
-        AttackInterface::TxDataType                  txDataType;    ///< Data type to use when transmitting this setpoint over the attack interface
-        IECReturnCode (libiec_wrapper::*iecWrite)(int, void*);     ///< Function responsible for the IEC61850 Write Operation
-        uint32_t                                     intervalMs;    ///< Interval between TX operations in milliseconds
-    };
-
-    struct CommunicationState
-    {
-        std::atomic<CommStatus> iec_status;
-        std::atomic<CommStatus> socket_status;
-        std::chrono::system_clock::time_point lastActivityTime;
-    } state;
-
-    CommConfig    config_;
+    CommConfig config_;
     libiec_wrapper iecWrapper_;
-    SocketWrapper socketWrapper;
-    AttackInterface::AttackInterface attackInterface;
-
-    // Runtime state for descriptor scheduling (next execution times in UNIX ms)
-    // Key: pair<turbineId, descriptorPtr> ensures per-turbine/per-descriptor scheduling
-    mutable std::mutex rxDescriptorMutex_;
-    mutable std::mutex txDescriptorMutex_;
-    std::map<std::pair<int, const RxDescriptor*>, uint64_t> rxNextExecutionTimes_;  ///< maps (turbineId, descriptor*) to next execution time (UNIX ms)
-    std::map<std::pair<int, const TxDescriptor*>, uint64_t> txNextExecutionTimes_;  ///< maps (turbineId, descriptor*) to next execution time (UNIX ms)
-
-    static const RxDescriptor RX_DESCRIPTORS[];
-    static const TxDescriptor TX_DESCRIPTORS[];
-
-    static inline std::string descToString(void * value, const TxDescriptor& desc) {
-        switch (desc.type) {
-            case IEC_FLOAT32: return std::to_string(*static_cast<float*>(value));
-            case IEC_INT32:   return std::to_string(* static_cast<int*>(value));
-            case IEC_UINT32:  return std::to_string(*static_cast<uint32_t*>(value));
-            case IEC_BOOL:    return *static_cast<bool*>(value) ? "True" : "False";
-            //case IEC_ENUM:    return std::to_string(*static_cast<float*>(value));
-            default:          return "unknown";
-        }
-	}
-
-    // -----------------------------------------------------------------------
-    // Timestamp control methods: allow prescribing RX/TX frequencies
-    // -----------------------------------------------------------------------
-    
-    /// Get the next execution time (UNIX timestamp in ms) for an RX descriptor
-    uint64_t getRxNextExecutionTimeMs(int turbineId, const RxDescriptor& desc) const;
-    
-    /// Get the next execution time (UNIX timestamp in ms) for a TX descriptor
-    uint64_t getTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc) const;
-    
-    /// Overwrite the next execution time for an RX descriptor (in UNIX timestamp ms)
-    void setRxNextExecutionTimeMs(int turbineId, const RxDescriptor& desc, uint64_t timeMs);
-    
-    /// Overwrite the next execution time for a TX descriptor (in UNIX timestamp ms)
-    void setTxNextExecutionTimeMs(int turbineId, const TxDescriptor& desc, uint64_t timeMs);
-    
-    /// Get a descriptor key for internal map lookups
-    std::string getDescriptorKey(int turbineId, const char* descriptorName) const;
-
-    void doRxMeasurement(int turbineId, int idx, const RxDescriptor& desc);
-    void doTxSetpoint   (int turbineId, int idx, const TxDescriptor& desc);
-    void doRxSecret     (int turbineId);
-    void processTurbine (int turbineId, int idx);
-    uint64_t getRxNextExecutionTimeMs(int turbineId, const RxDescriptor* desc) const;
-    uint64_t getTxNextExecutionTimeMs(int turbineId, const TxDescriptor* desc) const;
-    void setRxNextExecutionTimeMs(int turbineId, const RxDescriptor* desc, uint64_t timeMs);
-    void setTxNextExecutionTimeMs(int turbineId, const TxDescriptor* desc, uint64_t timeMs);
-
+    SocketWrapper socketWrapper_;
+    AttackInterface::AttackInterface attackInterface_;
     std::mutex attackInterfaceMutex_;
+    std::vector<std::unique_ptr<IECCommunicator>> communicators_;
+    std::atomic<CommStatus> socketStatus_{COMM_DISCONNECTED};
+    std::atomic<CommStatus> iecStatus_{COMM_DISCONNECTED};
 };
