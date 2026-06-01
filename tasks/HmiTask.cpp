@@ -239,6 +239,19 @@ void HmiTask::handleCommands()
                 if (requestedMode == 1) d.statusMessage = "Mode: Lio-Downregulation";
                 if (requestedMode == 2) d.statusMessage = "Mode: Safe Shutdown";
             }
+            else if (cmd == "set_button_state") {
+                if (obj.via.array.size < 3) continue;
+                std::string buttonName = obj.via.array.ptr[1].as<std::string>();
+                int buttonState = obj.via.array.ptr[2].as<int>();
+
+                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+                GlobalData& d = GlobalDataStructure::instance().data();
+
+                if (buttonName == "Yaw Steering") {
+                    d.yawSteeringEnabled = (buttonState != 0);
+                    d.statusMessage = std::string("Yaw Steering: ") + (d.yawSteeringEnabled ? "On" : "Off");
+                }
+            }
         } catch (const std::exception&) {
             // Ignore malformed commands and continue.
         }
@@ -257,6 +270,8 @@ void HmiTask::execute()
     bool alarmWTorqueRotSpd = false;
     bool alarmHorWdDir = false;
     bool systemRunning = false;
+    bool yawSteeringEnabled = false;
+    std::string yawSteeringCommandName;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         const GlobalData& d = GlobalDataStructure::instance().data();
@@ -269,6 +284,8 @@ void HmiTask::execute()
         alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;
         alarmHorWdDir = d.alarmHorWdDir;
         systemRunning = d.systemRunning;
+        yawSteeringEnabled = d.yawSteeringEnabled;
+        yawSteeringCommandName = d.yawSteeringCommandName;
     }
 
     ++tickCount_;
@@ -284,7 +301,7 @@ void HmiTask::execute()
     msgpack::sbuffer buf;
     msgpack::packer<msgpack::sbuffer> pk(buf);
 
-    pk.pack_array(5);
+    pk.pack_array(6);
     pk.pack(tickCount_);
     pk.pack(static_cast<int32_t>(config_.windowSize));
 
@@ -300,16 +317,24 @@ void HmiTask::execute()
 
     const std::array<const char*, 3> modeLabels{{"ROSCO", "Lio\nDownregulation", "Safe\nShutdown"}};
 
-    pk.pack_array(5);
+    pk.pack_array(9);
     pk.pack_array(3); pk.pack("System Running");    pk.pack(systemRunning);      pk.pack("green");
     pk.pack_array(3); pk.pack("Power: Received vs Measured");    pk.pack(alarmWRecMeas); pk.pack("red");
     pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("amber");
     pk.pack_array(3); pk.pack("Power vs Torque*RotorSpeed");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
     pk.pack_array(3); pk.pack("Wind Direction Consistency");    pk.pack(alarmHorWdDir);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Direction Consistency2 ");    pk.pack(alarmHorWdDir);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Direction Consistency3");    pk.pack(alarmHorWdDir);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Direction Consistency4");    pk.pack(alarmHorWdDir);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Direction Consistency5");    pk.pack(alarmHorWdDir);  pk.pack("red");
 
     pk.pack_array(2);
     pk.pack(operationMode);
     pk.pack(modeLabels);
+
+    pk.pack_array(2);
+    pk.pack(static_cast<int>(yawSteeringEnabled));
+    pk.pack(yawSteeringCommandName);
 
     zmq::message_t msg(buf.data(), buf.size());
     pubSocket_->send(msg, zmq::send_flags::dontwait);

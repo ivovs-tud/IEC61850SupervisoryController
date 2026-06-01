@@ -48,7 +48,8 @@ HmiConfig defaultHmiConfig(int numTurbines = 3);
 //
 // Wire format (msgpack array):
 //   [tick, window_size, [[name, unit, [labels], [values]], ...],
-//    [[light_name, is_on, color], ...], [operation_mode, [mode_labels...]]]
+//    [[light_name, is_on, color], ...], [operation_mode, [mode_labels...]],
+//    [button_state, button_command]]
 //
 // The Python plotter maintains its own rolling history; C++ only sends the
 // latest snapshot each cycle (no history buffers needed here).

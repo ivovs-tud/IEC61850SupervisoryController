@@ -92,6 +92,8 @@ struct GlobalData
     // -- HMI control + annunciator state
     // operationMode values:
     //   0 = Auto, 1 = Curtailment, 2 = Safe Shutdown
+	bool yawSteeringEnabled = false;
+	std::string yawSteeringCommandName = "Yaw Steering";
 	std::vector<uint32_t> enableTurbine = std::vector<uint32_t>(N_TURBINES, 1); // Per-turbine enable/disable flags (1 = enabled, 0 = disabled)
 	std::vector<uint32_t> TurbineController = std::vector<uint32_t>(N_TURBINES, 0); // Per-turbine operation mode (0 = Auto, 1 = Curtailment, 2 = Safe Shutdown)
     
@@ -148,6 +150,9 @@ struct GlobalData
         std::fill(TurbineYawSetpoints.begin(), TurbineYawSetpoints.end(), 0);
 
         RequestedReferencePower = 0.0f;
+
+        yawSteeringEnabled = false;
+        yawSteeringCommandName = "Yaw Steering";
 
         alarmWRecMeas = false;
         alarmOrientationMisalign = false;
