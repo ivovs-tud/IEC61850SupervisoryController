@@ -199,6 +199,47 @@ class CircularModeButton(QtWidgets.QPushButton):
         )
 
 
+class OffOnButton(QtWidgets.QPushButton):
+    def __init__(self, off_text: str = "Off", on_text: str = "On", checked: bool = False):
+        super().__init__(on_text if checked else off_text)
+        self.off_text = str(off_text)
+        self.on_text = str(on_text)
+        self.setCheckable(True)
+        self.setChecked(bool(checked))
+        self.setMinimumSize(120, 60)
+        self.setStyleSheet(
+            "QPushButton {"
+            "border-radius: 12px;"
+            "border: 2px solid #2a3340;"
+            "background-color: #232a35;"
+            "color: #f0f3f8;"
+            "font-size: 14px;"
+            "font-weight: 700;"
+            "padding: 10px;"
+            "}"
+            "QPushButton:checked {"
+            "background-color: #2f80ed;"
+            "border: 2px solid #96c0ff;"
+            "}"
+            "QPushButton:hover {"
+            "background-color: #2a3342;"
+            "}"
+            "QPushButton:pressed {"
+            "background-color: #1d2430;"
+            "}"
+        )
+        self.toggled.connect(self._update_label)
+
+    def _update_label(self, checked: bool) -> None:
+        self.setText(self.on_text if checked else self.off_text)
+
+    def set_state(self, is_on: bool) -> None:
+        self.blockSignals(True)
+        self.setChecked(bool(is_on))
+        self._update_label(bool(is_on))
+        self.blockSignals(False)
+
+
 main_window = QtWidgets.QMainWindow()
 main_window.setWindowTitle(f"Wind Farm HMI  -  {ENDPOINT}")
 main_window.resize(1380, 940)
@@ -220,13 +261,23 @@ control_layout = QtWidgets.QHBoxLayout(control_panel)
 control_layout.setContentsMargins(14, 10, 14, 10)
 control_layout.setSpacing(18)
 
-lights_box = QtWidgets.QVBoxLayout()
+max_rows = 4
+lights_box = QtWidgets.QGridLayout()
 lights_box.setSpacing(6)
+lights_box.setContentsMargins(0, 0, 0, 0)
 leds: dict[str, LedIndicator] = {}
 
 buttons_box = QtWidgets.QHBoxLayout()
 buttons_box.setSpacing(16)
 mode_buttons: list[CircularModeButton] = []
+button_control = None
+button_command_name = ""
+
+def add_light_widget(widget: QtWidgets.QWidget, index: int) -> None:
+    """Add a widget at the given index, auto-calculating grid position."""
+    col = index // max_rows
+    row = index % max_rows
+    lights_box.addWidget(widget, row, col)
 
 plots_widget = pg.GraphicsLayoutWidget(title="Live Signals")
 
@@ -313,7 +364,7 @@ def update_leds(lights_data: list) -> None:
         if key not in leds:
             led = LedIndicator(key, str(color))
             leds[key] = led
-            lights_box.addWidget(led)
+            add_light_widget(led, len(leds) - 1)
         leds[key].set_state(bool(is_on))
 
 
@@ -324,6 +375,51 @@ def send_mode_command(mode_index: int) -> None:
     except zmq.ZMQError:
         # Controller may not be running yet; keep UI responsive.
         pass
+
+
+def send_button_command(command_name: str, is_on: bool) -> None:
+    payload = ["set_button_state", str(command_name), int(bool(is_on))]
+    try:
+        cmd_sock.send(msgpack.packb(payload, use_bin_type=True), zmq.NOBLOCK)
+    except zmq.ZMQError:
+        pass
+
+
+def update_onoff_button(button_data) -> None:
+    global button_control, button_command_name
+
+    if not isinstance(button_data, list) or len(button_data) < 2:
+        return
+
+    is_on = bool(button_data[0])
+    command_name = str(button_data[1])
+    off_text = f"{command_name} Off"
+    on_text = f"{command_name} On"
+    if len(button_data) >= 4:
+        off_text = str(button_data[2])
+        on_text = str(button_data[3])
+    elif len(button_data) == 3:
+        on_text = str(button_data[2])
+
+    if button_control is None:
+        button_control = OffOnButton(off_text, on_text, checked=is_on)
+        button_control.toggled.connect(
+            lambda checked, cmd=command_name: send_button_command(cmd, checked)
+        )
+        buttons_box.addWidget(button_control)
+        buttons_box.addStretch(1)
+        button_command_name = command_name
+    else:
+        button_control.off_text = off_text
+        button_control.on_text = on_text
+        if button_command_name != command_name:
+            button_command_name = command_name
+            # reconnect using new command name if label changed
+            button_control.toggled.disconnect()
+            button_control.toggled.connect(
+                lambda checked, cmd=command_name: send_button_command(cmd, checked)
+            )
+        button_control.set_state(is_on)
 
 
 def update_mode_buttons(active_mode: int, labels: list[str]) -> None:
@@ -364,8 +460,11 @@ def poll_and_update() -> None:
 
     lights_data = []
     controls_data = [0, mode_labels]
+    button_data = None
     if isinstance(msg, list) and len(msg) >= 5:
         tick, ws, signals, lights_data, controls_data = msg[:5]
+        if len(msg) > 5:
+            button_data = msg[5]
     else:
         tick, ws, signals = msg
 
@@ -382,6 +481,9 @@ def poll_and_update() -> None:
             active_mode = 0
         labels = controls_data[1] if isinstance(controls_data[1], list) else mode_labels
         update_mode_buttons(active_mode, labels)
+
+    if button_data is not None:
+        update_onoff_button(button_data)
 
     x_axis = list(range(window_size))
 
