@@ -28,6 +28,7 @@ typedef enum r {
 } IECReturnCode;
 
 using GooseCallback = std::function<void(const std::string&, void*)>;
+using ReportCallback = IecReportCallback;
 
 
 // typedef GooseCallback (*GooseCallback)(std::string& ref, void* value);
@@ -123,6 +124,15 @@ public:
     *                 (first data-set element, int32-backed).
      * @return IECReturnCode IEC_OK on success, IEC_ERROR on failure.
      */
+
+    IECReturnCode startPeriodicReport(int turbineId,
+                                      const std::string& rcbReference,
+                                      const std::string& dataSetReference,
+                                      uint32_t integrityPeriodMs,
+                                      const std::vector<std::string>& fallbackDataReferences,
+                                      ReportCallback callback);
+
+    void stopPeriodicReport(int turbineId, const std::string& rcbReference);
 
     IECReturnCode txSetpoint(int turbineId, float powerSetpoint, float yawSetpoint);
     /**
@@ -241,8 +251,17 @@ public:
      * @param maxEntries Maximum number of lines to print.
      */
 
+    IecDataSetAndReportControlBlocks getTurbineDataSetsAndReportControlBlocks(int turbineId);
+    /**
+     * @brief Retrieve data set and report control block references from a turbine.
+     *
+     * Data set references are LD/LN$DataSetName. Report control block
+     * references are LD/LN$BR$Name and LD/LN$RP$Name.
+     */
+
+    void printTurbineDataSetsAndReportControlBlocks(int turbineId);
+
 private:
     IEC61850Manager manager_;
     GooseReceiver gooseReceiver {nullptr};
 };
-

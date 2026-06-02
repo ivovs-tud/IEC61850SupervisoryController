@@ -23,6 +23,7 @@
 #include <chrono>
 #include <iostream>
 #include <algorithm>
+#include <memory>
 #include <thread>
 #include <vector>
 
@@ -77,6 +78,92 @@ void collectDataAttributesRecursive(IedConnection connection,
 
     if (!hasChildren)
         output.push_back(objectReference);
+}
+
+std::string reportSubscriptionKey(int turbineId, const std::string& rcbReference)
+{
+    return std::to_string(turbineId) + "|" + rcbReference;
+}
+
+MmsValue* reportElementValue(MmsValue* values, int index)
+{
+    if (!values)
+        return nullptr;
+
+    const MmsType type = MmsValue_getType(values);
+    if (type == MMS_ARRAY || type == MMS_STRUCTURE)
+        return MmsValue_getElement(values, index);
+
+    return (index == 0) ? values : nullptr;
+}
+
+void periodicReportHandler(void* parameter, ClientReport report)
+{
+    auto* sub = static_cast<IEC61850Manager::ReportSubscription*>(parameter);
+    if (!sub || !sub->callback)
+        return;
+
+    MmsValue* values = ClientReport_getDataSetValues(report);
+    if (!values)
+        return;
+
+    std::vector<IecReportValue> decoded;
+    const uint32_t valueCount = (MmsValue_getType(values) == MMS_ARRAY || MmsValue_getType(values) == MMS_STRUCTURE)
+        ? MmsValue_getArraySize(values)
+        : 1;
+    decoded.reserve(valueCount);
+
+    const bool hasDataReference = ClientReport_hasDataReference(report);
+    const uint64_t timestampMs = ClientReport_hasTimestamp(report) ? ClientReport_getTimestamp(report) : getCurrentTimeMs();
+
+    for (uint32_t i = 0; i < valueCount; ++i) {
+        MmsValue* value = reportElementValue(values, static_cast<int>(i));
+        if (!value || MmsValue_getType(value) != MMS_FLOAT)
+            continue;
+
+        std::string reference;
+        if (hasDataReference) {
+            const char* reportRef = ClientReport_getDataReference(report, static_cast<int>(i));
+            if (reportRef)
+                reference = reportRef;
+        }
+        if (reference.empty() && i < sub->fallbackDataReferences.size())
+            reference = sub->fallbackDataReferences[i];
+
+        decoded.push_back({reference, MmsValue_toFloat(value), timestampMs});
+    }
+
+    if (!decoded.empty())
+        sub->callback(decoded);
+}
+
+void sortAndDeduplicate(std::vector<std::string>& values)
+{
+    std::sort(values.begin(), values.end());
+    values.erase(std::unique(values.begin(), values.end()), values.end());
+}
+
+void appendLogicalNodeDirectory(IedConnection connection,
+                                IedClientError& err,
+                                const std::string& lnRef,
+                                ACSIClass acsiClass,
+                                const std::string& separator,
+                                std::vector<std::string>& refs)
+{
+    LinkedList directory = IedConnection_getLogicalNodeDirectory(
+        connection, &err, lnRef.c_str(), acsiClass);
+
+    if ((err != IED_ERROR_OK) || (directory == NULL))
+        return;
+
+    LinkedList elem = directory;
+    while ((elem = LinkedList_getNext(elem)) != NULL) {
+        const char* name = static_cast<const char*>(LinkedList_getData(elem));
+        if (name != NULL)
+            refs.push_back(lnRef + separator + name);
+    }
+
+    LinkedList_destroy(directory);
 }
 
 } // anonymous namespace
@@ -249,6 +336,23 @@ std::string IEC61850Manager::buildGooseRef(int turbineId, const std::string& goC
         return tc.logicalDevice + "$" + goCbRef;
 
     return tc.iedName + "" + tc.logicalDevice + "/" + goCbRef;
+}
+
+std::string IEC61850Manager::buildReportRefLocked(const TurbineConnection& tc, const std::string& reference) const
+{
+    if (reference.empty())
+        return reference;
+
+    if (reference.find('/') != std::string::npos)
+        return reference;
+
+    if (tc.logicalDevice.empty())
+        return reference;
+
+    if (tc.iedName.empty())
+        return tc.logicalDevice + "/" + reference;
+
+    return tc.iedName + tc.logicalDevice + "/" + reference;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────
@@ -621,6 +725,132 @@ std::optional<std::string> IEC61850Manager::readString(int turbineId,
     return result;
 }
 
+bool IEC61850Manager::startPeriodicReport(int turbineId,
+                                          const std::string& rcbReference,
+                                          const std::string& dataSetReference,
+                                          uint32_t integrityPeriodMs,
+                                          const std::vector<std::string>& fallbackDataReferences,
+                                          IecReportCallback callback)
+{
+    if (rcbReference.empty() || integrityPeriodMs == 0 || !callback) {
+        IEC_ERR(turbineId, "startPeriodicReport() – invalid report configuration");
+        return false;
+    }
+
+    std::lock_guard<std::mutex> mapLock(mapMutex_);
+    auto it = turbines_.find(turbineId);
+    if (it == turbines_.end()) {
+        IEC_ERR(turbineId, "startPeriodicReport() – turbine not registered");
+        return false;
+    }
+
+    TurbineConnection& tc = it->second;
+    std::lock_guard<std::mutex> tcLock(tc.mutex);
+
+    if (!tc.intentConnected)
+        return false;
+
+    if (!ensureConnected(tc)) {
+        IEC_ERR(turbineId, "startPeriodicReport() – not connected");
+        return false;
+    }
+
+    const std::string fullRcbReference = buildReportRefLocked(tc, rcbReference);
+    const std::string fullDataSetReference = buildReportRefLocked(tc, dataSetReference);
+
+    auto subscription = std::make_unique<ReportSubscription>();
+    subscription->turbineId = turbineId;
+    subscription->rcbReference = fullRcbReference;
+    subscription->dataSetReference = fullDataSetReference;
+    subscription->fallbackDataReferences = fallbackDataReferences;
+    subscription->callback = std::move(callback);
+
+    IedClientError err = IED_ERROR_OK;
+    ClientReportControlBlock rcb = IedConnection_getRCBValues(tc.connection, &err, fullRcbReference.c_str(), nullptr);
+    if (err != IED_ERROR_OK || !rcb) {
+        IEC_ERR(turbineId, "startPeriodicReport() – failed to read RCB " << fullRcbReference << " (err=" << err << ")");
+        return false;
+    }
+
+    if (ClientReportControlBlock_getRptEna(rcb)) {
+        ClientReportControlBlock_setRptEna(rcb, false);
+        IedConnection_setRCBValues(tc.connection, &err, rcb, RCB_ELEMENT_RPT_ENA, true);
+        if (err != IED_ERROR_OK)
+            IEC_ERR(turbineId, "startPeriodicReport() – failed to disable RCB before reconfigure (err=" << err << ")");
+    }
+
+    uint32_t mask = RCB_ELEMENT_TRG_OPS | RCB_ELEMENT_INTG_PD | RCB_ELEMENT_OPT_FLDS;
+
+    int trgOps = ClientReportControlBlock_getTrgOps(rcb);
+    trgOps |= TRG_OPT_INTEGRITY;
+    ClientReportControlBlock_setTrgOps(rcb, trgOps);
+    ClientReportControlBlock_setIntgPd(rcb, integrityPeriodMs);
+
+    int optFlds = ClientReportControlBlock_getOptFlds(rcb);
+    optFlds |= RPT_OPT_DATA_REFERENCE;
+    ClientReportControlBlock_setOptFlds(rcb, optFlds);
+
+    if (!fullDataSetReference.empty()) {
+        ClientReportControlBlock_setDataSetReference(rcb, fullDataSetReference.c_str());
+        mask |= RCB_ELEMENT_DATSET;
+    }
+
+    IedConnection_setRCBValues(tc.connection, &err, rcb, mask, true);
+    if (err != IED_ERROR_OK) {
+        IEC_ERR(turbineId, "startPeriodicReport() – failed to configure RCB " << fullRcbReference << " (err=" << err << ")");
+        ClientReportControlBlock_destroy(rcb);
+        return false;
+    }
+
+    ReportSubscription* subscriptionPtr = subscription.get();
+    IedConnection_installReportHandler(tc.connection, fullRcbReference.c_str(),
+                                       ClientReportControlBlock_getRptId(rcb),
+                                       periodicReportHandler,
+                                       subscriptionPtr);
+
+    ClientReportControlBlock_setRptEna(rcb, true);
+    IedConnection_setRCBValues(tc.connection, &err, rcb, RCB_ELEMENT_RPT_ENA, true);
+    ClientReportControlBlock_destroy(rcb);
+
+    if (err != IED_ERROR_OK) {
+        IEC_ERR(turbineId, "startPeriodicReport() – failed to enable RCB " << fullRcbReference << " (err=" << err << ")");
+        IedConnection_uninstallReportHandler(tc.connection, fullRcbReference.c_str());
+        return false;
+    }
+
+    reportSubscriptions_[reportSubscriptionKey(turbineId, fullRcbReference)] = std::move(subscription);
+    IECMGR_ST(turbineId, "enabled periodic report " << fullRcbReference << " every " << integrityPeriodMs << " ms");
+    return true;
+}
+
+void IEC61850Manager::stopPeriodicReport(int turbineId, const std::string& rcbReference)
+{
+    if (rcbReference.empty())
+        return;
+
+    std::lock_guard<std::mutex> mapLock(mapMutex_);
+    auto it = turbines_.find(turbineId);
+    if (it == turbines_.end())
+        return;
+
+    TurbineConnection& tc = it->second;
+    std::lock_guard<std::mutex> tcLock(tc.mutex);
+    const std::string fullRcbReference = buildReportRefLocked(tc, rcbReference);
+
+    if (tc.connection && IedConnection_getState(tc.connection) == IED_STATE_CONNECTED) {
+        IedClientError err = IED_ERROR_OK;
+        ClientReportControlBlock rcb = IedConnection_getRCBValues(tc.connection, &err, fullRcbReference.c_str(), nullptr);
+        if (err == IED_ERROR_OK && rcb) {
+            ClientReportControlBlock_setRptEna(rcb, false);
+            IedConnection_setRCBValues(tc.connection, &err, rcb, RCB_ELEMENT_RPT_ENA, true);
+            ClientReportControlBlock_destroy(rcb);
+        }
+        IedConnection_uninstallReportHandler(tc.connection, fullRcbReference.c_str());
+    }
+
+    reportSubscriptions_.erase(reportSubscriptionKey(turbineId, fullRcbReference));
+}
+
 // ── Model interrogation ─────────────────────────────────────────────────────────
 
 std::map<std::string, bool> IEC61850Manager::checkSupported(
@@ -752,9 +982,73 @@ std::vector<std::string> IEC61850Manager::getDataModelReferences(int turbineId)
 
     LinkedList_destroy(ldList);
 
-    std::sort(refs.begin(), refs.end());
-    refs.erase(std::unique(refs.begin(), refs.end()), refs.end());
+    sortAndDeduplicate(refs);
     return refs;
+}
+
+IecDataSetAndReportControlBlocks IEC61850Manager::getDataSetsAndReportControlBlocks(int turbineId)
+{
+    IecDataSetAndReportControlBlocks result;
+
+    std::lock_guard<std::mutex> mapLock(mapMutex_);
+    auto it = turbines_.find(turbineId);
+    if (it == turbines_.end()) {
+        IEC_ERR(turbineId, "getDataSetsAndReportControlBlocks() – turbine not registered");
+        return result;
+    }
+
+    TurbineConnection& tc = it->second;
+    std::lock_guard<std::mutex> tcLock(tc.mutex);
+
+    if (!tc.intentConnected) {
+        IEC_ERR(turbineId, "getDataSetsAndReportControlBlocks() – turbine not intentionally connected");
+        return result;
+    }
+
+    if (!ensureConnected(tc)) {
+        IEC_ERR(turbineId, "getDataSetsAndReportControlBlocks() – not connected");
+        return result;
+    }
+
+    IedClientError err = IED_ERROR_OK;
+    LinkedList ldList = IedConnection_getServerDirectory(tc.connection, &err, false);
+    if ((err != IED_ERROR_OK) || (ldList == NULL)) {
+        IEC_ERR(turbineId, "getDataSetsAndReportControlBlocks() – failed to get logical devices (err=" << err << ")");
+        return result;
+    }
+
+    LinkedList ldElem = ldList;
+    while ((ldElem = LinkedList_getNext(ldElem)) != NULL) {
+        const char* ldName = static_cast<const char*>(LinkedList_getData(ldElem));
+        if (ldName == NULL)
+            continue;
+
+        LinkedList lnList = IedConnection_getLogicalDeviceDirectory(tc.connection, &err, ldName);
+        if ((err != IED_ERROR_OK) || (lnList == NULL))
+            continue;
+
+        LinkedList lnElem = lnList;
+        while ((lnElem = LinkedList_getNext(lnElem)) != NULL) {
+            const char* lnName = static_cast<const char*>(LinkedList_getData(lnElem));
+            if (lnName == NULL)
+                continue;
+
+            const std::string lnRef = std::string(ldName) + "/" + lnName;
+            appendLogicalNodeDirectory(tc.connection, err, lnRef, ACSI_CLASS_DATA_SET, "$", result.dataSets);
+            appendLogicalNodeDirectory(tc.connection, err, lnRef, ACSI_CLASS_BRCB, "$BR$", result.bufferedReportControlBlocks);
+            appendLogicalNodeDirectory(tc.connection, err, lnRef, ACSI_CLASS_URCB, "$RP$", result.unbufferedReportControlBlocks);
+        }
+
+        LinkedList_destroy(lnList);
+    }
+
+    LinkedList_destroy(ldList);
+
+    sortAndDeduplicate(result.dataSets);
+    sortAndDeduplicate(result.bufferedReportControlBlocks);
+    sortAndDeduplicate(result.unbufferedReportControlBlocks);
+
+    return result;
 }
 
 void IEC61850Manager::printDataModel(int turbineId, int maxEntries)
@@ -773,4 +1067,21 @@ void IEC61850Manager::printDataModel(int turbineId, int maxEntries)
     IEC_DEBUG(turbineId, "Data model entries: showing " << limit << " of " << refs.size());
     for (std::size_t i = 0; i < limit; ++i)
         IEC_DEBUG(turbineId, "  [" << i << "] " << refs[i]);
+}
+
+void IEC61850Manager::printDataSetsAndReportControlBlocks(int turbineId)
+{
+    IecDataSetAndReportControlBlocks refs = getDataSetsAndReportControlBlocks(turbineId);
+
+    IEC_DEBUG(turbineId, "Data sets: " << refs.dataSets.size());
+    for (std::size_t i = 0; i < refs.dataSets.size(); ++i)
+        IEC_DEBUG(turbineId, "  DS[" << i << "] " << refs.dataSets[i]);
+
+    IEC_DEBUG(turbineId, "Buffered report control blocks: " << refs.bufferedReportControlBlocks.size());
+    for (std::size_t i = 0; i < refs.bufferedReportControlBlocks.size(); ++i)
+        IEC_DEBUG(turbineId, "  BRCB[" << i << "] " << refs.bufferedReportControlBlocks[i]);
+
+    IEC_DEBUG(turbineId, "Unbuffered report control blocks: " << refs.unbufferedReportControlBlocks.size());
+    for (std::size_t i = 0; i < refs.unbufferedReportControlBlocks.size(); ++i)
+        IEC_DEBUG(turbineId, "  URCB[" << i << "] " << refs.unbufferedReportControlBlocks[i]);
 }

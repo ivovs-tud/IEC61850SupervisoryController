@@ -51,6 +51,8 @@ void libiec_wrapper::start() {
         auto& gds = GlobalDataStructure::instance().data();
 		gds.systemRunning = true;
     }
+    printTurbineDataModel(1, 500);
+    printTurbineDataSetsAndReportControlBlocks(1);
 
     // GooseReceiver_start(gooseReceiver);
     // if (!GooseReceiver_isRunning(gooseReceiver)) {
@@ -135,6 +137,27 @@ IECReturnCode libiec_wrapper::startGooseSubscription(int turbineId, const std::s
     LIBIEC_LOG_V1("Started GOOSE subscription for turbine " << turbineId << ", ref: " << fullRef);
 
     return IEC_OK;
+}
+
+IECReturnCode libiec_wrapper::startPeriodicReport(int turbineId,
+                                                  const std::string& rcbReference,
+                                                  const std::string& dataSetReference,
+                                                  uint32_t integrityPeriodMs,
+                                                  const std::vector<std::string>& fallbackDataReferences,
+                                                  ReportCallback callback)
+{
+    const bool ok = manager_.startPeriodicReport(turbineId,
+                                                 rcbReference,
+                                                 dataSetReference,
+                                                 integrityPeriodMs,
+                                                 fallbackDataReferences,
+                                                 std::move(callback));
+    return ok ? IEC_OK : IEC_ERROR;
+}
+
+void libiec_wrapper::stopPeriodicReport(int turbineId, const std::string& rcbReference)
+{
+    manager_.stopPeriodicReport(turbineId, rcbReference);
 }
 
 // ── txSetpoint ───────────────────────────────────────────────────────────
@@ -266,4 +289,14 @@ void libiec_wrapper::printTurbineDataModel(int turbineId, int maxEntries)
 std::vector<std::string> libiec_wrapper::getTurbineDataModel(int turbineId)
 {
     return manager_.getDataModelReferences(turbineId);
+}
+
+IecDataSetAndReportControlBlocks libiec_wrapper::getTurbineDataSetsAndReportControlBlocks(int turbineId)
+{
+    return manager_.getDataSetsAndReportControlBlocks(turbineId);
+}
+
+void libiec_wrapper::printTurbineDataSetsAndReportControlBlocks(int turbineId)
+{
+    manager_.printDataSetsAndReportControlBlocks(turbineId);
 }
