@@ -99,7 +99,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 std::vector<double> v;
                 v.reserve(static_cast<std::size_t>(n * 2));
                 for (int i = 0; i < n; ++i) {
-                    v.push_back(d.lastYawOffset[i]);
+                    v.push_back(d.glob_wd_i - d.lastYawOffset[i]);
                     v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));
                 }
                 return v;
@@ -233,7 +233,7 @@ void HmiTask::handleCommands()
 
                 std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
                 GlobalData& d = GlobalDataStructure::instance().data();
-                std::fill(d.TurbineController.begin(), d.TurbineController.end(), requestedMode);
+                std::fill(d.TurbineController.begin(), d.TurbineController.end(), requestedMode+1);
 
                 if (requestedMode == 0) d.statusMessage = "Mode: ROSCO";
                 if (requestedMode == 1) d.statusMessage = "Mode: Lio-Downregulation";
@@ -250,6 +250,11 @@ void HmiTask::handleCommands()
                 if (buttonName == "Yaw Steering") {
                     d.yawSteeringEnabled = (buttonState != 0);
                     d.statusMessage = std::string("Yaw Steering: ") + (d.yawSteeringEnabled ? "On" : "Off");
+                }
+                else if (buttonName == "Enable Turbines") {
+                    uint32_t enableValue = (buttonState != 0) ? 1 : 0;
+                    std::fill(d.enableTurbine.begin(), d.enableTurbine.end(), enableValue);
+                    d.statusMessage = std::string("Enable Turbines: ") + (buttonState != 0 ? "On" : "Off");
                 }
             }
         } catch (const std::exception&) {
@@ -272,6 +277,7 @@ void HmiTask::execute()
     bool systemRunning = false;
     bool yawSteeringEnabled = false;
     std::string yawSteeringCommandName;
+    bool enableTurbinesActive = false;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         const GlobalData& d = GlobalDataStructure::instance().data();
@@ -286,6 +292,7 @@ void HmiTask::execute()
         systemRunning = d.systemRunning;
         yawSteeringEnabled = d.yawSteeringEnabled;
         yawSteeringCommandName = d.yawSteeringCommandName;
+        enableTurbinesActive = !d.enableTurbine.empty() && d.enableTurbine[0] != 0;
     }
 
     ++tickCount_;
@@ -301,7 +308,7 @@ void HmiTask::execute()
     msgpack::sbuffer buf;
     msgpack::packer<msgpack::sbuffer> pk(buf);
 
-    pk.pack_array(6);
+    pk.pack_array(7);
     pk.pack(tickCount_);
     pk.pack(static_cast<int32_t>(config_.windowSize));
 
@@ -329,12 +336,16 @@ void HmiTask::execute()
     pk.pack_array(3); pk.pack("Wind Direction Consistency5");    pk.pack(alarmHorWdDir);  pk.pack("red");
 
     pk.pack_array(2);
-    pk.pack(operationMode);
+    pk.pack(operationMode - 1);
     pk.pack(modeLabels);
 
     pk.pack_array(2);
     pk.pack(static_cast<int>(yawSteeringEnabled));
     pk.pack(yawSteeringCommandName);
+
+    pk.pack_array(2);
+    pk.pack(static_cast<int>(enableTurbinesActive));
+    pk.pack("Enable Turbines");
 
     zmq::message_t msg(buf.data(), buf.size());
     pubSocket_->send(msg, zmq::send_flags::dontwait);

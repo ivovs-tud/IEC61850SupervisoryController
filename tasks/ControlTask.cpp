@@ -41,9 +41,9 @@ void ControlTask::execute()
     std::vector<float> power_sp = std::vector<float>(numTurbines_, -1.0);
     std::vector<int> yaw_sp = std::vector<int>(numTurbines_, 0);
     
-    if (powerSetpoint < 0.0f) {
+    if (powerSetpoint < 0.0f && GlobalDataStructure::instance().data().yawSteeringEnabled) {
         // This means power maximization, i.e. yaw steering --> Use LUT and round to nearest int
-        
+        yaw_sp = std::vector<int>();
         const auto yaw_sp_float = yawLut_.lookup(glob_ws_i, glob_wd_i);
         for (const float value : yaw_sp_float) {
             yaw_sp.push_back(static_cast<int>(std::lround(value)));
