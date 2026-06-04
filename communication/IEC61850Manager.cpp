@@ -97,6 +97,41 @@ MmsValue* reportElementValue(MmsValue* values, int index)
     return (index == 0) ? values : nullptr;
 }
 
+void collectReportFloatValues(MmsValue* value,
+                              const std::string& dataReference,
+                              const IEC61850Manager::ReportSubscription& subscription,
+                              uint64_t timestampMs,
+                              uint32_t& fallbackIndex,
+                              std::vector<IecReportValue>& decoded)
+{
+    if (!value)
+        return;
+
+    const MmsType type = MmsValue_getType(value);
+
+    if (type == MMS_FLOAT) {
+        std::string reference = dataReference;
+        if (fallbackIndex < subscription.fallbackDataReferences.size())
+            reference = subscription.fallbackDataReferences[fallbackIndex];
+
+        decoded.push_back({reference, MmsValue_toFloat(value), timestampMs});
+        ++fallbackIndex;
+        return;
+    }
+
+    if (type != MMS_ARRAY && type != MMS_STRUCTURE)
+        return;
+
+    const uint32_t childCount = MmsValue_getArraySize(value);
+    for (uint32_t i = 0; i < childCount; ++i)
+        collectReportFloatValues(MmsValue_getElement(value, static_cast<int>(i)),
+                                 dataReference,
+                                 subscription,
+                                 timestampMs,
+                                 fallbackIndex,
+                                 decoded);
+}
+
 void periodicReportHandler(void* parameter, ClientReport report)
 {
     auto* sub = static_cast<IEC61850Manager::ReportSubscription*>(parameter);
@@ -115,11 +150,10 @@ void periodicReportHandler(void* parameter, ClientReport report)
 
     const bool hasDataReference = ClientReport_hasDataReference(report);
     const uint64_t timestampMs = ClientReport_hasTimestamp(report) ? ClientReport_getTimestamp(report) : getCurrentTimeMs();
+    uint32_t fallbackIndex = 0;
 
     for (uint32_t i = 0; i < valueCount; ++i) {
         MmsValue* value = reportElementValue(values, static_cast<int>(i));
-        if (!value || MmsValue_getType(value) != MMS_FLOAT)
-            continue;
 
         std::string reference;
         if (hasDataReference) {
@@ -127,14 +161,14 @@ void periodicReportHandler(void* parameter, ClientReport report)
             if (reportRef)
                 reference = reportRef;
         }
-        if (reference.empty() && i < sub->fallbackDataReferences.size())
-            reference = sub->fallbackDataReferences[i];
 
-        decoded.push_back({reference, MmsValue_toFloat(value), timestampMs});
+        collectReportFloatValues(value, reference, *sub, timestampMs, fallbackIndex, decoded);
     }
 
     if (!decoded.empty())
         sub->callback(decoded);
+    else
+        IECMGR_LOG_V2(sub->turbineId, "received report " << sub->rcbReference << " but decoded no float values");
 }
 
 void sortAndDeduplicate(std::vector<std::string>& values)
@@ -780,9 +814,14 @@ bool IEC61850Manager::startPeriodicReport(int turbineId,
     }
 
     uint32_t mask = RCB_ELEMENT_TRG_OPS | RCB_ELEMENT_INTG_PD | RCB_ELEMENT_OPT_FLDS;
+    if (!ClientReportControlBlock_isBuffered(rcb)) {
+        ClientReportControlBlock_setResv(rcb, true);
+        mask |= RCB_ELEMENT_RESV;
+    }
 
     int trgOps = ClientReportControlBlock_getTrgOps(rcb);
     trgOps |= TRG_OPT_INTEGRITY;
+    trgOps |= TRG_OPT_GI;
     ClientReportControlBlock_setTrgOps(rcb, trgOps);
     ClientReportControlBlock_setIntgPd(rcb, integrityPeriodMs);
 
@@ -803,23 +842,33 @@ bool IEC61850Manager::startPeriodicReport(int turbineId,
     }
 
     ReportSubscription* subscriptionPtr = subscription.get();
+    const char* rptIdRaw = ClientReportControlBlock_getRptId(rcb);
+    const std::string rptId = rptIdRaw ? rptIdRaw : "";
     IedConnection_installReportHandler(tc.connection, fullRcbReference.c_str(),
-                                       ClientReportControlBlock_getRptId(rcb),
+                                       rptId.empty() ? nullptr : rptId.c_str(),
                                        periodicReportHandler,
                                        subscriptionPtr);
 
     ClientReportControlBlock_setRptEna(rcb, true);
     IedConnection_setRCBValues(tc.connection, &err, rcb, RCB_ELEMENT_RPT_ENA, true);
-    ClientReportControlBlock_destroy(rcb);
 
     if (err != IED_ERROR_OK) {
         IEC_ERR(turbineId, "startPeriodicReport() – failed to enable RCB " << fullRcbReference << " (err=" << err << ")");
         IedConnection_uninstallReportHandler(tc.connection, fullRcbReference.c_str());
+        ClientReportControlBlock_destroy(rcb);
         return false;
     }
 
+    ClientReportControlBlock_setGI(rcb, true);
+    IedConnection_setRCBValues(tc.connection, &err, rcb, RCB_ELEMENT_GI, true);
+    if (err != IED_ERROR_OK)
+        IEC_ERR(turbineId, "startPeriodicReport() – enabled RCB but failed to trigger GI for " << fullRcbReference << " (err=" << err << ")");
+
+    ClientReportControlBlock_destroy(rcb);
+
     reportSubscriptions_[reportSubscriptionKey(turbineId, fullRcbReference)] = std::move(subscription);
-    IECMGR_ST(turbineId, "enabled periodic report " << fullRcbReference << " every " << integrityPeriodMs << " ms");
+    IECMGR_ST(turbineId, "enabled periodic report " << fullRcbReference << " every " << integrityPeriodMs
+                         << " ms (RptID=" << (rptId.empty() ? "<default>" : rptId) << ")");
     return true;
 }
 
@@ -842,7 +891,12 @@ void IEC61850Manager::stopPeriodicReport(int turbineId, const std::string& rcbRe
         ClientReportControlBlock rcb = IedConnection_getRCBValues(tc.connection, &err, fullRcbReference.c_str(), nullptr);
         if (err == IED_ERROR_OK && rcb) {
             ClientReportControlBlock_setRptEna(rcb, false);
-            IedConnection_setRCBValues(tc.connection, &err, rcb, RCB_ELEMENT_RPT_ENA, true);
+            uint32_t mask = RCB_ELEMENT_RPT_ENA;
+            if (!ClientReportControlBlock_isBuffered(rcb)) {
+                ClientReportControlBlock_setResv(rcb, false);
+                mask |= RCB_ELEMENT_RESV;
+            }
+            IedConnection_setRCBValues(tc.connection, &err, rcb, mask, true);
             ClientReportControlBlock_destroy(rcb);
         }
         IedConnection_uninstallReportHandler(tc.connection, fullRcbReference.c_str());
