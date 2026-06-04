@@ -99,7 +99,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 std::vector<double> v;
                 v.reserve(static_cast<std::size_t>(n * 2));
                 for (int i = 0; i < n; ++i) {
-                    v.push_back(d.glob_wd_i - d.lastYawOffset[i]);
+                    v.push_back(d.lastYawOffset[i]);
                     v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));
                 }
                 return v;
