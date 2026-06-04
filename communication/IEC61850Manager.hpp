@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -26,6 +27,22 @@ typedef enum {
     IEC_LINK_CONNECTING   =  2,
     IEC_LINK_CONNECTED    =  3,
 } IecConnectionStatus;
+
+struct IecReportValue
+{
+    std::string reference;
+    float value {0.0f};
+    uint64_t timestampMs {0};
+};
+
+struct IecDataSetAndReportControlBlocks
+{
+    std::vector<std::string> dataSets;
+    std::vector<std::string> bufferedReportControlBlocks;
+    std::vector<std::string> unbufferedReportControlBlocks;
+};
+
+using IecReportCallback = std::function<void(const std::vector<IecReportValue>& values)>;
 
 // ---------------------------------------------------------------------------
 // TurbineConnection – per-turbine state held inside IEC61850Manager.
@@ -191,6 +208,28 @@ public:
                                           int fc);
     /** @brief Read a string from a turbine data attribute. */
 
+    bool startPeriodicReport(int turbineId,
+                             const std::string& rcbReference,
+                             const std::string& dataSetReference,
+                             uint32_t integrityPeriodMs,
+                             const std::vector<std::string>& fallbackDataReferences,
+                             IecReportCallback callback);
+    /**
+     * @brief Configure and enable an IEC 61850 periodic integrity report.
+     *
+     * @param rcbReference RCB reference in IEC 61850 format
+     *        (e.g. LD0/LLN0$RP$ReportCbName). Relative RCB references are
+     *        expanded using the turbine IED/LD metadata.
+     * @param dataSetReference Data-set reference in IEC 61850 format
+     *        (e.g. LD0/LLN0$DataSetName). Leave empty to preserve the
+     *        server's existing RCB data-set binding.
+     * @param fallbackDataReferences Data references used by the callback when
+     *        reports do not include data-reference optional fields.
+     */
+
+    void stopPeriodicReport(int turbineId, const std::string& rcbReference);
+    /** @brief Disable a previously enabled periodic report and remove its handler. */
+
     std::string buildRef(int turbineId, const std::string& daReference);
     /**
      * @brief Build a full MMS reference from per-turbine IED/LD metadata.
@@ -239,11 +278,32 @@ public:
      * and deduplicated/sorted.
      */
 
+    IecDataSetAndReportControlBlocks getDataSetsAndReportControlBlocks(int turbineId);
+    /**
+     * @brief Retrieve all data set and report control block references exposed by a turbine.
+     *
+     * Data set references use LD/LN$DataSetName. Report control block references
+     * use LD/LN$BR$Name for buffered RCBs and LD/LN$RP$Name for unbuffered RCBs.
+     */
+
     void printDataModel(int turbineId, int maxEntries = 200);
     /** @brief Print up to maxEntries from the flattened IED data model list. */
 
+    void printDataSetsAndReportControlBlocks(int turbineId);
+    /** @brief Print all data set and report control block references. */
+
+    struct ReportSubscription {
+        int turbineId {0};
+        std::string rcbReference;
+        std::string dataSetReference;
+        std::vector<std::string> fallbackDataReferences;
+        IecReportCallback callback;
+    };
+
 private:
     // ── Internal helpers ────────────────────────────────────────────────────
+
+    std::string buildReportRefLocked(const TurbineConnection& tc, const std::string& reference) const;
 
     bool ensureConnected(TurbineConnection& tc);
     /**
@@ -294,5 +354,6 @@ private:
     // The map itself is protected by mapMutex_ for insertions; individual
     // turbine entries are protected by their own TurbineConnection::mutex.
     std::map<int, TurbineConnection> turbines_;
+    std::map<std::string, std::unique_ptr<ReportSubscription>> reportSubscriptions_;
     std::mutex                       mapMutex_;
 };

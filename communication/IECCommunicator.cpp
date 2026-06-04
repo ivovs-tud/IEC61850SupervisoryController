@@ -4,13 +4,14 @@
 #include "common/ConsoleColors.hpp"
 
 #include <cstring>
+#include <algorithm>
 
 const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
-    { "V",       "m/s", &libiec_wrapper::rxWindSpeed,    AttackInterface::TX_WS,  &GlobalData::lastWS,     &GlobalData::wsHistory,    &GlobalData::lastWS_t,     500 },
-    { "D",       "deg", &libiec_wrapper::rxWindDirection, AttackInterface::TX_WD,  &GlobalData::lastWD,     &GlobalData::wdHistory,    &GlobalData::lastWD_t,     500 },
-    { "YawMeas", "deg", &libiec_wrapper::rxYawOffset,    AttackInterface::TX_YAW, &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 500 },
-    { "RSpd",    "RPM", &libiec_wrapper::rxRotorSpeed,   AttackInterface::TX_RPM, &GlobalData::lastRPM,    &GlobalData::rpmHistory,   &GlobalData::lastRPM_t,    500 },
-    { "W",       "W",   &libiec_wrapper::rxPowerGen,     AttackInterface::TX_PW,  &GlobalData::lastPower,   &GlobalData::powerHistory, &GlobalData::lastPower_t,   500 },
+    { "V",       "m/s", IEC_STRINGS::WS_MEAS,    "WMET1$MX$HorWdSpd", &libiec_wrapper::rxWindSpeed,     AttackInterface::TX_WS,  &GlobalData::lastWS,        &GlobalData::wsHistory,        &GlobalData::lastWS_t,        500 },
+    { "D",       "deg", IEC_STRINGS::WD_MEAS,    "WMET1$MX$HorWdDir", &libiec_wrapper::rxWindDirection, AttackInterface::TX_WD,  &GlobalData::lastWD,        &GlobalData::wdHistory,        &GlobalData::lastWD_t,        500 },
+    { "YawMeas", "deg", IEC_STRINGS::YAW_MEAS,   "WYAW1$MX$YwAng",    &libiec_wrapper::rxYawOffset,     AttackInterface::TX_YAW, &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 500 },
+    { "RSpd",    "RPM", IEC_STRINGS::RPM_MEAS,   "WROT1$MX$RotSpd",   &libiec_wrapper::rxRotorSpeed,    AttackInterface::TX_RPM, &GlobalData::lastRPM,       &GlobalData::rpmHistory,       &GlobalData::lastRPM_t,       500 },
+    { "W",       "W",   IEC_STRINGS::POWER_MEAS, "WTUR1$MX$W",        &libiec_wrapper::rxPowerGen,      AttackInterface::TX_PW,  &GlobalData::lastPower,     &GlobalData::powerHistory,     &GlobalData::lastPower_t,     500 },
 };
 
 const IECCommunicator::TxDescriptor IECCommunicator::TX_DESCRIPTORS[] = {
@@ -33,13 +34,15 @@ IECCommunicator::IECCommunicator(const CommConfig& config,
       attackInterfaceMutex_(attackInterfaceMutex),
       lastActivityTime_(std::chrono::system_clock::now()),
       rxNextExecutionTimes_(std::size(RX_DESCRIPTORS), 0),
-      txNextExecutionTimes_(std::size(TX_DESCRIPTORS), 0)
+      txNextExecutionTimes_(std::size(TX_DESCRIPTORS), 0),
+      reportRxBuffer_(std::size(RX_DESCRIPTORS))
 {
 }
 
 void IECCommunicator::onStart()
 {
     iecStatus_.store(COMM_CONNECTING);
+    startReporting();
     iecStatus_.store(COMM_CONNECTED);
 }
 
@@ -55,16 +58,31 @@ void IECCommunicator::execute()
         }
     }
 
-    for (size_t i = 0; i < std::size(RX_DESCRIPTORS); ++i) {
-        if (currentTimeMs >= getRxNextExecutionTimeMs(i)) {
-            doRxMeasurement(static_cast<size_t>(i), RX_DESCRIPTORS[i]);
-            setRxNextExecutionTimeMs(i, currentTimeMs + RX_DESCRIPTORS[i].intervalMs);
+    if (reportingEnabled() && reportStarted_) {
+        std::vector<std::optional<BufferedRxMeasurement>> reportValues;
+        {
+            std::lock_guard<std::mutex> lock(reportRxBufferMutex_);
+            reportValues.swap(reportRxBuffer_);
+            reportRxBuffer_.resize(std::size(RX_DESCRIPTORS));
+        }
+
+        for (size_t i = 0; i < reportValues.size(); ++i) {
+            if (reportValues[i])
+                processRxMeasurement(RX_DESCRIPTORS[i], reportValues[i]->value, reportValues[i]->timestampMs);
+        }
+    } else {
+        for (size_t i = 0; i < std::size(RX_DESCRIPTORS); ++i) {
+            if (currentTimeMs >= getRxNextExecutionTimeMs(i)) {
+                doRxMeasurement(static_cast<size_t>(i), RX_DESCRIPTORS[i]);
+                setRxNextExecutionTimeMs(i, currentTimeMs + RX_DESCRIPTORS[i].intervalMs);
+            }
         }
     }
 }
 
 void IECCommunicator::onStop()
 {
+    stopReporting();
     iecStatus_.store(COMM_DISCONNECTED);
 }
 
@@ -140,8 +158,13 @@ void IECCommunicator::doRxMeasurement(size_t /*idx*/, const RxDescriptor& desc)
         return;
     }
 
+    processRxMeasurement(desc, value, getCurrentTimeMs());
+}
+
+void IECCommunicator::processRxMeasurement(const RxDescriptor& desc, float value, uint64_t timestampMs)
+{
     COMMTASK_LOG_V2("Received (pre-overwrite) " << desc.name << " from turbine " << turbineId_ << ": " << value << " " << desc.unit);
-    std::string logMsg = "[WT" + std::to_string(turbineId_) + "→SC]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
+    std::string logMsg = "[WT" + std::to_string(turbineId_) + "→SC]" + std::to_string(timestampMs) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
 
     {
@@ -167,8 +190,98 @@ void IECCommunicator::doRxMeasurement(size_t /*idx*/, const RxDescriptor& desc)
         auto& gds = GlobalDataStructure::instance().data();
         (gds.*desc.lastField)[turbineId_ - 1] = value;
         (gds.*desc.historyField)[turbineId_ - 1].push_back(value);
-        (gds.*desc.lastTimestamp)[turbineId_ - 1] = getCurrentTimeMs();
+        (gds.*desc.lastTimestamp)[turbineId_ - 1] = timestampMs;
     }
+}
+
+bool IECCommunicator::reportingEnabled() const
+{
+    return config_.mms.reportingEnabled &&
+           !config_.mms.reportControlBlockReference.empty();
+}
+
+void IECCommunicator::startReporting()
+{
+    if (!reportingEnabled())
+        return;
+
+    const uint32_t periodMs = static_cast<uint32_t>(config_.mms.reportTriggerPeriod.count());
+    if (periodMs == 0) {
+        COMMTASK_ERR("IEC reporting enabled but reportTriggerPeriod is zero");
+        return;
+    }
+
+    auto callback = [this](const std::vector<IecReportValue>& values) {
+        handleReportValues(values);
+    };
+
+    if (iecWrapper_.startPeriodicReport(turbineId_,
+                                        config_.mms.reportControlBlockReference,
+                                        config_.mms.reportDataSetReference,
+                                        periodMs,
+                                        reportFallbackReferences(),
+                                        callback) == IEC_OK) {
+        reportStarted_ = true;
+        COMMTASK_ST("Enabled IEC report input for turbine " << turbineId_);
+    } else {
+        reportStarted_ = false;
+        COMMTASK_ERR("Failed to enable IEC report input for turbine " << turbineId_ << "; falling back to polling");
+    }
+}
+
+void IECCommunicator::stopReporting()
+{
+    if (!reportStarted_)
+        return;
+
+    iecWrapper_.stopPeriodicReport(turbineId_, config_.mms.reportControlBlockReference);
+    reportStarted_ = false;
+}
+
+void IECCommunicator::handleReportValues(const std::vector<IecReportValue>& values)
+{
+    std::lock_guard<std::mutex> lock(reportRxBufferMutex_);
+    for (const auto& value : values) {
+        const auto index = findRxDescriptorByReference(value.reference);
+        if (index) {
+            reportRxBuffer_[*index] = BufferedRxMeasurement{value.value, value.timestampMs};
+        } else {
+            COMMTASK_LOG_V2("Ignoring unmapped IEC report value for turbine " << turbineId_
+                            << ": ref=" << value.reference << ", value=" << value.value);
+        }
+    }
+}
+
+std::vector<std::string> IECCommunicator::reportFallbackReferences() const
+{
+    if (!config_.mms.reportDataReferences.empty())
+        return config_.mms.reportDataReferences;
+
+    std::vector<std::string> refs;
+    refs.reserve(std::size(RX_DESCRIPTORS));
+    for (const auto& desc : RX_DESCRIPTORS)
+        refs.push_back(desc.daReference);
+    return refs;
+}
+
+std::optional<size_t> IECCommunicator::findRxDescriptorByReference(const std::string& reference) const
+{
+    auto endsWith = [](const std::string& value, const std::string& suffix) {
+        return value.size() >= suffix.size() &&
+               value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+
+    for (size_t i = 0; i < std::size(RX_DESCRIPTORS); ++i) {
+        if (reference == RX_DESCRIPTORS[i].name ||
+            reference == RX_DESCRIPTORS[i].daReference ||
+            reference == RX_DESCRIPTORS[i].reportReference ||
+            endsWith(reference, RX_DESCRIPTORS[i].daReference) ||
+            endsWith(reference, RX_DESCRIPTORS[i].reportReference)) {
+            return i;
+        }
+    }
+
+    return std::nullopt;
 }
 
 void IECCommunicator::doRxSecret()

@@ -37,6 +37,11 @@ struct CommConfig
     struct Mms {
         std::vector<TurbineEndpoint>  turbines;
         std::chrono::milliseconds     pollPeriod  {std::chrono::milliseconds(10)};
+        bool                          reportingEnabled {true};
+        std::chrono::milliseconds     reportTriggerPeriod {std::chrono::milliseconds(500)};
+        std::string                   reportDataSetReference {"WPPD1$ds01"};
+        std::string                   reportControlBlockReference {"WPPD1$RP$urcb01"};
+        std::vector<std::string>      reportDataReferences {};
     } mms;
 
     struct Goose {

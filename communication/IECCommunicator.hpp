@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 #include <chrono>
@@ -47,6 +48,8 @@ private:
     struct RxDescriptor {
         const char*                              name;
         const char*                              unit;
+        const char*                              daReference;
+        const char*                              reportReference;
         IECReturnCode (libiec_wrapper::*iecRead)(int, float&);
         AttackInterface::TxDataType              txDataType;
         std::vector<double> GlobalData::*        lastField;
@@ -72,7 +75,14 @@ private:
 
     void doTxSetpoint(size_t idx, const TxDescriptor& desc);
     void doRxMeasurement(size_t idx, const RxDescriptor& desc);
+    void processRxMeasurement(const RxDescriptor& desc, float value, uint64_t timestampMs);
     void doRxSecret();
+    bool reportingEnabled() const;
+    void startReporting();
+    void stopReporting();
+    void handleReportValues(const std::vector<IecReportValue>& values);
+    std::vector<std::string> reportFallbackReferences() const;
+    std::optional<size_t> findRxDescriptorByReference(const std::string& reference) const;
 
     const CommConfig& config_;
     int turbineId_;
@@ -85,6 +95,13 @@ private:
 
     std::vector<uint64_t> rxNextExecutionTimes_;    ///< next execution times for RX descriptors
     std::vector<uint64_t> txNextExecutionTimes_;    ///< next execution times for TX descriptors
+    struct BufferedRxMeasurement {
+        float value {0.0f};
+        uint64_t timestampMs {0};
+    };
+    std::vector<std::optional<BufferedRxMeasurement>> reportRxBuffer_;
+    std::mutex reportRxBufferMutex_;
+    bool reportStarted_ {false};
 
     static const RxDescriptor RX_DESCRIPTORS[];
     static const TxDescriptor TX_DESCRIPTORS[];
