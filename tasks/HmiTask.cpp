@@ -38,6 +38,12 @@ HmiConfig defaultHmiConfig(int numTurbines)
         return std::vector<double>(v.begin(), v.begin() + n);
     };
 
+    auto turbineLabelsWithGlobal = [turbineLabels]() {
+        std::vector<std::string> labels = turbineLabels();
+        labels.push_back("Global");
+        return labels;
+    };
+
     HmiConfig cfg;
     cfg.numTurbines        = numTurbines;
     cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
@@ -109,10 +115,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
         {
             "Farm Reference vs. Total Power", "W",
             {"Reference", "Total (Meas)", "Total (Received)"},
-            [numTurbines](const GlobalData& d) {
-                double total = 0.0;
-                int n = std::min(numTurbines, static_cast<int>(d.Power_i.size()));
-                //for (int i = 0; i < n; ++i) total += d.Power_i[i];
+            [](const GlobalData& d) {
                 return std::vector<double>{
 					static_cast<double>(d.RequestedReferencePower), d.Wtotal_meas.back(), d.TotalPower_recv
                 };
@@ -121,14 +124,24 @@ HmiConfig defaultHmiConfig(int numTurbines)
         // ── Per-turbine wind speed ────────────────────────────────────────────
         {
             "Wind Speed", "m/s",
-            turbineLabels(),
-            [safeSlice](const GlobalData& d) { return safeSlice(d.lastWS); }
+            turbineLabelsWithGlobal(),
+            [safeSlice](const GlobalData& d) {
+                std::vector<double> v = safeSlice(d.lastWS);
+                v.push_back(static_cast<double>(d.glob_ws_i));
+                return v;
+            },
+            std::make_pair(0.0, 25.0)
         },
         // ── Per-turbine wind direction ────────────────────────────────────────
         {
             "Wind Direction", "deg",
-            turbineLabels(),
-            [safeSlice](const GlobalData& d) { return safeSlice(d.lastWD); }
+            turbineLabelsWithGlobal(),
+            [safeSlice](const GlobalData& d) {
+                std::vector<double> v = safeSlice(d.lastWD);
+                v.push_back(static_cast<double>(d.glob_wd_i));
+                return v;
+            },
+            std::make_pair(0.0, 360.0)
         },
         // ── Per-turbine rotor speed ───────────────────────────────────────────
         {
@@ -301,7 +314,7 @@ void HmiTask::execute()
 
     // ── 2. Pack snapshot as msgpack and publish ───────────────────────────────
     // Format:
-    // [tick, window_size, [[name, unit, [labels], [values]], ...],
+    // [tick, window_size, [[name, unit, [labels], [values], [y_min, y_max]|nil], ...],
     //  [[light_name, is_on, color], ...], [operation_mode, [mode_labels...]]]
     // The Python subscriber maintains the rolling window; we send only the
     // latest values each cycle.
@@ -315,11 +328,18 @@ void HmiTask::execute()
     pk.pack_array(config_.signals.size());
     for (std::size_t i = 0; i < config_.signals.size(); ++i) {
         const auto& sig = config_.signals[i];
-        pk.pack_array(4);
+        pk.pack_array(5);
         pk.pack(sig.name);
         pk.pack(sig.unit);
         pk.pack(sig.lineLabels);
         pk.pack(snap[i]);
+        if (sig.defaultYRange) {
+            pk.pack_array(2);
+            pk.pack(sig.defaultYRange->first);
+            pk.pack(sig.defaultYRange->second);
+        } else {
+            pk.pack_nil();
+        }
     }
 
     const std::array<const char*, 3> modeLabels{{"ROSCO", "Lio\nDownregulation", "Safe\nShutdown"}};
@@ -355,5 +375,3 @@ void HmiTask::execute()
 // =============================================================================
 // HmiTask implementation
 // =============================================================================
-
-
