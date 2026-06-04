@@ -97,39 +97,35 @@ MmsValue* reportElementValue(MmsValue* values, int index)
     return (index == 0) ? values : nullptr;
 }
 
-void collectReportFloatValues(MmsValue* value,
-                              const std::string& dataReference,
-                              const IEC61850Manager::ReportSubscription& subscription,
-                              uint64_t timestampMs,
-                              uint32_t& fallbackIndex,
-                              std::vector<IecReportValue>& decoded)
+bool appendFirstReportFloatValue(MmsValue* value,
+                                 const std::string& dataReference,
+                                 uint64_t timestampMs,
+                                 std::vector<IecReportValue>& decoded)
 {
     if (!value)
-        return;
+        return false;
 
     const MmsType type = MmsValue_getType(value);
 
     if (type == MMS_FLOAT) {
-        std::string reference = dataReference;
-        if (fallbackIndex < subscription.fallbackDataReferences.size())
-            reference = subscription.fallbackDataReferences[fallbackIndex];
-
-        decoded.push_back({reference, MmsValue_toFloat(value), timestampMs});
-        ++fallbackIndex;
-        return;
+        decoded.push_back({dataReference, MmsValue_toFloat(value), timestampMs});
+        return true;
     }
 
     if (type != MMS_ARRAY && type != MMS_STRUCTURE)
-        return;
+        return false;
 
     const uint32_t childCount = MmsValue_getArraySize(value);
-    for (uint32_t i = 0; i < childCount; ++i)
-        collectReportFloatValues(MmsValue_getElement(value, static_cast<int>(i)),
-                                 dataReference,
-                                 subscription,
-                                 timestampMs,
-                                 fallbackIndex,
-                                 decoded);
+    for (uint32_t i = 0; i < childCount; ++i) {
+        if (appendFirstReportFloatValue(MmsValue_getElement(value, static_cast<int>(i)),
+                                        dataReference,
+                                        timestampMs,
+                                        decoded)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void periodicReportHandler(void* parameter, ClientReport report)
@@ -150,7 +146,6 @@ void periodicReportHandler(void* parameter, ClientReport report)
 
     const bool hasDataReference = ClientReport_hasDataReference(report);
     const uint64_t timestampMs = ClientReport_hasTimestamp(report) ? ClientReport_getTimestamp(report) : getCurrentTimeMs();
-    uint32_t fallbackIndex = 0;
 
     for (uint32_t i = 0; i < valueCount; ++i) {
         MmsValue* value = reportElementValue(values, static_cast<int>(i));
@@ -162,7 +157,10 @@ void periodicReportHandler(void* parameter, ClientReport report)
                 reference = reportRef;
         }
 
-        collectReportFloatValues(value, reference, *sub, timestampMs, fallbackIndex, decoded);
+        if (reference.empty() && i < sub->fallbackDataReferences.size())
+            reference = sub->fallbackDataReferences[i];
+
+        appendFirstReportFloatValue(value, reference, timestampMs, decoded);
     }
 
     if (!decoded.empty())

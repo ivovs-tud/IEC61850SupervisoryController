@@ -49,6 +49,7 @@ private:
         const char*                              name;
         const char*                              unit;
         const char*                              daReference;
+        const char*                              reportReference;
         IECReturnCode (libiec_wrapper::*iecRead)(int, float&);
         AttackInterface::TxDataType              txDataType;
         std::vector<double> GlobalData::*        lastField;

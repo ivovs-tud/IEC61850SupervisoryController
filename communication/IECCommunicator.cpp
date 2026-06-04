@@ -7,11 +7,11 @@
 #include <algorithm>
 
 const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
-    { "V",       "m/s", IEC_STRINGS::WS_MEAS,    &libiec_wrapper::rxWindSpeed,    AttackInterface::TX_WS,  &GlobalData::lastWS,     &GlobalData::wsHistory,    &GlobalData::lastWS_t,     500 },
-    { "D",       "deg", IEC_STRINGS::WD_MEAS,    &libiec_wrapper::rxWindDirection, AttackInterface::TX_WD,  &GlobalData::lastWD,     &GlobalData::wdHistory,    &GlobalData::lastWD_t,     500 },
-    { "YawMeas", "deg", IEC_STRINGS::YAW_MEAS,   &libiec_wrapper::rxYawOffset,    AttackInterface::TX_YAW, &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 500 },
-    { "RSpd",    "RPM", IEC_STRINGS::RPM_MEAS,   &libiec_wrapper::rxRotorSpeed,   AttackInterface::TX_RPM, &GlobalData::lastRPM,    &GlobalData::rpmHistory,   &GlobalData::lastRPM_t,    500 },
-    { "W",       "W",   IEC_STRINGS::POWER_MEAS, &libiec_wrapper::rxPowerGen,     AttackInterface::TX_PW,  &GlobalData::lastPower,   &GlobalData::powerHistory, &GlobalData::lastPower_t,   500 },
+    { "V",       "m/s", IEC_STRINGS::WS_MEAS,    "WMET1$MX$HorWdSpd", &libiec_wrapper::rxWindSpeed,     AttackInterface::TX_WS,  &GlobalData::lastWS,        &GlobalData::wsHistory,        &GlobalData::lastWS_t,        500 },
+    { "D",       "deg", IEC_STRINGS::WD_MEAS,    "WMET1$MX$HorWdDir", &libiec_wrapper::rxWindDirection, AttackInterface::TX_WD,  &GlobalData::lastWD,        &GlobalData::wdHistory,        &GlobalData::lastWD_t,        500 },
+    { "YawMeas", "deg", IEC_STRINGS::YAW_MEAS,   "WYAW1$MX$YwAng",    &libiec_wrapper::rxYawOffset,     AttackInterface::TX_YAW, &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 500 },
+    { "RSpd",    "RPM", IEC_STRINGS::RPM_MEAS,   "WROT1$MX$RotSpd",   &libiec_wrapper::rxRotorSpeed,    AttackInterface::TX_RPM, &GlobalData::lastRPM,       &GlobalData::rpmHistory,       &GlobalData::lastRPM_t,       500 },
+    { "W",       "W",   IEC_STRINGS::POWER_MEAS, "WTUR1$MX$W",        &libiec_wrapper::rxPowerGen,      AttackInterface::TX_PW,  &GlobalData::lastPower,     &GlobalData::powerHistory,     &GlobalData::lastPower_t,     500 },
 };
 
 const IECCommunicator::TxDescriptor IECCommunicator::TX_DESCRIPTORS[] = {
@@ -243,8 +243,12 @@ void IECCommunicator::handleReportValues(const std::vector<IecReportValue>& valu
     std::lock_guard<std::mutex> lock(reportRxBufferMutex_);
     for (const auto& value : values) {
         const auto index = findRxDescriptorByReference(value.reference);
-        if (index)
+        if (index) {
             reportRxBuffer_[*index] = BufferedRxMeasurement{value.value, value.timestampMs};
+        } else {
+            COMMTASK_LOG_V2("Ignoring unmapped IEC report value for turbine " << turbineId_
+                            << ": ref=" << value.reference << ", value=" << value.value);
+        }
     }
 }
 
@@ -270,7 +274,9 @@ std::optional<size_t> IECCommunicator::findRxDescriptorByReference(const std::st
     for (size_t i = 0; i < std::size(RX_DESCRIPTORS); ++i) {
         if (reference == RX_DESCRIPTORS[i].name ||
             reference == RX_DESCRIPTORS[i].daReference ||
-            endsWith(reference, RX_DESCRIPTORS[i].daReference)) {
+            reference == RX_DESCRIPTORS[i].reportReference ||
+            endsWith(reference, RX_DESCRIPTORS[i].daReference) ||
+            endsWith(reference, RX_DESCRIPTORS[i].reportReference)) {
             return i;
         }
     }
