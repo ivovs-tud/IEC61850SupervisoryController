@@ -257,7 +257,7 @@ IECReturnCode libiec_wrapper::txOpCommand(int turbineId, void* command) {
     if (cmdRead == std::nullopt) {
         return IEC_ERROR;    
     } else if (cmdRead == cmdValue) {
-        LIBIEC_ST("Turbine Op already set to " << cmdValue << ". Skipping write.");
+        LIBIEC_LOG_V2("Turbine Op already set to " << cmdValue << ". Skipping write.");
         return IEC_OK;
     }
 
