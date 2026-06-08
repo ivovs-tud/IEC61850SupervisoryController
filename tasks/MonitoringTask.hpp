@@ -27,6 +27,8 @@ protected:
     std::vector<uint64_t> last_yaw_measurement_time; // Timestamp of the last yaw measurement that was used for detection
     std::vector<float> orientation_state;
 
+    uint64_t last_reset_ms = 0;
+
 
     void execute() override;
 

@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <optional>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@
 //   lineLabels : display name for each line drawn in the subplot, e.g.
 //                {"T1","T2","T3"} for a per-turbine signal.
 //   accessor   : called every cycle; must return one value per label entry.
+//   defaultYRange : optional fixed y-axis range applied by the plotter.
 // ---------------------------------------------------------------------------
 struct HmiSignalDef
 {
@@ -23,6 +25,7 @@ struct HmiSignalDef
     std::string unit;   // y-axis label (e.g. "W", "m/s", "RPM")
     std::vector<std::string> lineLabels;
     std::function<std::vector<double>(const GlobalData&)> accessor;
+    std::optional<std::pair<double, double>> defaultYRange = std::nullopt;
 };
 
 // ---------------------------------------------------------------------------
@@ -47,7 +50,7 @@ HmiConfig defaultHmiConfig(int numTurbines = 3);
 // snapshot over a ZeroMQ PUB socket consumed by hmi_plot.py.
 //
 // Wire format (msgpack array):
-//   [tick, window_size, [[name, unit, [labels], [values]], ...],
+//   [tick, window_size, [[name, unit, [labels], [values], [y_min, y_max]|nil], ...],
 //    [[light_name, is_on, color], ...], [operation_mode, [mode_labels...]],
 //    [button_state, button_command]]
 //

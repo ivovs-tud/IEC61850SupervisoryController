@@ -58,6 +58,11 @@ COLORS = [
     (127, 127, 127),  # grey
 ]
 
+WIND_GLOBAL_COLORS = {
+    "wind speed": (34, 213, 238),
+    "wind direction": (250, 204, 21),
+}
+
 # ---------------------------------------------------------------------------
 # ZMQ subscriber (non-blocking)
 # ---------------------------------------------------------------------------
@@ -311,6 +316,60 @@ def _qt_pen_style(name: str):
     return getattr(QtCore.Qt, name)
 
 
+def _blend_rgb(color: tuple[int, int, int], target: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+    return tuple(
+        int(round(channel + (target_channel - channel) * amount))
+        for channel, target_channel in zip(color, target)
+    )
+
+
+def _is_wind_signal(name: str) -> bool:
+    signal_name = str(name).lower()
+    return signal_name in ("wind speed", "wind direction")
+
+
+def _is_global_label(label: str) -> bool:
+    return str(label).strip().lower().startswith("global")
+
+
+def _pen_for_curve(signal_name: str, label: str, line_index: int):
+    color = COLORS[line_index % len(COLORS)]
+    line_style = _qt_pen_style("SolidLine")
+    width = 2
+
+    signal_key = str(signal_name).lower()
+    if _is_wind_signal(signal_name):
+        if _is_global_label(label):
+            color = WIND_GLOBAL_COLORS.get(signal_key, (255, 255, 255))
+            width = 3
+        else:
+            color = _blend_rgb(color, (150, 158, 170), 0.38)
+            line_style = _qt_pen_style("DashLine")
+    elif "setpoint" in str(label).lower():
+        line_style = _qt_pen_style("DashLine")
+
+    return pg.mkPen(color=color, width=width, style=line_style)
+
+
+def _parse_signal(signal: list):
+    name, unit, labels, values = signal[:4]
+    y_range = signal[4] if len(signal) >= 5 else None
+    return name, unit, labels, values, y_range
+
+
+def _valid_y_range(y_range) -> tuple[float, float] | None:
+    if not isinstance(y_range, (list, tuple)) or len(y_range) < 2:
+        return None
+    try:
+        y_min = float(y_range[0])
+        y_max = float(y_range[1])
+    except (TypeError, ValueError):
+        return None
+    if y_min >= y_max:
+        return None
+    return y_min, y_max
+
+
 def init_layout(signals: list, ws: int) -> None:
     """Build all PlotItems and PlotDataItems from the first message."""
     global plots, curves, histories, window_size, initialized
@@ -318,12 +377,16 @@ def init_layout(signals: list, ws: int) -> None:
     window_size = ws
     x_axis = list(range(window_size))
 
-    for idx, (name, unit, labels, _values) in enumerate(signals[:MAX_PLOTS]):
+    for idx, signal in enumerate(signals[:MAX_PLOTS]):
+        name, unit, labels, _values, y_range = _parse_signal(signal)
         p: pg.PlotItem = plots_widget.addPlot(title=name)
         p.setLabel("left", unit)
         p.setLabel("bottom", "Sample  (newest → right)")
         p.showGrid(x=True, y=True, alpha=0.25)
         p.setXRange(0, window_size - 1, padding=0)
+        fixed_y_range = _valid_y_range(y_range)
+        if fixed_y_range is not None:
+            p.setYRange(fixed_y_range[0], fixed_y_range[1], padding=0)
         legend = p.addLegend(offset=(10, 10))
         legend.setBrush(pg.mkBrush(0, 0, 0, 160))
 
@@ -331,14 +394,10 @@ def init_layout(signals: list, ws: int) -> None:
         sig_histories: list[deque] = []
 
         for j, label in enumerate(labels):
-            color = COLORS[j % len(COLORS)]
-            line_style = _qt_pen_style("SolidLine")
-            if "setpoint" in str(label).lower():
-                line_style = _qt_pen_style("DashLine")
             c = p.plot(
                 x=x_axis,
                 y=[0.0] * window_size,
-                pen=pg.mkPen(color=color, width=2, style=line_style),
+                pen=_pen_for_curve(name, label, j),
                 name=label,
             )
             sig_curves.append(c)
@@ -487,9 +546,10 @@ def poll_and_update() -> None:
 
     x_axis = list(range(window_size))
 
-    for i, (name, unit, labels, values) in enumerate(signals):
+    for i, signal in enumerate(signals):
         if i >= len(curves):
             break
+        _name, _unit, _labels, values, _y_range = _parse_signal(signal)
         for j, v in enumerate(values):
             if j >= len(curves[i]):
                 break

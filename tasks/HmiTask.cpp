@@ -38,6 +38,12 @@ HmiConfig defaultHmiConfig(int numTurbines)
         return std::vector<double>(v.begin(), v.begin() + n);
     };
 
+    auto turbineLabelsWithGlobal = [turbineLabels]() {
+        std::vector<std::string> labels = turbineLabels();
+        labels.push_back("Global");
+        return labels;
+    };
+
     HmiConfig cfg;
     cfg.numTurbines        = numTurbines;
     cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
@@ -78,7 +84,8 @@ HmiConfig defaultHmiConfig(int numTurbines)
                     }
                 }
                 return v;
-            }
+            },
+			std::make_pair(-1.0, 5e6)
         },
         // ── Per-turbine measured yaw offset and setpoints in one subplot ─────
         {
@@ -88,6 +95,8 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 labels.reserve(static_cast<std::size_t>(numTurbines * 2));
                 for (int i = 1; i <= numTurbines; ++i) {
                     labels.push_back("T" + std::to_string(i) + " Yaw Offset");
+                }
+                for (int i = 1; i <= numTurbines; ++i) {
                     labels.push_back("T" + std::to_string(i) + " Yaw Setpoint");
                 }
                 return labels;
@@ -100,42 +109,56 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 v.reserve(static_cast<std::size_t>(n * 2));
                 for (int i = 0; i < n; ++i) {
                     v.push_back(d.lastYawOffset[i]);
-                    v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));
+                    /*v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));*/
+                }
+                for (int i = 0; i < n; ++i) {
+                    /*v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));*/
+                    v.push_back(static_cast<double>(d.orientations[i]));
                 }
                 return v;
-            }
+            },
+			std::make_pair(-190.0, 190.0)
         },
         // ── Farm-level reference vs. total delivered power ────────────────────
         {
             "Farm Reference vs. Total Power", "W",
             {"Reference", "Total (Meas)", "Total (Received)"},
-            [numTurbines](const GlobalData& d) {
-                double total = 0.0;
-                int n = std::min(numTurbines, static_cast<int>(d.Power_i.size()));
-                //for (int i = 0; i < n; ++i) total += d.Power_i[i];
+            [](const GlobalData& d) {
                 return std::vector<double>{
 					static_cast<double>(d.RequestedReferencePower), d.Wtotal_meas.back(), d.TotalPower_recv
                 };
-            }
+            },
+            std::make_pair(-1.0, 9*5e6)
         },
         // ── Per-turbine wind speed ────────────────────────────────────────────
         {
             "Wind Speed", "m/s",
-            turbineLabels(),
-            [safeSlice](const GlobalData& d) { return safeSlice(d.lastWS); }
+            turbineLabelsWithGlobal(),
+            [safeSlice](const GlobalData& d) {
+                std::vector<double> v = safeSlice(d.lastWS);
+                v.push_back(static_cast<double>(d.glob_ws_i));
+                return v;
+            },
+            std::make_pair(-1.0, 15.0)
         },
         // ── Per-turbine wind direction ────────────────────────────────────────
         {
             "Wind Direction", "deg",
-            turbineLabels(),
-            [safeSlice](const GlobalData& d) { return safeSlice(d.lastWD); }
+            turbineLabelsWithGlobal(),
+            [safeSlice](const GlobalData& d) {
+                std::vector<double> v = safeSlice(d.lastWD);
+                v.push_back(static_cast<double>(d.glob_wd_i));
+                return v;
+            },
+            std::make_pair(0.0, 360.0)
         },
         // ── Per-turbine rotor speed ───────────────────────────────────────────
         {
             "Rotor Speed", "RPM",
             turbineLabels(),
-            [safeSlice](const GlobalData& d) { return safeSlice(d.lastRPM); }
-        },
+            [safeSlice](const GlobalData& d) { return safeSlice(d.lastRPM); },
+            std::make_pair(-.1, 13)
+        }
     };
 
     return cfg;
@@ -274,6 +297,8 @@ void HmiTask::execute()
     bool alarmOrientationMisalign = false;
     bool alarmWTorqueRotSpd = false;
     bool alarmHorWdDir = false;
+    bool alarmHorWdDirChg = false;
+    bool alarmHorWdSpdChg = false;
     bool systemRunning = false;
     bool yawSteeringEnabled = false;
     std::string yawSteeringCommandName;
@@ -289,6 +314,8 @@ void HmiTask::execute()
         alarmOrientationMisalign = d.alarmOrientationMisalign;
         alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;
         alarmHorWdDir = d.alarmHorWdDir;
+		alarmHorWdDirChg = d.alarmHorWdDirChg;
+		alarmHorWdSpdChg = d.alarmHorWdSpdChg;
         systemRunning = d.systemRunning;
         yawSteeringEnabled = d.yawSteeringEnabled;
         yawSteeringCommandName = d.yawSteeringCommandName;
@@ -301,7 +328,7 @@ void HmiTask::execute()
 
     // ── 2. Pack snapshot as msgpack and publish ───────────────────────────────
     // Format:
-    // [tick, window_size, [[name, unit, [labels], [values]], ...],
+    // [tick, window_size, [[name, unit, [labels], [values], [y_min, y_max]|nil], ...],
     //  [[light_name, is_on, color], ...], [operation_mode, [mode_labels...]]]
     // The Python subscriber maintains the rolling window; we send only the
     // latest values each cycle.
@@ -315,11 +342,18 @@ void HmiTask::execute()
     pk.pack_array(config_.signals.size());
     for (std::size_t i = 0; i < config_.signals.size(); ++i) {
         const auto& sig = config_.signals[i];
-        pk.pack_array(4);
+        pk.pack_array(5);
         pk.pack(sig.name);
         pk.pack(sig.unit);
         pk.pack(sig.lineLabels);
         pk.pack(snap[i]);
+        if (sig.defaultYRange) {
+            pk.pack_array(2);
+            pk.pack(sig.defaultYRange->first);
+            pk.pack(sig.defaultYRange->second);
+        } else {
+            pk.pack_nil();
+        }
     }
 
     const std::array<const char*, 3> modeLabels{{"ROSCO", "Lio\nDownregulation", "Safe\nShutdown"}};
@@ -327,13 +361,13 @@ void HmiTask::execute()
     pk.pack_array(9);
     pk.pack_array(3); pk.pack("System Running");    pk.pack(systemRunning);      pk.pack("green");
     pk.pack_array(3); pk.pack("Power: Received vs Measured");    pk.pack(alarmWRecMeas); pk.pack("red");
-    pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("amber");
+    pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("red");
     pk.pack_array(3); pk.pack("Power vs Torque*RotorSpeed");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
     pk.pack_array(3); pk.pack("Wind Direction Consistency");    pk.pack(alarmHorWdDir);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Direction Consistency2 ");    pk.pack(alarmHorWdDir);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Direction Consistency3");    pk.pack(alarmHorWdDir);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Direction Consistency4");    pk.pack(alarmHorWdDir);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Direction Consistency5");    pk.pack(alarmHorWdDir);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Direction Change");    pk.pack(alarmHorWdDirChg);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Speed Change");    pk.pack(alarmHorWdSpdChg);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Placeholder");    pk.pack(false);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Placeholder");    pk.pack(false);  pk.pack("red");
 
     pk.pack_array(2);
     pk.pack(operationMode - 1);
@@ -355,5 +389,3 @@ void HmiTask::execute()
 // =============================================================================
 // HmiTask implementation
 // =============================================================================
-
-
