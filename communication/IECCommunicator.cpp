@@ -12,6 +12,7 @@ const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
     { "YawMeas", "deg", IEC_STRINGS::YAW_MEAS,   "WYAW1$MX$YwAng",    &libiec_wrapper::rxYawOffset,     AttackInterface::TX_YAW, &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 500 },
     { "RSpd",    "RPM", IEC_STRINGS::RPM_MEAS,   "WROT1$MX$RotSpd",   &libiec_wrapper::rxRotorSpeed,    AttackInterface::TX_RPM, &GlobalData::lastRPM,       &GlobalData::rpmHistory,       &GlobalData::lastRPM_t,       500 },
     { "W",       "W",   IEC_STRINGS::POWER_MEAS, "WTUR1$MX$W",        &libiec_wrapper::rxPowerGen,      AttackInterface::TX_PW,  &GlobalData::lastPower,     &GlobalData::powerHistory,     &GlobalData::lastPower_t,     500 },
+    { "Tor",     "W",   IEC_STRINGS::GEN_TORQ,   "WCNV1$MX$Torq",     &libiec_wrapper::rxGenTorque,     AttackInterface::TX_GENTORQ,  &GlobalData::lastGenTorque,     &GlobalData::genTorqueHistory,     &GlobalData::lastGenTorque_t,     500 },
 };
 
 const IECCommunicator::TxDescriptor IECCommunicator::TX_DESCRIPTORS[] = {
@@ -120,6 +121,7 @@ void IECCommunicator::setTxNextExecutionTimeMs(size_t index, uint64_t timeMs)
 void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
 {
     void* value = nullptr;
+    float f;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         value = desc.gdsPtr(GlobalDataStructure::instance().data(), turbineId_ - 1);
@@ -133,10 +135,13 @@ void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
         attackInterface_.txData(turbineId_, desc.txDataType, value);
 
         if (desc.type == IEC_FLOAT32) {
-            float& f = *static_cast<float*>(value);
-            if (attackInterface_.overwrite(turbineId_, desc.txDataType, f) < 0) {
+            //float& f = *static_cast<float*>(value);
+            auto bOverwrite = attackInterface_.overwrite(turbineId_, desc.txDataType, f);
+            if (bOverwrite < 0) {
                 COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId_);
-            }
+            } else if (bOverwrite > 0) { // Meaning we succefully overwritten
+                value = &f;     // We do this pointer trick here to make sure the actual value is not overwritten
+            }            
         }
     }
 
@@ -166,7 +171,12 @@ void IECCommunicator::processRxMeasurement(const RxDescriptor& desc, float value
     COMMTASK_LOG_V2("Received (pre-overwrite) " << desc.name << " from turbine " << turbineId_ << ": " << value << " " << desc.unit);
     std::string logMsg = "[WT" + std::to_string(turbineId_) + "→SC]" + std::to_string(timestampMs) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
-
+    
+    
+    if (strcmp(desc.name, "W") == 0) { // If we receive power, we also store the actual value in order to keep track of total measured power
+            std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+            GlobalDataStructure::instance().data()._W[turbineId_ - 1] = value;
+    }
     {
         std::lock_guard<std::mutex> lock(attackInterfaceMutex_);
         attackInterface_.txData(turbineId_, desc.txDataType, &value);
@@ -174,11 +184,6 @@ void IECCommunicator::processRxMeasurement(const RxDescriptor& desc, float value
         if (attackInterface_.overwrite(turbineId_, desc.txDataType, value) < 0) {
             COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId_);
         }
-    }
-
-    if (strcmp(desc.name, "W") == 0) {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        GlobalDataStructure::instance().data()._W[turbineId_ - 1] = value;
     }
 
     COMMTASK_LOG_V1("Received (post-overwrite) " << desc.name << " for turbine " << turbineId_ << ": " << value << " " << desc.unit);

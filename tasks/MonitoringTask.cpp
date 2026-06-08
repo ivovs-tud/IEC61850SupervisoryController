@@ -20,12 +20,26 @@ void MonitoringTask::execute() {
     // TODO: implement monitoring loop (thresholds, alarms, GOOSE events)
     auto& gds = GlobalDataStructure::instance().data();
 
-    gds.alarmWRecMeas = checkConsistencyPowerGeneratedVsReceived();
-    gds.alarmOrientationMisalign = checkConsistencyOrientationDynamics();
-    gds.alarmWTorqueRotSpd = checkConsistencyPowerTorqueRotorSpeed();
-    gds.alarmHorWdDir = checkConsistencyWindDirection();
-    gds.alarmHorWdDirChg = checkConsistencyWindDirectionChange();
-    gds.alarmHorWdSpdChg = checkConsistencyWindSpeedChange();
+    if (!gds.systemRunning) return;
+
+    gds.alarmWRecMeas |= checkConsistencyPowerGeneratedVsReceived();
+    gds.alarmOrientationMisalign |= checkConsistencyOrientationDynamics();
+    gds.alarmWTorqueRotSpd |= checkConsistencyPowerTorqueRotorSpeed();
+    gds.alarmHorWdDir |= checkConsistencyWindDirection();
+    gds.alarmHorWdDirChg |= checkConsistencyWindDirectionChange();
+    gds.alarmHorWdSpdChg |= checkConsistencyWindSpeedChange();
+
+    // TODO: implement reset mechanisms
+    uint64_t current_ms = getCurrentTimeMs();
+    if (current_ms - last_reset_ms >= 3000) {
+        gds.alarmWRecMeas = false;
+        gds.alarmOrientationMisalign = false;
+        gds.alarmWTorqueRotSpd = false;
+        gds.alarmHorWdDir = false;
+        gds.alarmHorWdDirChg = false;
+        gds.alarmHorWdSpdChg = false;
+        last_reset_ms = current_ms;
+    }
 }
 
 
@@ -84,8 +98,9 @@ bool MonitoringTask::checkConsistencyOrientationDynamics() {
         // }
 
         // Finally update the orientation state using a simple observer-like update (this is a placeholder, more sophisticated estimation could be used)
-        orientation_state[i] = orientation_state[i] + observer_gain * (gds.lastYawOffset[i] - orientation_state[i]);
-    }
+        orientation_state[i] = predictedOrientation + observer_gain * (gds.lastYawOffset[i] - predictedOrientation);
+        gds.orientations[i] = orientation_state[i];
+    }   
 
     return alarm;
 }
@@ -106,8 +121,8 @@ bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
         }
 
 
-        float expectedPower = gds.rpm_i[i] * gds.rpm_i[i] * gds.rpm_i[i]; // Placeholder for actual power-torque-speed relation
-        if (abs(gds.Power_i[i] - expectedPower) > 10e5) { // Placeholder threshold
+        float expectedPower = gds.lastRPM[i] * gds.lastGenTorque[i]; // Placeholder for actual power-torque-speed relation
+        if (abs(gds.lastPower[i] - expectedPower) > 10e5) { // Placeholder threshold
             // alarm |= true;
             return true;
         }

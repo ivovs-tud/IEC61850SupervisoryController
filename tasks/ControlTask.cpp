@@ -26,11 +26,15 @@ void ControlTask::execute()
     float powerSetpoint = 0.0f;
     float glob_ws_i = 0.0f;
     float glob_wd_i = 0.0f;
+
+	auto gds = GlobalDataStructure::instance().data();
+
+
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        powerSetpoint = GlobalDataStructure::instance().data().RequestedReferencePower;
-        glob_ws_i = GlobalDataStructure::instance().data().glob_ws_i;
-        glob_wd_i = GlobalDataStructure::instance().data().glob_wd_i;
+        powerSetpoint = gds.RequestedReferencePower;
+        glob_ws_i = gds.glob_ws_i;
+        glob_wd_i = gds.glob_wd_i;
     }
 
     // (void)glob_ws_i;
@@ -39,7 +43,7 @@ void ControlTask::execute()
     CONTROL_LOG_V2("Using Wind Speed: " << glob_ws_i << " m/s, Wind Direction: " << glob_wd_i
                   << " deg, to compute setpoints for requested reference power: " << powerSetpoint << " W");
     std::vector<float> power_sp = std::vector<float>(numTurbines_, -1.0);
-    std::vector<int> yaw_sp = std::vector<int>(numTurbines_, 0);
+    std::vector<int> yaw_sp = std::vector<int>(numTurbines_, glob_wd_i);
     
     if (powerSetpoint < 0.0f && GlobalDataStructure::instance().data().yawSteeringEnabled) {
         // This means power maximization, i.e. yaw steering --> Use LUT and round to nearest int

@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-constexpr int N_TURBINES = 15;
+constexpr int N_TURBINES = 9;
 
 // Per-turbine circular-buffer history: one buffer per turbine, each holding
 // up to 'capacity' readings of type T.  Push new values with push_back().
@@ -52,6 +52,8 @@ struct GlobalData
     std::vector<double> lastPower = std::vector<double>(N_TURBINES, 0.0);
     std::vector<uint64_t> lastPower_t = std::vector<uint64_t>(N_TURBINES, 0); // timestamp of the last received power measurement (UNIX time in seconds)
 
+    std::vector<double> lastGenTorque = std::vector<double>(N_TURBINES, 0.0);
+    std::vector<uint64_t> lastGenTorque_t = std::vector<uint64_t>(N_TURBINES, 0); // timestamp of the last received gentorque measurement (UNIX time in seconds)
     // ── Measurement history buffers (last N_hist readings per turbine) ────────
     // Written by CommunicationTask, read by SignalProcessingTask, ControlTask
     static constexpr int N_hist = 10;
@@ -61,7 +63,7 @@ struct GlobalData
     TurbineHistory<double> yawOffsetHistory = makeTurbineHistory<double>(N_TURBINES, N_hist);
     TurbineHistory<double> rpmHistory = makeTurbineHistory<double>(N_TURBINES, N_hist);
     TurbineHistory<double> powerHistory = makeTurbineHistory<double>(N_TURBINES, N_hist);
-
+    TurbineHistory<double> genTorqueHistory = makeTurbineHistory<double>(N_TURBINES, N_hist);
 
     // Values stored to compute other quantities which are measured locally. Crucially these are not used directly
 	std::vector<double> _W = std::vector<double>(N_TURBINES, 0.0); 
@@ -97,12 +99,16 @@ struct GlobalData
 	std::vector<uint32_t> enableTurbine = std::vector<uint32_t>(N_TURBINES, 1); // Per-turbine enable/disable flags (1 = enabled, 0 = disabled)
 	std::vector<uint32_t> TurbineController = std::vector<uint32_t>(N_TURBINES, 1); // Per-turbine operation mode (minimum is 1)
     
+
+    // -- Monitoring Task Related ---
+
     bool alarmWRecMeas = false;
     bool alarmOrientationMisalign = false;
     bool alarmWTorqueRotSpd = false;
     bool alarmHorWdDir = false;
     bool alarmHorWdDirChg = false;
     bool alarmHorWdSpdChg = false;
+    std::vector<float> orientations = std::vector<float>(N_TURBINES, 0.0);
 
 
 

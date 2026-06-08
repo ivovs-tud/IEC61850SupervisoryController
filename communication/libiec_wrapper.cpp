@@ -223,6 +223,15 @@ IECReturnCode libiec_wrapper::rxPowerGen(int turbineId, float& outPowerGen) {
     return IEC_ERROR;
 }
 
+IECReturnCode libiec_wrapper::rxGenTorque(int turbineId, float& outGenTorque) {
+    auto pw = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::GEN_TORQ), IEC61850_FC_MX);
+    if (pw) {
+        outGenTorque = *pw;
+        return IEC_OK;
+    }
+    return IEC_ERROR;
+}
+
 IECReturnCode libiec_wrapper::txPowerSetpoint(int turbineId, void* powerSetpoint) {
 
     bool ok = manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_DmdWSpt), *static_cast<float *>(powerSetpoint), false);

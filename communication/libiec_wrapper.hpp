@@ -57,6 +57,7 @@ static constexpr const char* WS_MEAS    = "WMET1.HorWdSpd.mag.f";   // Measured 
 static constexpr const char* WD_MEAS    = "WMET1.HorWdDir.mag.f";   // Measured wind direction
 static constexpr const char* RPM_MEAS   = "WROT1.RotSpd.mag.f";     // Measured rotor speed
 static constexpr const char* TOT_W      = "WTUR1.TotWh.f";          // Measured total power
+static constexpr const char* GEN_TORQ   = "WCNV1.Torq.mag.f";       // Measured Generator Torque
 
 static constexpr const char* PITCH_SP   = "WROT1.BlPthAngTgt.f";    // Pitch Angle Target Value
 static constexpr const char* PITCH_VAL  = "WROT1.BlPthAngVal.f";    // Pitch Angle Feedback
@@ -188,6 +189,14 @@ public:
      * @brief Read the current power generation measurement from a specific turbine.
      * @param turbineId      Integer turbine ID (1-based).
      * @param outPowerGen    Output float populated with the power generation in watts on success.
+     * @return IEC_OK on success, IEC_ERROR on failure.
+     */
+
+    IECReturnCode rxGenTorque(int turbineId, float& outGenTorque);
+    /**
+     * @brief Read the current generator torque from a specific turbine.
+     * @param turbineId      Integer turbine ID (1-based).
+     * @param outPowerGen    Output float populated with the generator torque in Nm on success.
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 

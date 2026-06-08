@@ -36,6 +36,7 @@ namespace AttackInterface
         TX_PTCH = 0x07,     // Pitch angle Data        
         TX_SPT_YAW = 0x08,   // Yaw setpoint Data
         TX_SPT_PWR = 0x09,   // Power setpoint Data
+        TX_GENTORQ = 0x10,  // Generator Torque
         TX_OP_CMD = 0x0A,    // Operation command (e.g. for switching on/off the turbine)
 		TX_NONE = 0xFE,     // Used for control messages that should not be visible to the attack interface.
         TX_ARRAY = 0xFF,    // Here for extensibility, not currently used
@@ -115,7 +116,8 @@ namespace AttackInterface
     
 
     typedef enum eAIRC {
-        AI_OK = 0,
+        AI_OK = 1,
+        AI_DISABLED = 0,
         AI_ERROR = -1,
         AI_TIMEOUT = -2
     } AIRC;
@@ -388,17 +390,20 @@ namespace AttackInterface
                  * How this works: If enabled, a RQ_Message is send to the client to provide a new value to overwrite with. 
                  * The attack interface then waits for a response from the client with the new value, and returns it. If no response is received within a timeout, or if an error occurs, an error code is returned.
                  */
-				if (dataType == TX_NONE) return AI_OK; 
+				if (dataType == TX_NONE) return AI_DISABLED; 
 
                 if (turbineId < 1 || turbineId > state.LinkStates.size()) {
                           ATTACK_ERR("Invalid turbine ID: " << turbineId);
                     return AI_ERROR;
                 }
 
-                if (!state.LinkStates[turbineId - 1].fdiEnabled[dataType]) return AI_OK;
+                if (!state.LinkStates[turbineId - 1].fdiEnabled[dataType]) return AI_DISABLED;
 
                 ATTACK_LOG_V1("overwrite called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType)
                               << ", original value " << val);
+
+				// 0. Send TX_DATA message with the original value to make sure it has the most up to date value
+				txData(turbineId, dataType, &val);
 
                 // 1. Send RQ_DATA message to client
                 RqDataMessage rqMsg;
@@ -428,7 +433,9 @@ namespace AttackInterface
                     {
                         std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                         if (state.at_response_received) {
-                            val = state.at_response_val;
+                            if (!std::isnan(state.at_response_val)) {
+                                val = state.at_response_val;
+                            }
                             state.awaiting_at_response = false;
                             state.at_response_received = false;
                             ATTACK_LOG_V1("Received overwrite " << val);
