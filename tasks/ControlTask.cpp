@@ -45,18 +45,15 @@ void ControlTask::execute()
     std::vector<float> power_sp = std::vector<float>(numTurbines_, -1.0);
     std::vector<int> yaw_sp = std::vector<int>(numTurbines_, glob_wd_i);
     
-    if (powerSetpoint < 0.0f && GlobalDataStructure::instance().data().yawSteeringEnabled) {
+    if (GlobalDataStructure::instance().data().yawSteeringEnabled) {
         // This means power maximization, i.e. yaw steering --> Use LUT and round to nearest int
         yaw_sp = std::vector<int>();
         const auto yaw_sp_float = yawLut_.lookup(glob_ws_i, glob_wd_i);
         for (const float value : yaw_sp_float) {
-            yaw_sp.push_back(static_cast<int>(std::lround(value)));
+            yaw_sp.push_back(static_cast<int>(std::lround(glob_wd_i - value)));
         }
-        
-    } else {
-        // This means power tracking --> For now we split equally accross all turbines,
-        power_sp = std::vector<float>(numTurbines_, static_cast<float>(powerSetpoint / numTurbines_));
     }
+    power_sp = std::vector<float>(numTurbines_, static_cast<float>(powerSetpoint / numTurbines_));
 
 #if SC_LOG_LEVEL_CONTROL >= 2
     std::ostringstream powerLine;
