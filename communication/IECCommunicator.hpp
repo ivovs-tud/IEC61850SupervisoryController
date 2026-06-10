@@ -80,7 +80,7 @@ private:
     bool reportingEnabled() const;
     void startReporting();
     void stopReporting();
-    void handleReportValues(const std::vector<IecReportValue>& values);
+    void handleReportValues(int turbineId, const std::vector<IecReportValue>& values);
     std::vector<std::string> reportFallbackReferences() const;
     std::optional<size_t> findRxDescriptorByReference(const std::string& reference) const;
 

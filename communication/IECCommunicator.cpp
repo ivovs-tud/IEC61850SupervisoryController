@@ -216,8 +216,8 @@ void IECCommunicator::startReporting()
         return;
     }
 
-    auto callback = [this](const std::vector<IecReportValue>& values) {
-        handleReportValues(values);
+    auto callback = [this](int turbineId, const std::vector<IecReportValue>& values) {
+        handleReportValues(turbineId, values);
     };
 
     if (iecWrapper_.startPeriodicReport(turbineId_,
@@ -243,15 +243,20 @@ void IECCommunicator::stopReporting()
     reportStarted_ = false;
 }
 
-void IECCommunicator::handleReportValues(const std::vector<IecReportValue>& values)
+void IECCommunicator::handleReportValues(int turbineId, const std::vector<IecReportValue>& values)
 {
+    if (turbineId != turbineId_) {
+        COMMTASK_ERR("Received IEC report for turbine " << turbineId
+                     << " in communicator for turbine " << turbineId_);
+    }
+
     std::lock_guard<std::mutex> lock(reportRxBufferMutex_);
     for (const auto& value : values) {
         const auto index = findRxDescriptorByReference(value.reference);
         if (index) {
             reportRxBuffer_[*index] = BufferedRxMeasurement{value.value, value.timestampMs};
         } else {
-            COMMTASK_LOG_V2("Ignoring unmapped IEC report value for turbine " << turbineId_
+            COMMTASK_LOG_V2("Ignoring unmapped IEC report value for turbine " << turbineId
                             << ": ref=" << value.reference << ", value=" << value.value);
         }
     }

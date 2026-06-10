@@ -164,7 +164,7 @@ void periodicReportHandler(void* parameter, ClientReport report)
     }
 
     if (!decoded.empty())
-        sub->callback(decoded);
+        sub->callback(sub->turbineId, decoded);
     else
         IECMGR_LOG_V2(sub->turbineId, "received report " << sub->rcbReference << " but decoded no float values");
 }

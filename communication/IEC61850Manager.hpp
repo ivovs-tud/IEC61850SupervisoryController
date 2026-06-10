@@ -42,7 +42,7 @@ struct IecDataSetAndReportControlBlocks
     std::vector<std::string> unbufferedReportControlBlocks;
 };
 
-using IecReportCallback = std::function<void(const std::vector<IecReportValue>& values)>;
+using IecReportCallback = std::function<void(int turbineId, const std::vector<IecReportValue>& values)>;
 
 // ---------------------------------------------------------------------------
 // TurbineConnection – per-turbine state held inside IEC61850Manager.
