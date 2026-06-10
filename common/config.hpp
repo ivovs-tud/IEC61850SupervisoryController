@@ -54,6 +54,10 @@
 #define SC_LOG_LEVEL_CONTROL SC_LOG_DEFAULT_LEVEL
 #endif
 
+#ifndef SC_LOG_LEVEL_HMI
+#define SC_LOG_LEVEL_HMI SC_LOG_DEFAULT_LEVEL
+#endif
+
 // -----------------------------------------------------------------------------
 // Color configuration
 // -----------------------------------------------------------------------------
@@ -75,6 +79,7 @@
 #define SC_LOG_COLOR_LIBIEC_V1   "\x1b[34m"   // blue
 #define SC_LOG_COLOR_IECMGR_V1   "\x1b[96m"   // bright cyan
 #define SC_LOG_COLOR_CONTROL_V1  "\x1b[92m"   // bright green
+#define SC_LOG_COLOR_HMI_V1  "\x1b[92m"			// bright green
 
 // Grayer variants (V2): dimmed version of each module color.
 #define SC_LOG_COLOR_COMMTASK_V2 "\x1b[2;36m"
@@ -85,6 +90,7 @@
 #define SC_LOG_COLOR_LIBIEC_V2   "\x1b[2;34m"
 #define SC_LOG_COLOR_IECMGR_V2   "\x1b[2;96m"
 #define SC_LOG_COLOR_CONTROL_V2  "\x1b[2;92m"
+#define SC_LOG_COLOR_HMI_V2  "\x1b[2;92m"
 #else
 #define SC_LOG_COLOR_RESET ""
 #define SC_LOG_COLOR_ERROR ""
@@ -97,6 +103,7 @@
 #define SC_LOG_COLOR_LIBIEC_V1   ""
 #define SC_LOG_COLOR_IECMGR_V1   ""
 #define SC_LOG_COLOR_CONTROL_V1  ""
+#define SC_LOG_COLOR_HMI_V1  ""
 
 #define SC_LOG_COLOR_COMMTASK_V2 ""
 #define SC_LOG_COLOR_ATTACK_V2   ""
@@ -106,6 +113,7 @@
 #define SC_LOG_COLOR_LIBIEC_V2   ""
 #define SC_LOG_COLOR_IECMGR_V2   ""
 #define SC_LOG_COLOR_CONTROL_V2  ""
+#define SC_LOG_COLOR_HMI_V2  ""
 #endif
 
 // -----------------------------------------------------------------------------
@@ -337,5 +345,32 @@
 #define CONTROL_LOG_V2(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_CONTROL_V2, "[ControlTask][V2] ", msg)
 #else
 #define CONTROL_LOG_V2(msg) do {} while (0)
+#endif
+
+// -----------------------------------------------------------------------------
+// HmiTask macros
+// -----------------------------------------------------------------------------
+#if SC_LOG_LEVEL_HMI >= 1
+#define HMI_ERR(msg) SC_LOG_EMIT_COLOR(std::cerr, SC_LOG_COLOR_ERROR, "[HMI][ERR] ", msg)
+#else
+#define HMI_ERR(msg) do {} while (0)
+#endif
+
+#if SC_LOG_LEVEL_HMI >= 1
+#define HMI_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_HMI_V1, "[HMI][ST] ", msg)
+#else
+#define HMI_ST(msg) do {} while (0)
+#endif
+
+#if SC_LOG_LEVEL_HMI >= 2
+#define HMI_LOG_V1(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_HMI_V1, "[HMI] ", msg)
+#else
+#define HMI_LOG_V1(msg) do {} while (0)
+#endif
+
+#if SC_LOG_LEVEL_HMI >= 3
+#define HMI_LOG_V2(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_HMI_V2, "[HMI][V2] ", msg)
+#else
+#define HMI_LOG_V2(msg) do {} while (0)
 #endif
 
