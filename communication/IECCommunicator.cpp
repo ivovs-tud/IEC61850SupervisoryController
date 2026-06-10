@@ -68,8 +68,10 @@ void IECCommunicator::execute()
         }
 
         for (size_t i = 0; i < reportValues.size(); ++i) {
-            if (reportValues[i])
+            if (reportValues[i]) {
+				COMMTASK_ST("IEComm[" << turbineId_ << "] Processing buffered report value for " << RX_DESCRIPTORS[i].name << ": " << reportValues[i]->value << " " << RX_DESCRIPTORS[i].unit);
                 processRxMeasurement(RX_DESCRIPTORS[i], reportValues[i]->value, reportValues[i]->timestampMs);
+            }
         }
     } else {
         for (size_t i = 0; i < std::size(RX_DESCRIPTORS); ++i) {
@@ -193,6 +195,14 @@ void IECCommunicator::processRxMeasurement(const RxDescriptor& desc, float value
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         auto& gds = GlobalDataStructure::instance().data();
+
+        // For debuggini
+        if(strcmp(desc.name, "D") == 0) {
+            if((gds.*desc.lastField)[turbineId_ - 1] == value) {
+                COMMTASK_ST("Wind direction did not change for turbine " << turbineId_ << ": " << (gds.*desc.lastField)[turbineId_ - 1] << " -> " << value);
+			}
+		}
+
         (gds.*desc.lastField)[turbineId_ - 1] = value;
         (gds.*desc.historyField)[turbineId_ - 1].push_back(value);
         (gds.*desc.lastTimestamp)[turbineId_ - 1] = timestampMs;
@@ -260,6 +270,8 @@ void IECCommunicator::handleReportValues(int turbineId, const std::vector<IecRep
                             << ": ref=" << value.reference << ", value=" << value.value);
         }
     }
+
+	//LIBIEC_ST("IECCommunicator[" << turbineId_ << "] Received IEC report for turbine " << turbineId << " with ");
 }
 
 std::vector<std::string> IECCommunicator::reportFallbackReferences() const
