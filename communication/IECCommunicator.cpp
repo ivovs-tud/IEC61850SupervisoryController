@@ -27,39 +27,67 @@ IECCommunicator::IECCommunicator(const CommConfig& config,
                                  libiec_wrapper& iecWrapper,
                                  AttackInterface::AttackInterface& attackInterface,
                                  std::mutex& attackInterfaceMutex)
-    : PeriodicTask(config.mms.pollPeriod),
-      config_(config),
+    : config_(config),
       turbineId_(turbineId),
       iecWrapper_(iecWrapper),
       attackInterface_(attackInterface),
       attackInterfaceMutex_(attackInterfaceMutex),
       lastActivityTime_(std::chrono::system_clock::now()),
+      rxTask_(*this, config.mms.pollPeriod),
+      txTask_(*this, config.mms.pollPeriod),
       rxNextExecutionTimes_(std::size(RX_DESCRIPTORS), 0),
       txNextExecutionTimes_(std::size(TX_DESCRIPTORS), 0),
       reportRxBuffer_(std::size(RX_DESCRIPTORS))
 {
 }
 
-void IECCommunicator::onStart()
+IECCommunicator::~IECCommunicator()
+{
+    stop();
+}
+
+std::chrono::system_clock::time_point IECCommunicator::lastActivityTime() const
+{
+    std::lock_guard<std::mutex> lock(lastActivityTimeMutex_);
+    return lastActivityTime_;
+}
+
+void IECCommunicator::start()
 {
     iecStatus_.store(COMM_CONNECTING);
     startReporting();
+    rxTask_.start();
+    txTask_.start();
     iecStatus_.store(COMM_CONNECTED);
 }
 
-void IECCommunicator::execute()
+void IECCommunicator::stop()
+{
+    stopReporting();
+    txTask_.stop();
+    rxTask_.stop();
+    iecStatus_.store(COMM_DISCONNECTED);
+}
+
+void IECCommunicator::executeTx()
 {
     const uint64_t currentTimeMs = getCurrentTimeMs();
-    lastActivityTime_ = std::chrono::system_clock::now();
+    touchActivityTime();
 
     for (size_t i = 0; i < std::size(TX_DESCRIPTORS); ++i) {
         if (currentTimeMs >= getTxNextExecutionTimeMs(i)) {
             doTxSetpoint(static_cast<size_t>(i), TX_DESCRIPTORS[i]);
-            setTxNextExecutionTimeMs(i, currentTimeMs + TX_DESCRIPTORS[i].intervalMs);
+            setTxNextExecutionTimeMs(i, getCurrentTimeMs() + TX_DESCRIPTORS[i].intervalMs);
         }
     }
+}
 
-    if (reportingEnabled() && reportStarted_) {
+void IECCommunicator::executeRx()
+{
+    const uint64_t currentTimeMs = getCurrentTimeMs();
+    touchActivityTime();
+
+    if (reportingEnabled() && reportStarted_.load()) {
         std::vector<std::optional<BufferedRxMeasurement>> reportValues;
         {
             std::lock_guard<std::mutex> lock(reportRxBufferMutex_);
@@ -81,12 +109,6 @@ void IECCommunicator::execute()
             }
         }
     }
-}
-
-void IECCommunicator::onStop()
-{
-    stopReporting();
-    iecStatus_.store(COMM_DISCONNECTED);
 }
 
 std::string IECCommunicator::descToString(void* value, const TxDescriptor& desc)
@@ -118,6 +140,12 @@ void IECCommunicator::setRxNextExecutionTimeMs(size_t index, uint64_t timeMs)
 void IECCommunicator::setTxNextExecutionTimeMs(size_t index, uint64_t timeMs)
 {
     txNextExecutionTimes_[index] = timeMs;
+}
+
+void IECCommunicator::touchActivityTime()
+{
+    std::lock_guard<std::mutex> lock(lastActivityTimeMutex_);
+    lastActivityTime_ = std::chrono::system_clock::now();
 }
 
 void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
@@ -236,21 +264,21 @@ void IECCommunicator::startReporting()
                                         periodMs,
                                         reportFallbackReferences(),
                                         callback) == IEC_OK) {
-        reportStarted_ = true;
+        reportStarted_.store(true);
         COMMTASK_ST("Enabled IEC report input for turbine " << turbineId_);
     } else {
-        reportStarted_ = false;
+        reportStarted_.store(false);
         COMMTASK_ERR("Failed to enable IEC report input for turbine " << turbineId_ << "; falling back to polling");
     }
 }
 
 void IECCommunicator::stopReporting()
 {
-    if (!reportStarted_)
+    if (!reportStarted_.load())
         return;
 
     iecWrapper_.stopPeriodicReport(turbineId_, config_.mms.reportControlBlockReference);
-    reportStarted_ = false;
+    reportStarted_.store(false);
 }
 
 void IECCommunicator::handleReportValues(int turbineId, const std::vector<IecReportValue>& values)

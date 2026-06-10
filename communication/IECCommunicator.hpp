@@ -19,7 +19,7 @@
 #include "common/util.hpp"
 #include "common/ConsoleColors.hpp"
 
-class IECCommunicator : public PeriodicTask
+class IECCommunicator
 {
 public:
     explicit IECCommunicator(const CommConfig& config,
@@ -27,16 +27,46 @@ public:
                              libiec_wrapper& iecWrapper,
                              AttackInterface::AttackInterface& attackInterface,
                              std::mutex& attackInterfaceMutex);
+    ~IECCommunicator();
 
-    void onStart() override;
-    void execute() override;
-    void onStop() override;
+    void start();
+    void stop();
 
     int turbineId() const { return turbineId_; }
     CommStatus status() const { return iecStatus_.load(); }
-    std::chrono::system_clock::time_point lastActivityTime() const { return lastActivityTime_; }
+    std::chrono::system_clock::time_point lastActivityTime() const;
 
 private:
+    class RxTask : public PeriodicTask
+    {
+    public:
+        RxTask(IECCommunicator& owner, std::chrono::milliseconds period)
+            : PeriodicTask(period),
+              owner_(owner)
+        {
+        }
+
+    private:
+        void execute() override { owner_.executeRx(); }
+
+        IECCommunicator& owner_;
+    };
+
+    class TxTask : public PeriodicTask
+    {
+    public:
+        TxTask(IECCommunicator& owner, std::chrono::milliseconds period)
+            : PeriodicTask(period),
+              owner_(owner)
+        {
+        }
+
+    private:
+        void execute() override { owner_.executeTx(); }
+
+        IECCommunicator& owner_;
+    };
+
     typedef enum eIECValueType {
         IEC_FLOAT32,
         IEC_INT32,
@@ -73,6 +103,9 @@ private:
     void setRxNextExecutionTimeMs(size_t index, uint64_t timeMs);
     void setTxNextExecutionTimeMs(size_t index, uint64_t timeMs);
 
+    void executeRx();
+    void executeTx();
+    void touchActivityTime();
     void doTxSetpoint(size_t idx, const TxDescriptor& desc);
     void doRxMeasurement(size_t idx, const RxDescriptor& desc);
     void processRxMeasurement(const RxDescriptor& desc, float value, uint64_t timestampMs);
@@ -92,6 +125,9 @@ private:
 
     std::atomic<CommStatus> iecStatus_{COMM_DISCONNECTED};
     std::chrono::system_clock::time_point lastActivityTime_;
+    mutable std::mutex lastActivityTimeMutex_;
+    RxTask rxTask_;
+    TxTask txTask_;
 
     std::vector<uint64_t> rxNextExecutionTimes_;    ///< next execution times for RX descriptors
     std::vector<uint64_t> txNextExecutionTimes_;    ///< next execution times for TX descriptors
@@ -101,7 +137,7 @@ private:
     };
     std::vector<std::optional<BufferedRxMeasurement>> reportRxBuffer_;
     std::mutex reportRxBufferMutex_;
-    bool reportStarted_ {false};
+    std::atomic<bool> reportStarted_ {false};
 
     static const RxDescriptor RX_DESCRIPTORS[];
     static const TxDescriptor TX_DESCRIPTORS[];
