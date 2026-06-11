@@ -16,10 +16,10 @@ const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
 };
 
 const IECCommunicator::TxDescriptor IECCommunicator::TX_DESCRIPTORS[] = {
-    { "WSpt",    IEC_FLOAT32, [](GlobalData& d, int i)->void* { return &d.TurbinePowerSetpoints[i]; }, AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,     5000 },
+    { "WSpt",    IEC_FLOAT32, [](GlobalData& d, int i)->void* { return &d.TurbinePowerSetpoints[i]; }, AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,     1000 },
     { "YawSpt",  IEC_FLOAT32, [](GlobalData& d, int i)->void* { return &d.TurbineYawSetpoints[i]; },   AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,       1000 },
-    { "OP_CMD",  IEC_UINT32,  [](GlobalData& d, int i)->void* { return &d.enableTurbine[i]; },          AttackInterface::TX_NONE,       &libiec_wrapper::txOpCommand,         1000 },
-    { "TUR_CTL", IEC_UINT32,  [](GlobalData& d, int i)->void* { return &d.TurbineController[i]; },     AttackInterface::TX_NONE,       &libiec_wrapper::txTurbineController, 1000 },
+    { "OP_CMD",  IEC_UINT32,  [](GlobalData& d, int i)->void* { return &d.enableTurbine[i]; },          AttackInterface::TX_NONE,       &libiec_wrapper::txOpCommand,        5000 },
+    { "TUR_CTL", IEC_UINT32,  [](GlobalData& d, int i)->void* { return &d.TurbineController[i]; },     AttackInterface::TX_NONE,       &libiec_wrapper::txTurbineController, 5000 },
 };
 
 IECCommunicator::IECCommunicator(const CommConfig& config,
@@ -166,7 +166,9 @@ void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
 
         if (desc.type == IEC_FLOAT32) {
             //float& f = *static_cast<float*>(value);
+            f = *static_cast<float*>(value);
             auto bOverwrite = attackInterface_.overwrite(turbineId_, desc.txDataType, f);
+            
             if (bOverwrite < 0) {
                 COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId_);
             } else if (bOverwrite > 0) { // Meaning we succefully overwritten

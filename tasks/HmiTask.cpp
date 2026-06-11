@@ -48,8 +48,8 @@ HmiConfig defaultHmiConfig(int numTurbines)
     cfg.numTurbines        = numTurbines;
     cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
 #ifdef PLATFORM_WINDOWS
-        cfg.publisherEndpoint  = "tcp://localhost:5555";
-        cfg.commandEndpoint = "tcp://localhost:5556";
+        cfg.publisherEndpoint  = "tcp://*:5555";
+        cfg.commandEndpoint = "tcp://*:5556";
 #else
         cfg.publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock";   
         cfg.commandEndpoint = "ipc:///tmp/supervisory_controller_hmi_cmd.sock";
@@ -112,8 +112,8 @@ HmiConfig defaultHmiConfig(int numTurbines)
                     /*v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));*/
                 }
                 for (int i = 0; i < n; ++i) {
-                    /*v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));*/
-                    v.push_back(static_cast<double>(d.orientations[i]));
+                    v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));
+                    //v.push_back(static_cast<double>(d.orientations[i]));
                 }
                 return v;
             },

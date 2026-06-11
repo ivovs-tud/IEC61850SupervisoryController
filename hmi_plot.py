@@ -18,6 +18,7 @@ Usage:
 import os
 import sys
 from collections import deque
+import time
 
 # Prefer XCB unless the user already chose a Qt platform plugin.
 #os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
@@ -31,11 +32,13 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 # Configuration
 # ---------------------------------------------------------------------------
 if len(sys.argv) > 1:
-    ENDPOINT = sys.argv[1] 
+    IP = sys.argv[1] 
+    ENDPOINT = f"tcp://{IP}:5555"
+    COMMAND_ENDPOINT = f"tcp://{IP}:5556"
 else:
     if sys.platform == "win32":  # covers both 32 and 64-bit Windows
-        ENDPOINT = "tcp://localhost:5555"
-        COMMAND_ENDPOINT = "tcp://localhost:5556"
+        ENDPOINT = "tcp://172.19.3.214:5555"
+        COMMAND_ENDPOINT = "tcp://172.19.3.214:5556"
     else:
         ENDPOINT = "ipc:///tmp/supervisory_controller_hmi.sock"
         COMMAND_ENDPOINT = sys.argv[2] if len(sys.argv) > 2 else "ipc:///tmp/supervisory_controller_hmi_cmd.sock"
@@ -301,7 +304,7 @@ main_window.show()
 plots: list[pg.PlotItem] = []
 curves: list[list[pg.PlotDataItem]] = []
 histories: list[list[deque]] = []
-window_size: int = 100
+window_size: int = 500
 initialized: bool = False
 mode_labels: list[str] = ["Auto", "Curtailment", "Safe Shutdown"]
 
@@ -499,6 +502,8 @@ def poll_and_update() -> None:
     """Qt timer callback: drain the ZMQ socket and refresh plots."""
     global initialized
 
+    
+
     # Drain up to 10 queued frames so we don't fall perpetually behind,
     # but always render only the latest one.
     raw = None
@@ -511,6 +516,7 @@ def poll_and_update() -> None:
     if raw is None:
         return  # no new data this tick
 
+    print(int(time.time() * 1000))
     msg = msgpack.unpackb(raw, raw=False)
 
     lights_data = []
