@@ -28,15 +28,13 @@ typedef enum {
     IEC_LINK_CONNECTED    =  3,
 } IecConnectionStatus;
 
-struct IecReportValue
-{
+struct IecReportValue {
     std::string reference;
     float value {0.0f};
     uint64_t timestampMs {0};
 };
 
-struct IecDataSetAndReportControlBlocks
-{
+struct IecDataSetAndReportControlBlocks {
     std::vector<std::string> dataSets;
     std::vector<std::string> bufferedReportControlBlocks;
     std::vector<std::string> unbufferedReportControlBlocks;
@@ -49,8 +47,7 @@ using IecReportCallback = std::function<void(int turbineId, const std::vector<Ie
 // Turbine IDs are integers: 0 = supercontroller (this process),
 // 1…N = individual wind turbines.
 // ---------------------------------------------------------------------------
-struct TurbineConnection
-{
+struct TurbineConnection {
     int                 id               {0};
     uint8_t             mac[6]           {0x00, 0x15, 0x5d, 0xb4, 0x81, 0xad};  ///< Populated from IED on connect, used for GOOSE subscription filtering
     uint16_t            appId            {1000};       ///< Optional GOOSE AppID for subscription filtering
@@ -81,8 +78,7 @@ struct TurbineConnection
 ///   if (v) std::cout << "Voltage: " << *v << "\n";
 /// @endcode
 // ---------------------------------------------------------------------------
-class IEC61850Manager
-{
+class IEC61850Manager {
 public:
     IEC61850Manager()  = default;
     ~IEC61850Manager();

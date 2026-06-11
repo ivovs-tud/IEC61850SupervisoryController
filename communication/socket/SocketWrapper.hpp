@@ -26,37 +26,31 @@ typedef enum p {
     tcpSOCKET_CONNECTED     =  2,
     tcpSOCKET_RECEIVING     =  3,
     tcpSOCKET_TRANSMITTING  =  4,
-} tcpSocketStatus;
+} TcpSocketStatus;
 
 using OperatorCallback = std::function<void(const uint8_t*, size_t)>;
 using AttackCallback = std::function<void(const uint8_t*, size_t)>;
 using DataHistorianCallback = std::function<void(const uint8_t*, size_t)>;
 constexpr int TCP_BUFFER_SIZE = 1024;
 constexpr int TCP_MAX_CONNECTIONS = 1;
-// ---------------------------------------------------------------------------
-// SocketWrapper – owns two PeriodicTask-based socket servers.
-//
-//   OperatorServer         – PULL socket that receives float-vector commands
-//                            from the operator HMI.
-//   AttackInterfaceServer  – PULL socket that receives attack / injection
-//                            commands from a test harness.
-//
-// Both servers run in their own threads, polling at a configurable rate.
-// Each uses onStart() to bind the socket and onStop() to tear it down.
-// ---------------------------------------------------------------------------
-class SocketWrapper
-{
+
+/**
+ * Owns the controller's operator, attack-interface, and data-historian sockets.
+ *
+ * Each nested server is a PeriodicTask so socket polling stays independent of
+ * IEC RX/TX timing. Operator and attack-interface traffic use ZeroMQ; the data
+ * historian endpoint stays raw TCP for compatibility with simple external
+ * devices and simulator tooling.
+ */
+class SocketWrapper {
 private:
-    // -----------------------------------------------------------------------
-    // OperatorServer
-    // -----------------------------------------------------------------------
-    class OperatorServer : public PeriodicTask
-    {
+    /** Receives operator/HMI commands. */
+    class OperatorServer : public PeriodicTask {
     public:
         explicit OperatorServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
         void setPort(int port);
         void setCallback(OperatorCallback cb);
-        tcpSocketStatus status() const;
+        TcpSocketStatus status() const;
 
     protected:
         void onStart()  override;
@@ -68,20 +62,17 @@ private:
         zmq::context_t               context_;
         std::optional<zmq::socket_t> socket_;
         OperatorCallback             callback_;
-        std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
+        std::atomic<TcpSocketStatus>    status_{tcpSOCKET_CLOSED};
     };
 
-    // -----------------------------------------------------------------------
-    // AttackInterfaceServer
-    // -----------------------------------------------------------------------
-    class AttackInterfaceServer : public PeriodicTask
-    {
+    /** Receives attack-control packets and transmits tapped values. */
+    class AttackInterfaceServer : public PeriodicTask {
     public:
         explicit AttackInterfaceServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
         void setPort(int port);
         void setCallback(AttackCallback cb);
-        tcpSocketStatus status() const;
-        void txData(const std::shared_ptr<void>&data, size_t dataSize);
+        TcpSocketStatus status() const;
+        void txData(const std::shared_ptr<void>& data, size_t dataSize);
 
     protected:
         void onStart()  override;
@@ -93,19 +84,16 @@ private:
         zmq::context_t               context_;
         std::optional<zmq::socket_t> socket_;
         AttackCallback               callback_;
-        std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
+        std::atomic<TcpSocketStatus>    status_{tcpSOCKET_CLOSED};
     };
 
-    // -----------------------------------------------------------------------
-    // DataHistorian Server 
-    // Uses Pure TCP since it should be supported by a large range of devices
-    // -----------------------------------------------------------------------
+    /** Receives simulator data-historian samples over raw TCP. */
     class DataHistorianServer : public PeriodicTask {
     public:
         explicit DataHistorianServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
         void setPort(int port);
         void setCallback(DataHistorianCallback cb);
-        tcpSocketStatus status() const;
+        TcpSocketStatus status() const;
 
     protected:
         void onStart()  override;
@@ -128,12 +116,11 @@ private:
         } tcpServer_;
         
         DataHistorianCallback        callback_;
-        std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
+        std::atomic<TcpSocketStatus>    status_{tcpSOCKET_CLOSED};
         
-        // Track last packet received time per client for timeout detection.
+        // Raw TCP clients may vanish without a close; timeout stale slots.
         std::chrono::steady_clock::time_point lastPacketTime_[TCP_MAX_CONNECTIONS];
         std::chrono::milliseconds clientTimeoutInterval_{2000};
-
     };
 
     OperatorServer         opServer_;
@@ -158,16 +145,16 @@ public:
         dataHistorianServer_.setPort(dataHistorianPort);
     }
 
-    tcpSocketStatus StartOperatorServer(int port);
-    tcpSocketStatus StopOperatorServer();
-    void         AttachOpServerCallback(OperatorCallback callback);
+    TcpSocketStatus startOperatorServer(int port);
+    TcpSocketStatus stopOperatorServer();
+    void attachOperatorServerCallback(OperatorCallback callback);
 
-    tcpSocketStatus StartAttackInterfaceServer(int port);
-    tcpSocketStatus StopAttackInterfaceServer();
-    void         AttachAttackInterfaceCallback(AttackCallback callback);
-    void         txAttackInterfaceData(const std::shared_ptr<void>&data, size_t dataSize);
+    TcpSocketStatus startAttackInterfaceServer(int port);
+    TcpSocketStatus stopAttackInterfaceServer();
+    void attachAttackInterfaceCallback(AttackCallback callback);
+    void txAttackInterfaceData(const std::shared_ptr<void>& data, size_t dataSize);
 
-    tcpSocketStatus StartDataHistorianServer(int port);
-    tcpSocketStatus StopDataHistorianServer();
-    void         AttachDataHistorianCallback(DataHistorianCallback callback);
+    TcpSocketStatus startDataHistorianServer(int port);
+    TcpSocketStatus stopDataHistorianServer();
+    void attachDataHistorianCallback(DataHistorianCallback callback);
 };

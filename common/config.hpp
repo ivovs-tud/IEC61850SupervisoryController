@@ -267,28 +267,28 @@
 
 
 // -----------------------------------------------------------------------------
-// libiec_wrapper macros
+// LibIecWrapper macros
 // -----------------------------------------------------------------------------
 #if SC_LOG_LEVEL_LIBIEC >= 1
-#define LIBIEC_ERR(msg) SC_LOG_EMIT_COLOR(std::cerr, SC_LOG_COLOR_ERROR, "[libiec_wrapper][ERR] ", msg)
+#define LIBIEC_ERR(msg) SC_LOG_EMIT_COLOR(std::cerr, SC_LOG_COLOR_ERROR, "[LibIecWrapper][ERR] ", msg)
 #else
 #define LIBIEC_ERR(msg) do {} while (0)
 #endif
 
 #if SC_LOG_LEVEL_LIBIEC >= 1
-#define LIBIEC_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_LIBIEC_V1, "[libiec_wrapper][ST] ", msg)
+#define LIBIEC_ST(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_LIBIEC_V1, "[LibIecWrapper][ST] ", msg)
 #else
 #define LIBIEC_ST(msg) do {} while (0)
 #endif
 
 #if SC_LOG_LEVEL_LIBIEC >= 2
-#define LIBIEC_LOG_V1(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_LIBIEC_V1, "[libiec_wrapper] ", msg)
+#define LIBIEC_LOG_V1(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_LIBIEC_V1, "[LibIecWrapper] ", msg)
 #else
 #define LIBIEC_LOG_V1(msg) do {} while (0)
 #endif
 
 #if SC_LOG_LEVEL_LIBIEC >= 3
-#define LIBIEC_LOG_V2(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_LIBIEC_V2, "[libiec_wrapper][V2] ", msg)
+#define LIBIEC_LOG_V2(msg) SC_LOG_EMIT_COLOR(std::cout, SC_LOG_COLOR_LIBIEC_V2, "[LibIecWrapper][V2] ", msg)
 #else
 #define LIBIEC_LOG_V2(msg) do {} while (0)
 #endif

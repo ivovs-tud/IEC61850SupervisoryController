@@ -4,97 +4,59 @@
 
 #include "common/PeriodicTask.hpp"
 
-// ---------------------------------------------------------------------------
-// MonitoringTask – system health monitoring + GOOSE subscriber.
-// ---------------------------------------------------------------------------
-class MonitoringTask : public PeriodicTask
-{
+/**
+ * Periodic consistency checks over shared farm measurements.
+ *
+ * The current checks are intentionally simple threshold detectors. They are
+ * useful as lightweight sanity alarms and as scaffolding for model-based
+ * monitoring, but they are not a substitute for certified protection logic.
+ */
+class MonitoringTask : public PeriodicTask {
 public:
     explicit MonitoringTask(std::chrono::milliseconds period = std::chrono::milliseconds(50));
 
 protected:
+    // First-order yaw observer parameters. The model assumes setpoint changes
+    // are smooth enough that a 10 s yaw time constant is a useful sanity check.
+    const float orientationTimeConstant_ = 10.0f;
+    const float orientationAlpha_ = exp(-period_.count() / 1000.0f / orientationTimeConstant_);
+    const float orientationThresholdDeg_ = 5.0f;
+    const float orientationObserverGain_ = 0.5f;
+    static constexpr uint64_t kYawMeasurementFreshnessMs = 1000;
+    std::vector<uint64_t> lastYawMeasurementTimeMs_;
+    std::vector<float> orientationState_;
 
-    // -----------------------------------------------------------
-    // Variables used internally for monitoring logic and state
-    // -----------------------------------------------------------
-    // Orientation-Related.
-    /* TODO : Some of these are placeholders */
-    const float orientation_time_constant = 10.0f; // Time constant for the orientation prediction model (in seconds). Depends on the turbine's yaw actuation dynamics.
-    const float alpha_psi = exp(-period_.count() / 1000.0f / orientation_time_constant); // Constant defining the 'dynamics' of the orientation
-    const float orientation_threshold = 5.0f; // Threshold for triggering the yaw misalignment alarm (in degrees)
-    const float observer_gain = 0.5f; // Gain for a simple observer to estimate the true orientation based on measurements (placeholder value, needs tuning)
-    // const uint64_t yaw_measurement_timeout_ms = 1000; // Time after which we consider the yaw measurement to be outdated (in milliseconds)
-    std::vector<uint64_t> last_yaw_measurement_time; // Timestamp of the last yaw measurement that was used for detection
-    std::vector<float> orientation_state;
-
-    uint64_t last_reset_ms = 0;
-
+    uint64_t lastResetMs_ = 0;
 
     void execute() override;
 
-	// ---------------------------------------------------------------------------
-    // Simple detection + consistency checks for monitored parameters
-	// ---------------------------------------------------------------------------
+    /** Detects measurements outside static engineering limits. */
+    bool hasOutOfBoundsMeasurements();
 
-    bool checkOutOfBoundsAll();
+    /** Compares turbine-reported total power with locally accumulated power. */
+    bool hasPowerReceivedMismatch();
+
     /**
-     * @brief Checks if any monitored parameters are out of their engineering bounds (static thresholds).
-     * 
-     * @return true if all parameters are within bounds, false otherwise.
+     * Checks whether measured yaw follows a first-order response to setpoints.
+     *
+     * The observer update is:
+     *   psi_hat[k+1] = (1 - alpha) psi_hat[k] + alpha psi_setpoint[k]
      */
+    bool hasOrientationDynamicsMismatch();
 
-    bool checkConsistencyPowerGeneratedVsReceived();
-    /**
-        @brief Uses the moving average power generated as received from each turbine, 
-            v.s. the 'locally measured total power' for consistency check.
-    */
+    /** Uses the mechanical relation P ~= torque * rotor speed as a plausibility check. */
+    bool hasPowerTorqueRotorSpeedMismatch();
 
-    bool checkConsistencyOrientationDynamics();
-    /**
-        @brief Checks for consistency between where the turbine is expected to point and what is received
+    /** Flags turbines whose local wind direction is far from the farm estimate. */
+    bool hasWindDirectionMismatch();
 
-        In particular, the prediction model is 
-        $$\psi_{k+1}^{(i)} = (1-\alpha_{\psi})\psi^{(i)}_{k} + \alpha_{\psi}\psi_{\mathrm{spt}}^{(i)}, \quad\text{ with }\, \alpha_{\psi} = \frac{\Delta t}{\tau_{\gamma} + \Delta t}.$$
+    /** Flags unrealistically abrupt wind-direction changes in per-turbine history. */
+    bool hasWindDirectionStepChange();
 
-        TODO: possibly upgrade this to an estimation/observer type of predictor
-    */
-
-    bool checkConsistencyPowerTorqueRotorSpeed();
-    /**
-     * @brief Checks for consistency between power, torque, and rotor speed measurements using the relation 
-     *  $$P = T \cdot \omega$$
-     */
-
-    bool checkConsistencyWindDirection();
-    /**
-     * @brief Checks for consistency between wind direction measurements and the global one. 
-     *  This will in general be a very rough check of the order of 90 degrees.
-     */
-
-    bool checkConsistencyWindDirectionChange();
-    /**
-     * @brief Checks for consistency between change in wind direction over time. 
-     * This will in general be a very rough check of the order of 5 degrees/s.
-     */
-
-    bool checkConsistencyWindSpeedChange();
-    /**
-     * @brief Checks for consistency between change in wind speed over time. 
-     * This will in general be a very rough check of the order of 1 m/s^2.
-     */
-
-    /*bool checkConsistencyPowerGeneratedVsAvailable();
-	bool checkConsistencyPowerReceivedVsAvailableAll();
-    
-    bool detectorWindSpeed();
-    bool detectorWindDir();*/
-
-
-
+    /** Flags unrealistically abrupt wind-speed changes in per-turbine history. */
+    bool hasWindSpeedStepChange();
 
 private:
-    // GOOSE message callback placeholder.
-    // TODO: replace void* params with GooseSubscriber* / GooseMessage* from libiec61850
-    //   once libiec_wrapper exposes the subscription API.
+    // Placeholder until LibIecWrapper exposes typed GOOSE subscription values.
     static void onGooseMessage(void* subscriber, void* parameter);
 };

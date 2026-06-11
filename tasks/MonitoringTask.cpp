@@ -4,126 +4,86 @@
 #include "common/GlobalDataStructure.hpp"
 #include "common/util.hpp"
 
-
-
-// ---------------------------------------------------------------------------
-// Public Interface
-// ---------------------------------------------------------------------------
-
 MonitoringTask::MonitoringTask(std::chrono::milliseconds period) : PeriodicTask(period) {
-    // TODO: set up GOOSE subscriber via libiec_wrapper
-    orientation_state = std::vector<float>(N_TURBINES, 0.0f);
-    last_yaw_measurement_time = std::vector<uint64_t>(N_TURBINES, 0);
+    orientationState_ = std::vector<float>(kMaxTurbines, 0.0f);
+    lastYawMeasurementTimeMs_ = std::vector<uint64_t>(kMaxTurbines, 0);
 }
 
 void MonitoringTask::execute() {
-    // TODO: implement monitoring loop (thresholds, alarms, GOOSE events)
     auto& gds = GlobalDataStructure::instance().data();
 
     if (!gds.systemRunning) return;
 
-    gds.alarmWRecMeas |= checkConsistencyPowerGeneratedVsReceived();
-    gds.alarmOrientationMisalign |= checkConsistencyOrientationDynamics();
-    gds.alarmWTorqueRotSpd |= checkConsistencyPowerTorqueRotorSpeed();
-    gds.alarmHorWdDir |= checkConsistencyWindDirection();
-    gds.alarmHorWdDirChg |= checkConsistencyWindDirectionChange();
-    gds.alarmHorWdSpdChg |= checkConsistencyWindSpeedChange();
+    gds.alarmPowerReceivedMismatch |= hasPowerReceivedMismatch();
+    gds.alarmOrientationMisalignment |= hasOrientationDynamicsMismatch();
+    gds.alarmPowerTorqueRotorSpeedMismatch |= hasPowerTorqueRotorSpeedMismatch();
+    gds.alarmWindDirectionMismatch |= hasWindDirectionMismatch();
+    gds.alarmWindDirectionChange |= hasWindDirectionStepChange();
+    gds.alarmWindSpeedChange |= hasWindSpeedStepChange();
 
-    // TODO: implement reset mechanisms
-    uint64_t current_ms = getCurrentTimeMs();
-    if (current_ms - last_reset_ms >= 3000) {
-        gds.alarmWRecMeas = false;
-        gds.alarmOrientationMisalign = false;
-        gds.alarmWTorqueRotSpd = false;
-        gds.alarmHorWdDir = false;
-        gds.alarmHorWdDirChg = false;
-        gds.alarmHorWdSpdChg = false;
-        last_reset_ms = current_ms;
+    // The HMI reads alarm latches; reset periodically so transient faults clear
+    // without requiring operator input.
+    uint64_t currentTimeMs = getCurrentTimeMs();
+    if (currentTimeMs - lastResetMs_ >= 3000) {
+        gds.alarmPowerReceivedMismatch = false;
+        gds.alarmOrientationMisalignment = false;
+        gds.alarmPowerTorqueRotorSpeedMismatch = false;
+        gds.alarmWindDirectionMismatch = false;
+        gds.alarmWindDirectionChange = false;
+        gds.alarmWindSpeedChange = false;
+        lastResetMs_ = currentTimeMs;
     }
 }
 
-
-
-
-
 void MonitoringTask::onGooseMessage(void* subscriber, void* parameter) {
-    // TODO: handle incoming GOOSE message
     (void)subscriber;
     (void)parameter;
 }
 
-
-// ---------------------------------------------------------------------------
-// Private monitoring functions
-// ---------------------------------------------------------------------------
-
-bool MonitoringTask::checkConsistencyPowerGeneratedVsReceived() {
-    //float total = 0;
-    //std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+bool MonitoringTask::hasPowerReceivedMismatch() {
     auto& gds = GlobalDataStructure::instance().data();
     
-    /*for (auto i = 0; i < gds.powerHistory.size(); i++) {
-		total += gds.powerHistory[i].back();
-    }*/
-    
-    return abs(gds.TotalPower_recv - gds.Wtotal_meas.back()) > 10e6;
+    return abs(gds.receivedTotalPower - gds.measuredTotalPowerHistory.back()) > 10e6;
 }
 
-bool MonitoringTask::checkOutOfBoundsAll() {
-    // Implementation for checking out-of-bounds values
+bool MonitoringTask::hasOutOfBoundsMeasurements() {
     return false;
 }
 
-bool MonitoringTask::checkConsistencyOrientationDynamics() {
-    // Implementation for checking orientation dynamics consistency
-    // TODO: There should be a check here that skips a turbine, if we did not receive a yaw measurement that is recent enough. This is to avoid false alarms due to communication issues.
+bool MonitoringTask::hasOrientationDynamicsMismatch() {
     auto& gds = GlobalDataStructure::instance().data();
-
     bool alarm = false;
 
-    for (auto i = 0; i < N_TURBINES; i++) {
-        // First predict the next orientation based on the simple model
-        float predictedOrientation = (1 - alpha_psi) * orientation_state[i] + alpha_psi * gds.TurbineYawSetpoints[i];
+    for (auto i = 0; i < kMaxTurbines; i++) {
+        float predictedOrientation = (1 - orientationAlpha_) * orientationState_[i] + orientationAlpha_ * gds.turbineYawSetpoints[i];
 
-        // Then compare the predicted orientation to the latest received one
-        // Only if we did not already use this measurement for detection before (i.e. it is new), we check for an alarm condition
-        if (gds.lastYawOffset_t[i] > last_yaw_measurement_time[i] && gds.lastYawOffset_t[i] >= getCurrentTimeMs() - 1000) { // TODO: replace 2000 with yaw_measurement_timeout_ms
-            if (abs(predictedOrientation - gds.lastYawOffset[i]) > orientation_threshold) {
-                alarm |= true; // Alarm condition met
+        // Only fresh yaw samples are checked; stale samples usually indicate a
+        // communication gap rather than a physical yaw mismatch.
+        if (gds.lastYawOffsetTimestampMs[i] > lastYawMeasurementTimeMs_[i] && gds.lastYawOffsetTimestampMs[i] >= getCurrentTimeMs() - kYawMeasurementFreshnessMs) {
+            if (abs(predictedOrientation - gds.lastYawOffset[i]) > orientationThresholdDeg_) {
+                alarm |= true;
             }
-            last_yaw_measurement_time[i] = gds.lastYawOffset_t[i];
+            lastYawMeasurementTimeMs_[i] = gds.lastYawOffsetTimestampMs[i];
         }
-        // if (abs(predictedOrientation - gds.lastYawOffset[i]) > orientation_threshold) {
-        //     alarm |= true; // Alarm condition met
-        // }
 
-        // Finally update the orientation state using a simple observer-like update (this is a placeholder, more sophisticated estimation could be used)
-        orientation_state[i] = predictedOrientation + observer_gain * (gds.lastYawOffset[i] - predictedOrientation);
-        gds.orientations[i] = orientation_state[i];
+        orientationState_[i] = predictedOrientation + orientationObserverGain_ * (gds.lastYawOffset[i] - predictedOrientation);
+        gds.orientations[i] = orientationState_[i];
     }   
 
     return alarm;
 }
 
-bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
-    // Implementation for checking power, torque, and rotor speed consistency
-    bool alarm = false;
-    
+bool MonitoringTask::hasPowerTorqueRotorSpeedMismatch() {
     auto& gds = GlobalDataStructure::instance().data();
 
-    for (auto i = 0; i < N_TURBINES; i++) {
-        // We skip this turbine if the timestamps of the received power torque and rotor speed are too far apart
-        if (abs((int64_t)gds.lastPower_t[i] - (int64_t)gds.lastRPM_t[i]) > 1000) { // Placeholder threshold of 1 second
-            continue;
-        }
-        if(abs((int64_t)gds.lastPower_t[i] - (int64_t)gds.lastRPM_t[i]) > 1000) { // Placeholder threshold of 1 second
+    for (auto i = 0; i < kMaxTurbines; i++) {
+        // Compare only samples close enough in time to describe the same state.
+        if (abs((int64_t)gds.lastPowerTimestampMs[i] - (int64_t)gds.lastRotorSpeedTimestampMs[i]) > 1000) { // Placeholder threshold of 1 second
             continue;
         }
 
-
-        float expectedPower = gds.lastRPM[i] * gds.lastGenTorque[i]; // Placeholder for actual power-torque-speed relation
+        float expectedPower = gds.lastRotorSpeed[i] * gds.lastGeneratorTorque[i];
         if (abs(gds.lastPower[i] - expectedPower) > 10e5) { // Placeholder threshold
-            // alarm |= true;
             return true;
         }
     }
@@ -131,11 +91,10 @@ bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
     return false;
 }
 
-bool MonitoringTask::checkConsistencyWindDirection() {
-    // Implementation for checking wind direction consistency
+bool MonitoringTask::hasWindDirectionMismatch() {
     auto& gds = GlobalDataStructure::instance().data();
-    for (auto i = 0; i < N_TURBINES; i++) {
-        if (abs(gds.lastWD[i] - gds.glob_wd_i) > 90.0f) { // Placeholder threshold of 90 degrees
+    for (auto i = 0; i < kMaxTurbines; i++) {
+        if (abs(gds.lastWindDirection[i] - gds.farmWindDirection) > 90.0f) { // Placeholder threshold of 90 degrees
             return true;
         }
     }
@@ -143,15 +102,13 @@ bool MonitoringTask::checkConsistencyWindDirection() {
     return false;
 }
 
-bool MonitoringTask::checkConsistencyWindDirectionChange() {
-    // Implementation for checking wind direction change consistency
+bool MonitoringTask::hasWindDirectionStepChange() {
     auto& gds = GlobalDataStructure::instance().data();
 
-    for (auto i = 0; i < N_TURBINES; i++) {
-        // Take the two most recent values of the wind direction history and compare
-        if (gds.wdHistory[i].size() >= 2) {
-            float wd_change = abs(gds.wdHistory[i].back() - gds.wdHistory[i][gds.wdHistory[i].size() - 2]);
-            if (wd_change > 5.0f) { // Placeholder threshold of 5 degrees/s
+    for (auto i = 0; i < kMaxTurbines; i++) {
+        if (gds.windDirectionHistory[i].size() >= 2) {
+            float windDirectionChange = abs(gds.windDirectionHistory[i].back() - gds.windDirectionHistory[i][gds.windDirectionHistory[i].size() - 2]);
+            if (windDirectionChange > 5.0f) { // Placeholder threshold of 5 degrees/s
                 return true;
             }
         }
@@ -160,16 +117,13 @@ bool MonitoringTask::checkConsistencyWindDirectionChange() {
     return false;
 }
 
-bool MonitoringTask::checkConsistencyWindSpeedChange() {
-    // Implementation for checking wind speed change consistency
+bool MonitoringTask::hasWindSpeedStepChange() {
+    auto& gds = GlobalDataStructure::instance().data();
 
-        auto& gds = GlobalDataStructure::instance().data();
-
-    for (auto i = 0; i < N_TURBINES; i++) {
-        // Take the two most recent values of the wind speed history and compare
-        if (gds.wsHistory[i].size() >= 2) {
-            float ws_change = abs(gds.wsHistory[i].back() - gds.wsHistory[i][gds.wsHistory[i].size() - 2]);
-            if (ws_change > 1.0f) { // Placeholder threshold of 1 m/s
+    for (auto i = 0; i < kMaxTurbines; i++) {
+        if (gds.windSpeedHistory[i].size() >= 2) {
+            float windSpeedChange = abs(gds.windSpeedHistory[i].back() - gds.windSpeedHistory[i][gds.windSpeedHistory[i].size() - 2]);
+            if (windSpeedChange > 1.0f) { // Placeholder threshold of 1 m/s
                 return true;
             }
         }

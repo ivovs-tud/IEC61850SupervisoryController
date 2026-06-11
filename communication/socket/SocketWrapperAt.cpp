@@ -1,5 +1,4 @@
 #include "SocketWrapper.hpp"
-#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>
@@ -10,8 +9,8 @@
 SocketWrapper::AttackInterfaceServer::AttackInterfaceServer(std::chrono::milliseconds pollPeriod) : PeriodicTask(pollPeriod) {}
 
 void SocketWrapper::AttackInterfaceServer::setPort(int port) { port_ = port; }
-tcpSocketStatus SocketWrapper::AttackInterfaceServer::status() const { return status_.load(); }
-void SocketWrapper::AttackInterfaceServer::setCallback(AttackCallback cb) {callback_ = std::move(cb); }
+TcpSocketStatus SocketWrapper::AttackInterfaceServer::status() const { return status_.load(); }
+void SocketWrapper::AttackInterfaceServer::setCallback(AttackCallback cb) { callback_ = std::move(cb); }
 
 void SocketWrapper::AttackInterfaceServer::onStart() {
     try {

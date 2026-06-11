@@ -33,8 +33,7 @@ extern "C" {
 
 namespace {
 
-std::string stripFcSuffix(const std::string& name)
-{
+std::string stripFcSuffix(const std::string& name) {
     std::size_t pos = name.find(" [");
     if (pos == std::string::npos)
         return name;
@@ -44,8 +43,7 @@ std::string stripFcSuffix(const std::string& name)
 void collectDataAttributesRecursive(IedConnection connection,
                                     const std::string& objectReference,
                                     std::vector<std::string>& output,
-                                    int depth = 0)
-{
+                                    int depth = 0) {
     if (depth > 32) {
         output.push_back(objectReference);
         return;
@@ -80,13 +78,11 @@ void collectDataAttributesRecursive(IedConnection connection,
         output.push_back(objectReference);
 }
 
-std::string reportSubscriptionKey(int turbineId, const std::string& rcbReference)
-{
+std::string reportSubscriptionKey(int turbineId, const std::string& rcbReference) {
     return std::to_string(turbineId) + "|" + rcbReference;
 }
 
-MmsValue* reportElementValue(MmsValue* values, int index)
-{
+MmsValue* reportElementValue(MmsValue* values, int index) {
     if (!values)
         return nullptr;
 
@@ -100,8 +96,7 @@ MmsValue* reportElementValue(MmsValue* values, int index)
 bool appendFirstReportFloatValue(MmsValue* value,
                                  const std::string& dataReference,
                                  uint64_t timestampMs,
-                                 std::vector<IecReportValue>& decoded)
-{
+                                 std::vector<IecReportValue>& decoded) {
     if (!value)
         return false;
 
@@ -128,8 +123,7 @@ bool appendFirstReportFloatValue(MmsValue* value,
     return false;
 }
 
-void periodicReportHandler(void* parameter, ClientReport report)
-{
+void periodicReportHandler(void* parameter, ClientReport report) {
     auto* sub = static_cast<IEC61850Manager::ReportSubscription*>(parameter);
     if (!sub || !sub->callback)
         return;
@@ -169,8 +163,7 @@ void periodicReportHandler(void* parameter, ClientReport report)
         IECMGR_LOG_V2(sub->turbineId, "received report " << sub->rcbReference << " but decoded no float values");
 }
 
-void sortAndDeduplicate(std::vector<std::string>& values)
-{
+void sortAndDeduplicate(std::vector<std::string>& values) {
     std::sort(values.begin(), values.end());
     values.erase(std::unique(values.begin(), values.end()), values.end());
 }
@@ -180,8 +173,7 @@ void appendLogicalNodeDirectory(IedConnection connection,
                                 const std::string& lnRef,
                                 ACSIClass acsiClass,
                                 const std::string& separator,
-                                std::vector<std::string>& refs)
-{
+                                std::vector<std::string>& refs) {
     LinkedList directory = IedConnection_getLogicalNodeDirectory(
         connection, &err, lnRef.c_str(), acsiClass);
 
@@ -212,8 +204,7 @@ bool IEC61850Manager::performSelectAndOperate(
     int turbineId,
     const std::string& controlObjectReference,
     const std::string& functionName,
-    bool useSelectBeforeOperate)
-{
+    bool useSelectBeforeOperate) {
     auto* control = static_cast<ControlObjectClient>(controlObjectClient);
     auto* ctlVal = static_cast<MmsValue*>(mmsValue);
 
@@ -246,8 +237,7 @@ bool IEC61850Manager::writeControlledGeneric(
     const std::string& controlObjectReference,
     const std::string& functionName,
     std::function<void*()> createMmsValue,
-    bool useSelectBeforeOperate)
-{
+    bool useSelectBeforeOperate) {
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     auto it = turbines_.find(turbineId);
     if (it == turbines_.end()) {
@@ -286,8 +276,7 @@ static constexpr int    BACKOFF_BASE_MS    = 100;  // doubled each retry
 
 // ── Destructor ────────────────────────────────────────────────────────────
 
-IEC61850Manager::~IEC61850Manager()
-{
+IEC61850Manager::~IEC61850Manager() {
     disconnectAll();
 }
 
@@ -319,8 +308,7 @@ void IEC61850Manager::addTurbine(int id, const std::string& ip, int port, const 
     IECMGR_ST(id, "registered at " << ip << ":" << port);
 }
 
-std::string IEC61850Manager::buildRef(int turbineId, const std::string& daReference)
-{
+std::string IEC61850Manager::buildRef(int turbineId, const std::string& daReference) {
     if (daReference.empty())
         return daReference;
 
@@ -344,8 +332,7 @@ std::string IEC61850Manager::buildRef(int turbineId, const std::string& daRefere
     return tc.iedName + tc.logicalDevice + "/" + daReference;
 }
 
-std::string IEC61850Manager::buildGooseRef(int turbineId, const std::string& goCbRef)
-{
+std::string IEC61850Manager::buildGooseRef(int turbineId, const std::string& goCbRef) {
     if (goCbRef.empty())
         return goCbRef;
 
@@ -370,8 +357,7 @@ std::string IEC61850Manager::buildGooseRef(int turbineId, const std::string& goC
     return tc.iedName + "" + tc.logicalDevice + "/" + goCbRef;
 }
 
-std::string IEC61850Manager::buildReportRefLocked(const TurbineConnection& tc, const std::string& reference) const
-{
+std::string IEC61850Manager::buildReportRefLocked(const TurbineConnection& tc, const std::string& reference) const {
     if (reference.empty())
         return reference;
 
@@ -389,8 +375,7 @@ std::string IEC61850Manager::buildReportRefLocked(const TurbineConnection& tc, c
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 
-bool IEC61850Manager::doConnect(TurbineConnection& tc)
-{
+bool IEC61850Manager::doConnect(TurbineConnection& tc) {
     // Clean up any stale handle first.
     if (tc.connection) {
         IedConnection_destroy(tc.connection);
@@ -416,8 +401,7 @@ bool IEC61850Manager::doConnect(TurbineConnection& tc)
     return true;
 }
 
-void IEC61850Manager::doDisconnect(TurbineConnection& tc)
-{
+void IEC61850Manager::doDisconnect(TurbineConnection& tc) {
     if (tc.connection) {
         IedConnection_close(tc.connection);
         IedConnection_destroy(tc.connection);
@@ -428,8 +412,7 @@ void IEC61850Manager::doDisconnect(TurbineConnection& tc)
     IEC_LOG(tc.id, "disconnected");
 }
 
-bool IEC61850Manager::ensureConnected(TurbineConnection& tc)
-{
+bool IEC61850Manager::ensureConnected(TurbineConnection& tc) {
     // Only reconnect if the caller previously established an intentional
     // connection via connectTurbine() or connectAll().  If the turbine was
     // never explicitly connected (or was manually disconnected) we leave it
@@ -440,8 +423,7 @@ bool IEC61850Manager::ensureConnected(TurbineConnection& tc)
 
     // Already in a good state?
     if (tc.connection &&
-        IedConnection_getState(tc.connection) == IED_STATE_CONNECTED)
-    {
+        IedConnection_getState(tc.connection) == IED_STATE_CONNECTED) {
         return true;
     }
 
@@ -464,8 +446,7 @@ bool IEC61850Manager::ensureConnected(TurbineConnection& tc)
 
 // ── Public connection management ─────────────────────────────────────────
 
-bool IEC61850Manager::connectTurbine(int id)
-{
+bool IEC61850Manager::connectTurbine(int id) {
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     auto it = turbines_.find(id);
     if (it == turbines_.end()) {
@@ -480,8 +461,7 @@ bool IEC61850Manager::connectTurbine(int id)
     return doConnect(tc);
 }
 
-void IEC61850Manager::disconnectTurbine(int id)
-{
+void IEC61850Manager::disconnectTurbine(int id) {
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     auto it = turbines_.find(id);
     if (it == turbines_.end()) {
@@ -493,8 +473,7 @@ void IEC61850Manager::disconnectTurbine(int id)
     doDisconnect(tc);
 }
 
-void IEC61850Manager::connectAll()
-{
+void IEC61850Manager::connectAll() {
     // Snapshot the keys so we don't hold mapMutex_ while connecting
     // (connecting can take time and connectTurbine() re-acquires mapMutex_).
     std::vector<int> ids;
@@ -507,8 +486,7 @@ void IEC61850Manager::connectAll()
         connectTurbine(id);
 }
 
-void IEC61850Manager::disconnectAll()
-{
+void IEC61850Manager::disconnectAll() {
     std::vector<int> ids;
     {
         std::lock_guard<std::mutex> mapLock(mapMutex_);
@@ -533,8 +511,7 @@ IecConnectionStatus IEC61850Manager::status() {
 
 std::optional<float> IEC61850Manager::readFloat(int turbineId,
                                                   const std::string& daReference,
-                                                  int fc)
-{
+                                                  int fc) {
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     auto it = turbines_.find(turbineId);
     if (it == turbines_.end()) {
@@ -572,8 +549,7 @@ std::optional<float> IEC61850Manager::readFloat(int turbineId,
 bool IEC61850Manager::writeFloat(int turbineId,
                                   const std::string& daReference,
                                   int fc,
-                                  float value)
-{
+                                  float value) {
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     auto it = turbines_.find(turbineId);
     if (it == turbines_.end()) {
@@ -611,8 +587,7 @@ bool IEC61850Manager::writeFloat(int turbineId,
 bool IEC61850Manager::writeControlledFloat(int turbineId,
                                            const std::string& controlObjectReference,
                                            float value,
-                                           bool useSelectBeforeOperate)
-{
+                                           bool useSelectBeforeOperate) {
     return writeControlledGeneric(turbineId, controlObjectReference, "writeControlledFloat",
                                   [value]() { return static_cast<void*>(MmsValue_newFloat(value)); },
                                   useSelectBeforeOperate);
@@ -621,8 +596,7 @@ bool IEC61850Manager::writeControlledFloat(int turbineId,
 bool IEC61850Manager::writeControlledInt(int turbineId,
                                          const std::string& controlObjectReference,
                                          int value,
-                                         bool useSelectBeforeOperate)
-{
+                                         bool useSelectBeforeOperate) {
     return writeControlledGeneric(turbineId, controlObjectReference, "writeControlledInt",
                                   [value]() { return static_cast<void*>(MmsValue_newIntegerFromInt32(value)); },
                                   useSelectBeforeOperate);
@@ -631,8 +605,7 @@ bool IEC61850Manager::writeControlledInt(int turbineId,
 bool IEC61850Manager::writeControlledEnum(int turbineId,
                                           const std::string& controlObjectReference,
                                           int enumOrdinal,
-                                          bool useSelectBeforeOperate)
-{
+                                          bool useSelectBeforeOperate) {
     // MMS enumerated values are encoded as integers on the wire.
     return writeControlledGeneric(turbineId, controlObjectReference, "writeControlledEnum",
                                   [enumOrdinal]() { return static_cast<void*>(MmsValue_newIntegerFromInt32(enumOrdinal)); },
@@ -641,8 +614,7 @@ bool IEC61850Manager::writeControlledEnum(int turbineId,
 
 std::optional<int> IEC61850Manager::readInt(int turbineId,
                                               const std::string& daReference,
-                                              int fc)
-{
+                                              int fc) {
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     auto it = turbines_.find(turbineId);
     if (it == turbines_.end()) {
@@ -680,8 +652,7 @@ std::optional<int> IEC61850Manager::readInt(int turbineId,
 bool IEC61850Manager::writeInt(int turbineId,
                                 const std::string& daReference,
                                 int fc,
-                                int value)
-{
+                                int value) {
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     auto it = turbines_.find(turbineId);
     if (it == turbines_.end()) {
@@ -718,8 +689,7 @@ bool IEC61850Manager::writeInt(int turbineId,
 
 std::optional<std::string> IEC61850Manager::readString(int turbineId,
                                                         const std::string& daReference,
-                                                        int fc)
-{
+                                                        int fc) {
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     auto it = turbines_.find(turbineId);
     if (it == turbines_.end()) {
@@ -762,8 +732,7 @@ bool IEC61850Manager::startPeriodicReport(int turbineId,
                                           const std::string& dataSetReference,
                                           uint32_t integrityPeriodMs,
                                           const std::vector<std::string>& fallbackDataReferences,
-                                          IecReportCallback callback)
-{
+                                          IecReportCallback callback) {
     if (rcbReference.empty() || integrityPeriodMs == 0 || !callback) {
         IEC_ERR(turbineId, "startPeriodicReport() – invalid report configuration");
         return false;
@@ -870,8 +839,7 @@ bool IEC61850Manager::startPeriodicReport(int turbineId,
     return true;
 }
 
-void IEC61850Manager::stopPeriodicReport(int turbineId, const std::string& rcbReference)
-{
+void IEC61850Manager::stopPeriodicReport(int turbineId, const std::string& rcbReference) {
     if (rcbReference.empty())
         return;
 
@@ -908,8 +876,7 @@ void IEC61850Manager::stopPeriodicReport(int turbineId, const std::string& rcbRe
 std::map<std::string, bool> IEC61850Manager::checkSupported(
     int turbineId,
     const std::vector<std::string>& references,
-    int fc)
-{
+    int fc) {
     std::map<std::string, bool> result;
 
     std::lock_guard<std::mutex> mapLock(mapMutex_);
@@ -963,8 +930,7 @@ std::map<std::string, bool> IEC61850Manager::checkSupported(
     return result;
 }
 
-std::vector<std::string> IEC61850Manager::getDataModelReferences(int turbineId)
-{
+std::vector<std::string> IEC61850Manager::getDataModelReferences(int turbineId) {
     std::vector<std::string> refs;
 
     std::lock_guard<std::mutex> mapLock(mapMutex_);
@@ -1038,8 +1004,7 @@ std::vector<std::string> IEC61850Manager::getDataModelReferences(int turbineId)
     return refs;
 }
 
-IecDataSetAndReportControlBlocks IEC61850Manager::getDataSetsAndReportControlBlocks(int turbineId)
-{
+IecDataSetAndReportControlBlocks IEC61850Manager::getDataSetsAndReportControlBlocks(int turbineId) {
     IecDataSetAndReportControlBlocks result;
 
     std::lock_guard<std::mutex> mapLock(mapMutex_);
@@ -1103,8 +1068,7 @@ IecDataSetAndReportControlBlocks IEC61850Manager::getDataSetsAndReportControlBlo
     return result;
 }
 
-void IEC61850Manager::printDataModel(int turbineId, int maxEntries)
-{
+void IEC61850Manager::printDataModel(int turbineId, int maxEntries) {
     std::vector<std::string> refs = getDataModelReferences(turbineId);
 
     if (refs.empty()) {
@@ -1121,8 +1085,7 @@ void IEC61850Manager::printDataModel(int turbineId, int maxEntries)
         IEC_DEBUG(turbineId, "  [" << i << "] " << refs[i]);
 }
 
-void IEC61850Manager::printDataSetsAndReportControlBlocks(int turbineId)
-{
+void IEC61850Manager::printDataSetsAndReportControlBlocks(int turbineId) {
     IecDataSetAndReportControlBlocks refs = getDataSetsAndReportControlBlocks(turbineId);
 
     IEC_DEBUG(turbineId, "Data sets: " << refs.dataSets.size());

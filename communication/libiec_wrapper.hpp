@@ -18,10 +18,6 @@ extern "C" {
 }
 
 
-// ---------------------------------------------------------------------------
-// libiec_wrapper – high-level C++ wrapper around IEC61850Manager.
-// ---------------------------------------------------------------------------
-
 typedef enum r {
     IEC_OK = 0,
     IEC_ERROR = -1,
@@ -30,16 +26,10 @@ typedef enum r {
 using GooseCallback = std::function<void(const std::string&, void*)>;
 using ReportCallback = IecReportCallback;
 
-
-// typedef GooseCallback (*GooseCallback)(std::string& ref, void* value);
-
 namespace IEC_STRINGS {
 
-// IEC 61850 DA references — LN.DO.DA paths WITHOUT the Logical Device (LD)
-// prefix.  The LD is configured per turbine via TurbineEndpoint::logicalDevice
-// and prepended automatically by libiec_wrapper using IEC61850Manager::buildRef().
-
-/** DA references for setpoints and commands */
+// LN.DO.DA references without IED/LD prefix. LibIecWrapper prepends the
+// per-turbine logical device before delegating to IEC61850Manager.
 static constexpr const char* WTUR_DmdWSpt = "WTUR1.DmdWSpt.val";   // APC – active-power setpoint
 static constexpr const char* XWYAW_YawSpt = "WYAW1.YwAngSpt.val";    // APC – yaw-angle setpoint
 
@@ -47,9 +37,7 @@ static constexpr const char* WTUR_OP_CMD  = "WTUR1.TurOp.st";           // Wind 
 static constexpr const char* WTUR_OP_CMD_VAL = "WTUR1.TurOp.st.stVal";  // Wind Turbine Operation Command Val [ST]
 static constexpr const char* WTUR_TURCTL = "WTUR1.TurCtl.st";           // Turbine Control Enum [CMD]
 static constexpr const char* WTUR_TURCTL_VAL = "WTUR1.TurCtl.st.stVal"; // Turbine Control Enum Val [ST]
-//static constexpr const char* WROT_RotBlk  = "WROT1.RotBlk";  // Block Rotor Position Command [CMD]
 
-/** DA references for reading operational data */
 static constexpr const char* WTUR_TurSt = "WTUR1.TurSt";            // Wind Turbine State [ST]
 static constexpr const char* POWER_MEAS = "WTUR1.W.mag.f";          // Measured active power
 static constexpr const char* YAW_MEAS   = "WYAW1.YwAng.mag.f";      // Measured yaw angle
@@ -67,39 +55,40 @@ static constexpr const char* SECR_S     = "SECR1.S.stVal";          // Secret LN
 static const std::vector<std::string> REQ_CMDS = {WTUR_DmdWSpt, XWYAW_YawSpt, WTUR_OP_CMD, WTUR_TURCTL};
 static const std::vector<std::string> REQ_REFS = {POWER_MEAS, YAW_MEAS, WS_MEAS, WD_MEAS, RPM_MEAS, TOT_W, PITCH_VAL, SECR_S};
 
-
-/** GOOSE Subscription References
- * IMPORTANT: These should match the definition in the server
- */
-
+// GOOSE control block references must match the server-side data model.
 static constexpr const char* GOOSE_SUB_TEST =  "LLN0$gocb01";  // GOOSE test with LLN0.gocb01
 static constexpr const char* GOOSE_SUB_TurSt = "WTUR1$GO$TurSt";  // GOOSE with turbine state changes
 static constexpr const char* GOOSE_SUB_Alm   = "WTUR1$GO$Alm";    // GOOSE with turbine alarms
 };
 
-// Per-turbine MMS connection parameters.
-// Multiple turbines may share the same host+port (same physical IED) but use
-// different Logical Devices, or each may have its own host and/or port.
+/**
+ * Per-turbine MMS connection metadata.
+ *
+ * Multiple turbines may share host/port when they are exposed by one IED, as
+ * long as their logical-device names are distinct.
+ */
 struct TurbineEndpoint {
     std::string host;
     int         port          {102};       ///< MMS TCP port
     std::string iedName       {};          ///< Optional IED name prefix
     std::string logicalDevice {"WTGLD1"};  ///< IEC 61850 Logical Device name prefix
-
-    // Goose Related
-    // std::string networkIface  {"eth0"};    ///< Network interface for GOOSE. TODO: allow configuration
-    // uint8_t     mac[6]        {0x00, 0x15, 0x5d, 0xb4, 0x81, 0xad};         ///< Optional MAC address for GOOSE subscription filtering
         
     std::vector<std::string> gooseRefs {}; ///< List of GOOSE DA references to subscribe to on this turbine
     std::vector<GooseSubscriber> gooseSubscribers {};
     std::vector<GooseCallback> gooseCallbacks {};
 };
 
-class libiec_wrapper
-{
+/**
+ * High-level IEC 61850 API used by controller tasks.
+ *
+ * This wrapper keeps task code out of libiec61850 details and centralizes the
+ * project-specific IEC reference names used for turbine measurements and
+ * commands.
+ */
+class LibIecWrapper {
 public:
-    libiec_wrapper()  = default;
-    ~libiec_wrapper() = default;
+    LibIecWrapper()  = default;
+    ~LibIecWrapper() = default;
 
     IECReturnCode init(const std::vector<TurbineEndpoint>& turbines, std::string networkInterface = "eth0");
     /**
@@ -225,7 +214,7 @@ public:
      * @return IEC_OK on success, IEC_ERROR on failure.
      */
 
-    IECReturnCode txTurbineController(int turbineId, void* controllerId);
+    IECReturnCode txTurbineControllerMode(int turbineId, void* controllerId);
     /**
      * @brief Signal a turbine to use a specific turbine controller configuration
      * 

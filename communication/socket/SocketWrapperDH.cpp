@@ -1,5 +1,4 @@
 #include "SocketWrapper.hpp"
-#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>
@@ -14,7 +13,7 @@ SocketWrapper::DataHistorianServer::DataHistorianServer(std::chrono::millisecond
 
 void SocketWrapper::DataHistorianServer::setPort(int port) { port_ = port; }
 void SocketWrapper::DataHistorianServer::setCallback(DataHistorianCallback cb) { callback_ = std::move(cb); }
-tcpSocketStatus SocketWrapper::DataHistorianServer::status() const { return status_.load(); }
+TcpSocketStatus SocketWrapper::DataHistorianServer::status() const { return status_.load(); }
 
 void SocketWrapper::DataHistorianServer::onStart() {
     if (!socket_init()) {

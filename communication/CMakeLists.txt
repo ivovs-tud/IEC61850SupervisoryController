@@ -1,5 +1,6 @@
 
 add_library(communication STATIC
+    AttackInterface.cpp
     CommunicationTask.cpp
     IECCommunicator.cpp
     libiec_wrapper.cpp

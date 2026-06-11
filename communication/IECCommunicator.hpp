@@ -19,13 +19,20 @@
 #include "common/util.hpp"
 #include "common/ConsoleColors.hpp"
 
-class IECCommunicator
-{
+/**
+ * Per-turbine IEC bridge.
+ *
+ * One communicator owns two periodic workers: RX consumes measurements or
+ * buffered reports, while TX publishes the latest control setpoints. Both
+ * workers share the same turbine ID and IEC wrapper, so this class is also the
+ * synchronization point for report buffering and activity timestamps.
+ */
+class IECCommunicator {
 public:
     explicit IECCommunicator(const CommConfig& config,
                              int turbineId,
-                             libiec_wrapper& iecWrapper,
-                             AttackInterface::AttackInterface& attackInterface,
+                             LibIecWrapper& iecWrapper,
+                             AttackInterface::Controller& attackInterface,
                              std::mutex& attackInterfaceMutex);
     ~IECCommunicator();
 
@@ -37,14 +44,11 @@ public:
     std::chrono::system_clock::time_point lastActivityTime() const;
 
 private:
-    class RxTask : public PeriodicTask
-    {
+    class RxTask : public PeriodicTask {
     public:
         RxTask(IECCommunicator& owner, std::chrono::milliseconds period)
             : PeriodicTask(period),
-              owner_(owner)
-        {
-        }
+              owner_(owner) {}
 
     private:
         void execute() override { owner_.executeRx(); }
@@ -52,14 +56,11 @@ private:
         IECCommunicator& owner_;
     };
 
-    class TxTask : public PeriodicTask
-    {
+    class TxTask : public PeriodicTask {
     public:
         TxTask(IECCommunicator& owner, std::chrono::milliseconds period)
             : PeriodicTask(period),
-              owner_(owner)
-        {
-        }
+              owner_(owner) {}
 
     private:
         void execute() override { owner_.executeTx(); }
@@ -67,33 +68,47 @@ private:
         IECCommunicator& owner_;
     };
 
-    typedef enum eIECValueType {
-        IEC_FLOAT32,
-        IEC_INT32,
-        IEC_UINT32,
-        IEC_BOOL,
-        IEC_ENUM,
-    } IECValueType;
+    enum class IecValueType {
+        Float32,
+        Int32,
+        UInt32,
+        Bool,
+        Enum,
+    };
 
+    /**
+     * Measurement mapping used by both polling and IEC report processing.
+     *
+     * `daReference` is the normal MMS data attribute reference. `reportReference`
+     * is the report dataset member suffix emitted by libiec61850. Both map to
+     * the same `GlobalData` storage so polling/reporting can share the update
+     * path.
+     */
     struct RxDescriptor {
         const char*                              name;
         const char*                              unit;
         const char*                              daReference;
         const char*                              reportReference;
-        IECReturnCode (libiec_wrapper::*iecRead)(int, float&);
+        IECReturnCode (LibIecWrapper::*readValue)(int, float&);
         AttackInterface::TxDataType              txDataType;
-        std::vector<double> GlobalData::*        lastField;
+        std::vector<double> GlobalData::*        lastValueField;
         TurbineHistory<double> GlobalData::*     historyField;
-        std::vector<uint64_t> GlobalData::*      lastTimestamp;
+        std::vector<uint64_t> GlobalData::*      timestampField;
         uint32_t                                 intervalMs;
     };
 
+    /**
+     * Setpoint/command mapping from GlobalData to IEC writes.
+     *
+     * `globalDataValue` returns a pointer into the locked GlobalData object.
+     * Callers must not store that pointer beyond the immediate write path.
+     */
     struct TxDescriptor {
         const char*                                  name;
-        IECValueType                                 type;
-        std::function<void*(GlobalData&, int)>       gdsPtr;
+        IecValueType                                 valueType;
+        std::function<void*(GlobalData&, int)>       globalDataValue;
         AttackInterface::TxDataType                  txDataType;
-        IECReturnCode (libiec_wrapper::*iecWrite)(int, void*);
+        IECReturnCode (LibIecWrapper::*writeValue)(int, void*);
         uint32_t                                     intervalMs;
     };
 
@@ -119,8 +134,8 @@ private:
 
     const CommConfig& config_;
     int turbineId_;
-    libiec_wrapper& iecWrapper_;
-    AttackInterface::AttackInterface& attackInterface_;
+    LibIecWrapper& iecWrapper_;
+    AttackInterface::Controller& attackInterface_;
     std::mutex& attackInterfaceMutex_;
 
     std::atomic<CommStatus> iecStatus_{COMM_DISCONNECTED};
@@ -129,16 +144,20 @@ private:
     RxTask rxTask_;
     TxTask txTask_;
 
-    std::vector<uint64_t> rxNextExecutionTimes_;    ///< next execution times for RX descriptors
-    std::vector<uint64_t> txNextExecutionTimes_;    ///< next execution times for TX descriptors
+    std::vector<uint64_t> rxNextExecutionTimes_;
+    std::vector<uint64_t> txNextExecutionTimes_;
+
     struct BufferedRxMeasurement {
         float value {0.0f};
         uint64_t timestampMs {0};
     };
+
+    // Report callbacks arrive on the IEC manager path; RX swaps this buffer so
+    // measurement processing still happens on the communicator's RX task.
     std::vector<std::optional<BufferedRxMeasurement>> reportRxBuffer_;
     std::mutex reportRxBufferMutex_;
     std::atomic<bool> reportStarted_ {false};
 
-    static const RxDescriptor RX_DESCRIPTORS[];
-    static const TxDescriptor TX_DESCRIPTORS[];
+    static const RxDescriptor kRxDescriptors[];
+    static const TxDescriptor kTxDescriptors[];
 };

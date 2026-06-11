@@ -12,8 +12,7 @@ extern "C" {
 
 // ── init ─────────────────────────────────────────────────────────────────
 
-IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines, std::string networkInterface)
-{
+IECReturnCode LibIecWrapper::init(const std::vector<TurbineEndpoint>& turbines, std::string networkInterface) {
     if (turbines.empty()) {
         LIBIEC_ERR("init(): turbines vector is empty");
         return IEC_ERROR;
@@ -40,7 +39,7 @@ IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines,
 
 // ── start / stop ─────────────────────────────────────────────────────────
 
-void libiec_wrapper::start() { 
+void LibIecWrapper::start() {
     // Connect every registered turbine so link intent is set for all and
     // IEC61850Manager::ensureConnected can auto-reconnect during operation.
     manager_.connectAll();
@@ -56,20 +55,20 @@ void libiec_wrapper::start() {
 
     // GooseReceiver_start(gooseReceiver);
     // if (!GooseReceiver_isRunning(gooseReceiver)) {
-    //     std::cerr << "[libiec_wrapper] Failed to start GooseReceiver\n";
+    //     std::cerr << "[LibIecWrapper] Failed to start GooseReceiver\n";
     //     stop();
     // } else {
-    //     std::cout << "[libiec_wrapper] GooseReceiver started successfully\n";
+    //     std::cout << "[LibIecWrapper] GooseReceiver started successfully\n";
     // }
 }
-void libiec_wrapper::stop()  { 
+void LibIecWrapper::stop()  {
     GooseReceiver_stop(gooseReceiver);
 
     GooseReceiver_destroy(gooseReceiver);
     manager_.disconnectAll(); 
 }
 
-IECReturnCode libiec_wrapper::startGooseSubscription(int turbineId, const std::string& daReference, GooseCallback callback) {
+IECReturnCode LibIecWrapper::startGooseSubscription(int turbineId, const std::string& daReference, GooseCallback callback) {
     // Build the full GOOSE reference: IEDName/LDName$LN$FC$GoCbName
     std::string fullRef = manager_.buildGooseRef(turbineId, daReference);
     char * daRef = const_cast<char *>(fullRef.c_str());
@@ -139,13 +138,12 @@ IECReturnCode libiec_wrapper::startGooseSubscription(int turbineId, const std::s
     return IEC_OK;
 }
 
-IECReturnCode libiec_wrapper::startPeriodicReport(int turbineId,
+IECReturnCode LibIecWrapper::startPeriodicReport(int turbineId,
                                                   const std::string& rcbReference,
                                                   const std::string& dataSetReference,
                                                   uint32_t integrityPeriodMs,
                                                   const std::vector<std::string>& fallbackDataReferences,
-                                                  ReportCallback callback)
-{
+                                                  ReportCallback callback) {
     const bool ok = manager_.startPeriodicReport(turbineId,
                                                  rcbReference,
                                                  dataSetReference,
@@ -155,21 +153,20 @@ IECReturnCode libiec_wrapper::startPeriodicReport(int turbineId,
     return ok ? IEC_OK : IEC_ERROR;
 }
 
-void libiec_wrapper::stopPeriodicReport(int turbineId, const std::string& rcbReference)
-{
+void LibIecWrapper::stopPeriodicReport(int turbineId, const std::string& rcbReference) {
     manager_.stopPeriodicReport(turbineId, rcbReference);
 }
 
 // ── txSetpoint ───────────────────────────────────────────────────────────
 
-IECReturnCode libiec_wrapper::txSetpoint(int turbineId, float powerSetpoint, float yawSetpoint) {
+IECReturnCode LibIecWrapper::txSetpoint(int turbineId, float powerSetpoint, float yawSetpoint) {
     bool ok = true;
     ok &= manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_DmdWSpt), powerSetpoint, false);
     ok &= manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::XWYAW_YawSpt), yawSetpoint, false);
     return ok ? IEC_OK : IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::rxSecret(int turbineId, std::string& outSecret) {
+IECReturnCode LibIecWrapper::rxSecret(int turbineId, std::string& outSecret) {
     auto secret = manager_.readString(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::SECR_S), IEC61850_FC_ST);
     if (secret) {
         outSecret = *secret;
@@ -178,7 +175,7 @@ IECReturnCode libiec_wrapper::rxSecret(int turbineId, std::string& outSecret) {
     return IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::rxWindSpeed(int turbineId, float& outWindSpeed) {
+IECReturnCode LibIecWrapper::rxWindSpeed(int turbineId, float& outWindSpeed) {
     auto ws = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WS_MEAS), IEC61850_FC_MX);
     if (ws) {
         outWindSpeed = *ws;
@@ -187,7 +184,7 @@ IECReturnCode libiec_wrapper::rxWindSpeed(int turbineId, float& outWindSpeed) {
     return IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::rxWindDirection(int turbineId, float& outWindDirection) {
+IECReturnCode LibIecWrapper::rxWindDirection(int turbineId, float& outWindDirection) {
     auto wd = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WD_MEAS), IEC61850_FC_MX);
     if (wd) {
         outWindDirection = *wd;
@@ -196,7 +193,7 @@ IECReturnCode libiec_wrapper::rxWindDirection(int turbineId, float& outWindDirec
     return IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::rxYawOffset(int turbineId, float& outYawOffset) {
+IECReturnCode LibIecWrapper::rxYawOffset(int turbineId, float& outYawOffset) {
     auto yaw = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::YAW_MEAS), IEC61850_FC_MX);
     if (yaw) {
         outYawOffset = *yaw;
@@ -205,7 +202,7 @@ IECReturnCode libiec_wrapper::rxYawOffset(int turbineId, float& outYawOffset) {
     return IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::rxRotorSpeed(int turbineId, float& outRPM) {
+IECReturnCode LibIecWrapper::rxRotorSpeed(int turbineId, float& outRPM) {
     auto rpm = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::RPM_MEAS), IEC61850_FC_MX);
     if (rpm) {
         outRPM = *rpm;
@@ -214,7 +211,7 @@ IECReturnCode libiec_wrapper::rxRotorSpeed(int turbineId, float& outRPM) {
     return IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::rxPowerGen(int turbineId, float& outPowerGen) {
+IECReturnCode LibIecWrapper::rxPowerGen(int turbineId, float& outPowerGen) {
     auto pw = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::POWER_MEAS), IEC61850_FC_MX);
     if (pw) {
         outPowerGen = *pw;
@@ -223,7 +220,7 @@ IECReturnCode libiec_wrapper::rxPowerGen(int turbineId, float& outPowerGen) {
     return IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::rxGenTorque(int turbineId, float& outGenTorque) {
+IECReturnCode LibIecWrapper::rxGenTorque(int turbineId, float& outGenTorque) {
     auto pw = manager_.readFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::GEN_TORQ), IEC61850_FC_MX);
     if (pw) {
         outGenTorque = *pw;
@@ -232,18 +229,18 @@ IECReturnCode libiec_wrapper::rxGenTorque(int turbineId, float& outGenTorque) {
     return IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::txPowerSetpoint(int turbineId, void* powerSetpoint) {
+IECReturnCode LibIecWrapper::txPowerSetpoint(int turbineId, void* powerSetpoint) {
 
     bool ok = manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::WTUR_DmdWSpt), *static_cast<float *>(powerSetpoint), false);
     return ok ? IEC_OK : IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::txYawSetpoint(int turbineId, void* yawSetpoint) {
+IECReturnCode LibIecWrapper::txYawSetpoint(int turbineId, void* yawSetpoint) {
     bool ok = manager_.writeControlledFloat(turbineId, manager_.buildRef(turbineId, IEC_STRINGS::XWYAW_YawSpt), *static_cast<float*>(yawSetpoint), false);
     return ok ? IEC_OK : IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::txTurbineController(int turbineId, void* controllerId) {
+IECReturnCode LibIecWrapper::txTurbineControllerMode(int turbineId, void* controllerId) {
     uint32_t controlWord = *static_cast<uint32_t*>(controllerId);
 
     // For this command, first we read the value to see if has already been set/reached
@@ -258,7 +255,7 @@ IECReturnCode libiec_wrapper::txTurbineController(int turbineId, void* controlle
     return ok ? IEC_OK : IEC_ERROR;
 }
 
-IECReturnCode libiec_wrapper::txOpCommand(int turbineId, void* command) {
+IECReturnCode LibIecWrapper::txOpCommand(int turbineId, void* command) {
     uint32_t cmdValue = *static_cast<uint32_t*>(command);
 
     // For this command, first we read the value to see if has already been set/reached
@@ -276,11 +273,10 @@ IECReturnCode libiec_wrapper::txOpCommand(int turbineId, void* command) {
 
 // ── checkTurbineSupport ──────────────────────────────────────────────────────
 
-std::map<std::string, bool> libiec_wrapper::checkTurbineSupport(
+std::map<std::string, bool> LibIecWrapper::checkTurbineSupport(
     int turbineId,
     const std::vector<std::string>& references,
-    int fc)
-{
+    int fc) {
     std::vector<std::string> fullRefs;
     fullRefs.reserve(references.size());
     for (const auto& r : references)
@@ -290,22 +286,18 @@ std::map<std::string, bool> libiec_wrapper::checkTurbineSupport(
 
 // ── printTurbineDataModel ────────────────────────────────────────────────────
 
-void libiec_wrapper::printTurbineDataModel(int turbineId, int maxEntries)
-{
+void LibIecWrapper::printTurbineDataModel(int turbineId, int maxEntries) {
     manager_.printDataModel(turbineId, maxEntries);
 }
 
-std::vector<std::string> libiec_wrapper::getTurbineDataModel(int turbineId)
-{
+std::vector<std::string> LibIecWrapper::getTurbineDataModel(int turbineId) {
     return manager_.getDataModelReferences(turbineId);
 }
 
-IecDataSetAndReportControlBlocks libiec_wrapper::getTurbineDataSetsAndReportControlBlocks(int turbineId)
-{
+IecDataSetAndReportControlBlocks LibIecWrapper::getTurbineDataSetsAndReportControlBlocks(int turbineId) {
     return manager_.getDataSetsAndReportControlBlocks(turbineId);
 }
 
-void libiec_wrapper::printTurbineDataSetsAndReportControlBlocks(int turbineId)
-{
+void LibIecWrapper::printTurbineDataSetsAndReportControlBlocks(int turbineId) {
     manager_.printDataSetsAndReportControlBlocks(turbineId);
 }

@@ -1,5 +1,4 @@
 #include "SocketWrapper.hpp"
-#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>
@@ -9,7 +8,7 @@
 
 SocketWrapper::SocketWrapper() : lastActivityTime_(std::chrono::system_clock::now()) {}
 
-tcpSocketStatus SocketWrapper::StartOperatorServer(int port) {
+TcpSocketStatus SocketWrapper::startOperatorServer(int port) {
     if (opServer_.status() >= tcpSOCKET_CONNECTED) {
         SOCKET_OP_ERR("Operator server is already running.");
         return tcpSOCKET_ERROR;
@@ -24,20 +23,20 @@ tcpSocketStatus SocketWrapper::StartOperatorServer(int port) {
     return opServer_.status();
 }
 
-tcpSocketStatus SocketWrapper::StopOperatorServer() {
+TcpSocketStatus SocketWrapper::stopOperatorServer() {
     opServer_.stop();
     return opServer_.status();
 }
 
-void SocketWrapper::AttachOpServerCallback(OperatorCallback callback) {
+void SocketWrapper::attachOperatorServerCallback(OperatorCallback callback) {
     opServer_.setCallback(std::move(callback));
 }
 
-void SocketWrapper::AttachAttackInterfaceCallback(AttackCallback callback) {
+void SocketWrapper::attachAttackInterfaceCallback(AttackCallback callback) {
     attackServer_.setCallback(std::move(callback));
 }
 
-tcpSocketStatus SocketWrapper::StartAttackInterfaceServer(int port) {
+TcpSocketStatus SocketWrapper::startAttackInterfaceServer(int port) {
     if (attackServer_.status() >= tcpSOCKET_CONNECTED) {
         SOCKET_AT_ERR("Attack interface server is already running.");
         return tcpSOCKET_ERROR;
@@ -52,26 +51,26 @@ tcpSocketStatus SocketWrapper::StartAttackInterfaceServer(int port) {
     return attackServer_.status();
 }
 
-tcpSocketStatus SocketWrapper::StopAttackInterfaceServer() {
+TcpSocketStatus SocketWrapper::stopAttackInterfaceServer() {
     attackServer_.stop();
     return attackServer_.status();
 }
 
-void SocketWrapper::AttackInterfaceServer::txData(const std::shared_ptr<void>&data, size_t dataSize) {
+void SocketWrapper::AttackInterfaceServer::txData(const std::shared_ptr<void>& data, size_t dataSize) {
     zmq::message_t message(dataSize);
     std::memcpy(message.data(), data.get(), dataSize);
     socket_->send(message, zmq::send_flags::dontwait);
 }
 
-void  SocketWrapper::txAttackInterfaceData(const std::shared_ptr<void>&data, size_t dataSize) {
+void SocketWrapper::txAttackInterfaceData(const std::shared_ptr<void>& data, size_t dataSize) {
     attackServer_.txData(data, dataSize);
 }
 
-void SocketWrapper::AttachDataHistorianCallback(DataHistorianCallback callback) {
+void SocketWrapper::attachDataHistorianCallback(DataHistorianCallback callback) {
     dataHistorianServer_.setCallback(std::move(callback));
 }
 
-tcpSocketStatus SocketWrapper::StartDataHistorianServer(int port) {
+TcpSocketStatus SocketWrapper::startDataHistorianServer(int port) {
     if (dataHistorianServer_.status() >= tcpSOCKET_CONNECTED) {
         SOCKET_DH_ERR("Data historian server is already running.");
         return tcpSOCKET_ERROR;
@@ -87,7 +86,7 @@ tcpSocketStatus SocketWrapper::StartDataHistorianServer(int port) {
     return dataHistorianServer_.status();
 }
 
-tcpSocketStatus SocketWrapper::StopDataHistorianServer() {
+TcpSocketStatus SocketWrapper::stopDataHistorianServer() {
     dataHistorianServer_.stop();
     return dataHistorianServer_.status();
 }

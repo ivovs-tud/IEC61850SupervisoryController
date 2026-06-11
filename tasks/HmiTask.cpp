@@ -12,18 +12,8 @@
 
 #include <msgpack.hpp>
 
-// =============================================================================
-// Default signal configuration
-//
-// Each HmiSignalDef describes one subplot:
-//   - lineLabels gives a curve per turbine (or a global scalar with one label)
-//   - accessor   reads from GlobalData and returns one value per label entry
-//
-// Edit this function to add, remove, or reorder signal groups.
-// =============================================================================
-HmiConfig defaultHmiConfig(int numTurbines)
-{
-    // Build {"T1", "T2", ..., "Tn"} labels
+// Signal order here is the plot order in the external HMI.
+HmiConfig defaultHmiConfig(int numTurbines) {
     auto turbineLabels = [numTurbines]() {
         std::vector<std::string> lbl;
         lbl.reserve(static_cast<std::size_t>(numTurbines));
@@ -32,7 +22,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
         return lbl;
     };
 
-    // Safe slice helper: returns min(numTurbines, vec.size()) elements
+    // HMI can be configured for fewer turbines than the shared buffers hold.
     auto safeSlice = [numTurbines](const std::vector<double>& v) {
         int n = std::min(numTurbines, static_cast<int>(v.size()));
         return std::vector<double>(v.begin(), v.begin() + n);
@@ -48,15 +38,14 @@ HmiConfig defaultHmiConfig(int numTurbines)
     cfg.numTurbines        = numTurbines;
     cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
 #ifdef PLATFORM_WINDOWS
-        cfg.publisherEndpoint  = "tcp://localhost:5555";
-        cfg.commandEndpoint = "tcp://localhost:5556";
+    cfg.publisherEndpoint  = "tcp://localhost:5555";
+    cfg.commandEndpoint = "tcp://localhost:5556";
 #else
-        cfg.publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock";   
-        cfg.commandEndpoint = "ipc:///tmp/supervisory_controller_hmi_cmd.sock";
+    cfg.publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock";
+    cfg.commandEndpoint = "ipc:///tmp/supervisory_controller_hmi_cmd.sock";
 #endif  
 
     cfg.signals = {
-        // ── Per-turbine measured power and setpoints in one subplot ──────────
         {
             "Turbine Power and Setpoints", "W",
             [numTurbines]() {
@@ -71,23 +60,22 @@ HmiConfig defaultHmiConfig(int numTurbines)
             [numTurbines](const GlobalData& d) {
                 int n = std::min(numTurbines,
                                  std::min(static_cast<int>(d.lastPower.size()),
-                                          static_cast<int>(d.TurbinePowerSetpoints.size())));
+                                          static_cast<int>(d.turbinePowerSetpoints.size())));
                 std::vector<double> v;
                 v.reserve(static_cast<std::size_t>(n * 2));
                 for (int i = 0; i < n; ++i) {
                     v.push_back(d.lastPower[i]);
-                    if (d.TurbinePowerSetpoints[i] < 0.0f) {
-						// This means, maximize power generation -> We push back NaN to indicate this 
-						v.push_back(std::numeric_limits<double>::quiet_NaN());
+                    if (d.turbinePowerSetpoints[i] < 0.0f) {
+                        // NaN renders "maximize power" as a gap instead of a fake setpoint.
+                        v.push_back(std::numeric_limits<double>::quiet_NaN());
                     } else {
-                        v.push_back(static_cast<double>(d.TurbinePowerSetpoints[i]));
+                        v.push_back(static_cast<double>(d.turbinePowerSetpoints[i]));
                     }
                 }
                 return v;
             },
-			std::make_pair(-1.0, 5e6)
+            std::make_pair(-1.0, 5e6)
         },
-        // ── Per-turbine measured yaw offset and setpoints in one subplot ─────
         {
             "Yaw Offset and Setpoints", "deg",
             [numTurbines]() {
@@ -104,59 +92,53 @@ HmiConfig defaultHmiConfig(int numTurbines)
             [numTurbines](const GlobalData& d) {
                 int n = std::min(numTurbines,
                                  std::min(static_cast<int>(d.lastYawOffset.size()),
-                                          static_cast<int>(d.TurbineYawSetpoints.size())));
+                                          static_cast<int>(d.turbineYawSetpoints.size())));
                 std::vector<double> v;
                 v.reserve(static_cast<std::size_t>(n * 2));
                 for (int i = 0; i < n; ++i) {
                     v.push_back(d.lastYawOffset[i]);
-                    /*v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));*/
                 }
                 for (int i = 0; i < n; ++i) {
-                    /*v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));*/
                     v.push_back(static_cast<double>(d.orientations[i]));
                 }
                 return v;
             },
-			std::make_pair(-190.0, 190.0)
+            std::make_pair(-190.0, 190.0)
         },
-        // ── Farm-level reference vs. total delivered power ────────────────────
         {
             "Farm Reference vs. Total Power", "W",
             {"Reference", "Total (Meas)", "Total (Received)"},
             [](const GlobalData& d) {
                 return std::vector<double>{
-					static_cast<double>(d.RequestedReferencePower), d.Wtotal_meas.back(), d.TotalPower_recv
+                    static_cast<double>(d.requestedReferencePower), d.measuredTotalPowerHistory.back(), d.receivedTotalPower
                 };
             },
             std::make_pair(-1.0, 9*5e6)
         },
-        // ── Per-turbine wind speed ────────────────────────────────────────────
         {
             "Wind Speed", "m/s",
             turbineLabelsWithGlobal(),
             [safeSlice](const GlobalData& d) {
-                std::vector<double> v = safeSlice(d.lastWS);
-                v.push_back(static_cast<double>(d.glob_ws_i));
+                std::vector<double> v = safeSlice(d.lastWindSpeed);
+                v.push_back(static_cast<double>(d.farmWindSpeed));
                 return v;
             },
             std::make_pair(-1.0, 15.0)
         },
-        // ── Per-turbine wind direction ────────────────────────────────────────
         {
             "Wind Direction", "deg",
             turbineLabelsWithGlobal(),
             [safeSlice](const GlobalData& d) {
-                std::vector<double> v = safeSlice(d.lastWD);
-                v.push_back(static_cast<double>(d.glob_wd_i));
+                std::vector<double> v = safeSlice(d.lastWindDirection);
+                v.push_back(static_cast<double>(d.farmWindDirection));
                 return v;
             },
             std::make_pair(0.0, 360.0)
         },
-        // ── Per-turbine rotor speed ───────────────────────────────────────────
         {
             "Rotor Speed", "RPM",
             turbineLabels(),
-            [safeSlice](const GlobalData& d) { return safeSlice(d.lastRPM); },
+            [safeSlice](const GlobalData& d) { return safeSlice(d.lastRotorSpeed); },
             std::make_pair(-.1, 13)
         }
     };
@@ -164,16 +146,11 @@ HmiConfig defaultHmiConfig(int numTurbines)
     return cfg;
 }
 
-// =============================================================================
-// HmiTask implementation
-// =============================================================================
 HmiTask::HmiTask(HmiConfig config, std::chrono::milliseconds period)
     : PeriodicTask(period)
-    , config_(std::move(config))
-{}
+    , config_(std::move(config)) {}
 
-void HmiTask::onStart()
-{
+void HmiTask::onStart() {
     try {
         std::string pubIpcPath;
         if (config_.publisherEndpoint.rfind("ipc://", 0) == 0) {
@@ -225,14 +202,12 @@ void HmiTask::onStart()
     }
 }
 
-void HmiTask::onStop()
-{
+void HmiTask::onStop() {
     pubSocket_.reset();
     cmdSocket_.reset();
 }
 
-void HmiTask::handleCommands()
-{
+void HmiTask::handleCommands() {
     if (!cmdSocket_) return;
 
     while (true) {
@@ -256,7 +231,7 @@ void HmiTask::handleCommands()
 
                 std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
                 GlobalData& d = GlobalDataStructure::instance().data();
-                std::fill(d.TurbineController.begin(), d.TurbineController.end(), requestedMode+1);
+                std::fill(d.turbineControllerModes.begin(), d.turbineControllerModes.end(), requestedMode+1);
 
                 if (requestedMode == 0) d.statusMessage = "Mode: ROSCO";
                 if (requestedMode == 1) d.statusMessage = "Mode: Lio-Downregulation";
@@ -276,7 +251,7 @@ void HmiTask::handleCommands()
                 }
                 else if (buttonName == "Enable Turbines") {
                     uint32_t enableValue = (buttonState != 0) ? 1 : 0;
-                    std::fill(d.enableTurbine.begin(), d.enableTurbine.end(), enableValue);
+                    std::fill(d.turbineEnabled.begin(), d.turbineEnabled.end(), enableValue);
                     d.statusMessage = std::string("Enable Turbines: ") + (buttonState != 0 ? "On" : "Off");
                 }
             }
@@ -286,47 +261,44 @@ void HmiTask::handleCommands()
     }
 }
 
-void HmiTask::execute()
-{
+void HmiTask::execute() {
     handleCommands();
 
-    // ── 1. Sample current values from shared state ────────────────────────────
     std::vector<std::vector<double>> snap(config_.signals.size());
     int operationMode = 0;
-    bool alarmWRecMeas = false;
-    bool alarmOrientationMisalign = false;
-    bool alarmWTorqueRotSpd = false;
-    bool alarmHorWdDir = false;
-    bool alarmHorWdDirChg = false;
-    bool alarmHorWdSpdChg = false;
+    bool alarmPowerReceivedMismatch = false;
+    bool alarmOrientationMisalignment = false;
+    bool alarmPowerTorqueRotorSpeedMismatch = false;
+    bool alarmWindDirectionMismatch = false;
+    bool alarmWindDirectionChange = false;
+    bool alarmWindSpeedChange = false;
     bool systemRunning = false;
     bool yawSteeringEnabled = false;
     std::string yawSteeringCommandName;
-    bool enableTurbinesActive = false;
+    bool turbinesEnabled = false;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         const GlobalData& d = GlobalDataStructure::instance().data();
         for (std::size_t i = 0; i < config_.signals.size(); ++i)
             snap[i] = config_.signals[i].accessor(d);
 
-        operationMode = d.TurbineController.empty() ? 0 : static_cast<int>(d.TurbineController[0]);
-        alarmWRecMeas = d.alarmWRecMeas;
-        alarmOrientationMisalign = d.alarmOrientationMisalign;
-        alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;
-        alarmHorWdDir = d.alarmHorWdDir;
-		alarmHorWdDirChg = d.alarmHorWdDirChg;
-		alarmHorWdSpdChg = d.alarmHorWdSpdChg;
+        operationMode = d.turbineControllerModes.empty() ? 0 : static_cast<int>(d.turbineControllerModes[0]);
+        alarmPowerReceivedMismatch = d.alarmPowerReceivedMismatch;
+        alarmOrientationMisalignment = d.alarmOrientationMisalignment;
+        alarmPowerTorqueRotorSpeedMismatch = d.alarmPowerTorqueRotorSpeedMismatch;
+        alarmWindDirectionMismatch = d.alarmWindDirectionMismatch;
+		alarmWindDirectionChange = d.alarmWindDirectionChange;
+		alarmWindSpeedChange = d.alarmWindSpeedChange;
         systemRunning = d.systemRunning;
         yawSteeringEnabled = d.yawSteeringEnabled;
         yawSteeringCommandName = d.yawSteeringCommandName;
-        enableTurbinesActive = !d.enableTurbine.empty() && d.enableTurbine[0] != 0;
+        turbinesEnabled = !d.turbineEnabled.empty() && d.turbineEnabled[0] != 0;
     }
 
     ++tickCount_;
 
     if (!pubSocket_) return;
 
-    // ── 2. Pack snapshot as msgpack and publish ───────────────────────────────
     // Format:
     // [tick, window_size, [[name, unit, [labels], [values], [y_min, y_max]|nil], ...],
     //  [[light_name, is_on, color], ...], [operation_mode, [mode_labels...]]]
@@ -360,12 +332,12 @@ void HmiTask::execute()
 
     pk.pack_array(9);
     pk.pack_array(3); pk.pack("System Running");    pk.pack(systemRunning);      pk.pack("green");
-    pk.pack_array(3); pk.pack("Power: Received vs Measured");    pk.pack(alarmWRecMeas); pk.pack("red");
-    pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("red");
-    pk.pack_array(3); pk.pack("Power vs Torque*RotorSpeed");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Direction Consistency");    pk.pack(alarmHorWdDir);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Direction Change");    pk.pack(alarmHorWdDirChg);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Speed Change");    pk.pack(alarmHorWdSpdChg);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Power: Received vs Measured");    pk.pack(alarmPowerReceivedMismatch); pk.pack("red");
+    pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalignment); pk.pack("red");
+    pk.pack_array(3); pk.pack("Power vs Torque*RotorSpeed");     pk.pack(alarmPowerTorqueRotorSpeedMismatch);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Direction Consistency");    pk.pack(alarmWindDirectionMismatch);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Direction Change");    pk.pack(alarmWindDirectionChange);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Wind Speed Change");    pk.pack(alarmWindSpeedChange);  pk.pack("red");
     pk.pack_array(3); pk.pack("Placeholder");    pk.pack(false);  pk.pack("red");
     pk.pack_array(3); pk.pack("Placeholder");    pk.pack(false);  pk.pack("red");
 
@@ -378,7 +350,7 @@ void HmiTask::execute()
     pk.pack(yawSteeringCommandName);
 
     pk.pack_array(2);
-    pk.pack(static_cast<int>(enableTurbinesActive));
+    pk.pack(static_cast<int>(turbinesEnabled));
     pk.pack("Enable Turbines");
 
     zmq::message_t msg(buf.data(), buf.size());

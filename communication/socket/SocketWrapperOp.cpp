@@ -1,5 +1,4 @@
 #include "SocketWrapper.hpp"
-#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>
@@ -7,15 +6,11 @@
 #include <thread>
 #include <chrono>
 
-// ---------------------------------------------------------------------------
-// OperatorServer
-// ---------------------------------------------------------------------------
-
 SocketWrapper::OperatorServer::OperatorServer(std::chrono::milliseconds pollPeriod) : PeriodicTask(pollPeriod) {}
 
 void SocketWrapper::OperatorServer::setPort(int port) { port_ = port; }
 void SocketWrapper::OperatorServer::setCallback(OperatorCallback cb) { callback_ = std::move(cb); }
-tcpSocketStatus SocketWrapper::OperatorServer::status() const { return status_.load(); }
+TcpSocketStatus SocketWrapper::OperatorServer::status() const { return status_.load(); }
 
 void SocketWrapper::OperatorServer::onStart() {
     try {

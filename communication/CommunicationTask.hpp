@@ -15,8 +15,15 @@
 
 class IECCommunicator;
 
-class CommunicationOrchestrator
-{
+/**
+ * Owns the communication subsystem lifecycle.
+ *
+ * The orchestrator binds socket callbacks, starts the IEC wrapper, and creates
+ * one IECCommunicator per configured turbine. It is intentionally the only
+ * class that owns the shared AttackInterface mutex so RX/TX paths serialize
+ * requests consistently.
+ */
+class CommunicationOrchestrator {
 public:
     explicit CommunicationOrchestrator(const CommConfig& config = CommConfig{});
     ~CommunicationOrchestrator();
@@ -39,9 +46,9 @@ private:
     void createCommunicators();
 
     CommConfig config_;
-    libiec_wrapper iecWrapper_;
+    LibIecWrapper iecWrapper_;
     SocketWrapper socketWrapper_;
-    AttackInterface::AttackInterface attackInterface_;
+    AttackInterface::Controller attackInterface_;
     std::mutex attackInterfaceMutex_;
     std::vector<std::unique_ptr<IECCommunicator>> communicators_;
     std::atomic<CommStatus> socketStatus_{COMM_DISCONNECTED};
