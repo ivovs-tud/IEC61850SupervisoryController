@@ -52,9 +52,9 @@ RESERVED_GRID_CELLS = 2
 MAX_PLOTS = LAYOUT_ROWS * LAYOUT_COLS - RESERVED_GRID_CELLS
 TURBINE_MAP_BOUNDS: tuple[float, float, float, float] | None = (0.0, 1900.0, 0.0, 1900.0)
 TURBINE_MAP_MARGIN = 420.0
-LOCAL_WIND_VECTOR_SCALE = 18.0
-GLOBAL_WIND_VECTOR_SCALE = 28.0
-GLOBAL_WIND_VECTOR_START_XY = (954.0, 150.0)
+LOCAL_WIND_VECTOR_SCALE = 38.0
+GLOBAL_WIND_VECTOR_SCALE = 58.0
+GLOBAL_WIND_VECTOR_START_XY = (-954.0, 954.0)
 GLOBAL_WIND_LABEL_OFFSET_XY = (0.0, 0.0)
 
 # Wind-farm map coordinates, ordered as T1, T2, T3, ...
@@ -73,7 +73,7 @@ TURBINE_COORDINATES_XY: list[tuple[float, float]] = [
 
 # Colour palette: one colour per line within a subplot.
 COLORS = [
-    (31,  119, 180),  # blue
+    (21,  99, 160),  # blue
     (255, 127,  14),  # orange
     (44,  160,  44),  # green
     (214,  39,  40),  # red
@@ -409,7 +409,7 @@ def _to_float(value, default: float = 0.0) -> float:
 
 
 def _vector_components(speed, direction_deg) -> tuple[float, float]:
-    magnitude = max(0.0, _to_float(speed))
+    magnitude = max(max(0.0, _to_float(speed)), 8.0)
     radians = math.radians(_to_float(direction_deg) % 360.0)
     return magnitude * math.sin(radians), magnitude * math.cos(radians)
 
@@ -530,7 +530,7 @@ def init_farm_map(signals: list) -> None:
         map_local_heads.append(head)
 
     map_global_vector = farm_map.plot([], [], pen=pg.mkPen(color=(255, 230, 110), width=5))
-    map_global_head = pg.ArrowItem(angle=0, headLen=24, tailLen=0, brush=(255, 230, 110), pen=pg.mkPen(255, 230, 110, width=2))
+    map_global_head = pg.ArrowItem(angle=0, headLen=18, tailLen=0, brush=(255, 230, 110), pen=pg.mkPen(255, 230, 110, width=2))
     farm_map.addItem(map_global_head)
     map_global_label = pg.TextItem("Global", color="#ffe66d", anchor=(0.5, -0.2))
     farm_map.addItem(map_global_label)
@@ -624,7 +624,7 @@ def update_farm_map(signals: list) -> None:
         label = str(turbine["label"])
         x = float(turbine["x"])
         y = float(turbine["y"])
-        dx, dy = _scaled_vector(speeds.get(label, 0.0), directions.get(label, 0.0))
+        dx, dy = _scaled_vector(speeds.get(label, 0.0), directions.get(label, 0.0), scale=LOCAL_WIND_VECTOR_SCALE)
         end_x = x + dx
         end_y = y + dy
 
@@ -632,7 +632,7 @@ def update_farm_map(signals: list) -> None:
             map_local_vectors[idx].setData([x, end_x], [y, end_y])
         if idx < len(map_local_heads):
             map_local_heads[idx].setPos(end_x, end_y)
-            map_local_heads[idx].setStyle(angle=_arrow_item_angle_deg(dx, dy))
+            map_local_heads[idx].setStyle(angle=90+_arrow_item_angle_deg(dx, dy))
 
     global_speed = speeds.get("Global", 0.0)
     global_direction = directions.get("Global", 0.0)
@@ -645,11 +645,11 @@ def update_farm_map(signals: list) -> None:
         map_global_vector.setData([start_x, end_x], [start_y, end_y])
     if map_global_head is not None:
         map_global_head.setPos(end_x, end_y)
-        map_global_head.setStyle(angle=_arrow_item_angle_deg(dx, dy))
+        map_global_head.setStyle(angle=90+_arrow_item_angle_deg(dx, dy))
     if map_global_label is not None:
         label_dx, label_dy = GLOBAL_WIND_LABEL_OFFSET_XY
         map_global_label.setText(f"Global {global_speed:.1f} m/s, {global_direction:.0f} deg")
-        map_global_label.setPos(end_x + label_dx, end_y + label_dy)
+        map_global_label.setPos(3000, 954)
 
 
 def update_leds(lights_data: list) -> None:
