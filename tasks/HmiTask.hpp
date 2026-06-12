@@ -11,6 +11,8 @@
 
 #include <zmq.hpp>
 
+inline constexpr int DEFAULT_HMI_SIGNAL_WINDOW_SIZE = 500;
+
 // ---------------------------------------------------------------------------
 // HmiSignalDef – one subplot in the HMI display.
 //
@@ -36,7 +38,7 @@ struct HmiSignalDef
 struct HmiConfig
 {
     int numTurbines = 3;                 ///< active turbines to track
-    int windowSize  = 100;               ///< rolling window length forwarded to the plotter
+    int windowSize  = DEFAULT_HMI_SIGNAL_WINDOW_SIZE; ///< rolling window length forwarded to the plotter
     std::string publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock"; ///< ZMQ PUB endpoint
     std::string commandEndpoint   = "ipc:///tmp/supervisory_controller_hmi_cmd.sock"; ///< ZMQ PULL endpoint (mode commands)
     std::vector<HmiSignalDef> signals;

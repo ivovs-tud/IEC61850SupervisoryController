@@ -18,6 +18,7 @@ Usage:
 import os
 import sys
 from collections import deque
+import math
 import time
 
 # Prefer XCB unless the user already chose a Qt platform plugin.
@@ -46,8 +47,24 @@ else:
 
 POLL_INTERVAL_MS = 50  # how often the Qt timer checks for new ZMQ messages
 LAYOUT_ROWS = 3
-LAYOUT_COLS = 2
-MAX_PLOTS = LAYOUT_ROWS * LAYOUT_COLS
+LAYOUT_COLS = 3
+RESERVED_GRID_CELLS = 2
+MAX_PLOTS = LAYOUT_ROWS * LAYOUT_COLS - RESERVED_GRID_CELLS
+TURBINE_MAP_MARGIN = 420.0
+
+# Wind-farm map coordinates, ordered as T1, T2, T3, ...
+# Leave empty to auto-generate a compact grid from the turbine labels.
+TURBINE_COORDINATES_XY: list[tuple[float, float]] = [
+    (382.0, 1527.0),   # T1
+    (954.0, 1527.0),   # T2
+    (1527.0, 1527.0),  # T3
+    (382.0, 954.0),    # T4
+    (954.0, 954.0),    # T5
+    (1527.0, 954.0),   # T6
+    (382.0, 382.0),    # T7
+    (954.0, 382.0),    # T8
+    (1527.0, 382.0),   # T9
+]
 
 # Colour palette: one colour per line within a subplot.
 COLORS = [
@@ -307,6 +324,16 @@ histories: list[list[deque]] = []
 window_size: int = 500
 initialized: bool = False
 mode_labels: list[str] = ["Auto", "Curtailment", "Safe Shutdown"]
+farm_map: pg.PlotItem | None = None
+empty_plot: pg.PlotItem | None = None
+map_turbine_points: pg.ScatterPlotItem | None = None
+map_turbine_labels: list[pg.TextItem] = []
+map_local_vectors: list[pg.PlotDataItem] = []
+map_local_heads: list[pg.ArrowItem] = []
+map_global_vector: pg.PlotDataItem | None = None
+map_global_head: pg.ArrowItem | None = None
+map_global_label: pg.TextItem | None = None
+map_layout: list[dict[str, float | str]] = []
 
 
 def _qt_pen_style(name: str):
@@ -358,6 +385,142 @@ def _parse_signal(signal: list):
     name, unit, labels, values = signal[:4]
     y_range = signal[4] if len(signal) >= 5 else None
     return name, unit, labels, values, y_range
+
+
+def _find_signal(signals: list, wanted_name: str):
+    wanted = wanted_name.strip().lower()
+    for signal in signals:
+        name, unit, labels, values, y_range = _parse_signal(signal)
+        if str(name).strip().lower() == wanted:
+            return name, unit, labels, values, y_range
+    return None
+
+
+def _to_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _vector_components(speed, direction_deg) -> tuple[float, float]:
+    magnitude = max(0.0, _to_float(speed))
+    radians = math.radians(_to_float(direction_deg) % 360.0)
+    return magnitude * math.sin(radians), magnitude * math.cos(radians)
+
+
+def _direction_angle_deg(dx: float, dy: float) -> float:
+    return math.degrees(math.atan2(dy, dx))
+
+
+def _build_turbine_layout(labels: list[str]) -> list[dict[str, float | str]]:
+    turbine_labels = [str(label) for label in labels if not _is_global_label(str(label))]
+    if TURBINE_COORDINATES_XY:
+        layout: list[dict[str, float | str]] = []
+        for idx, label in enumerate(turbine_labels):
+            if idx < len(TURBINE_COORDINATES_XY):
+                x, y = TURBINE_COORDINATES_XY[idx]
+            else:
+                x, y = _auto_turbine_coordinate(idx, len(turbine_labels))
+            layout.append({"label": label, "x": float(x), "y": float(y)})
+        return layout
+
+    return _build_auto_turbine_layout(turbine_labels)
+
+
+def _auto_turbine_coordinate(idx: int, count: int) -> tuple[float, float]:
+    count = max(1, count)
+    cols = max(1, math.ceil(math.sqrt(count)))
+    rows = max(1, math.ceil(count / cols))
+    spacing = 500.0
+    row = idx // cols
+    col = idx % cols
+    x = (col - (cols - 1) / 2.0) * spacing
+    y = ((rows - 1) / 2.0 - row) * spacing
+    return x, y
+
+
+def _build_auto_turbine_layout(turbine_labels: list[str]) -> list[dict[str, float | str]]:
+    layout: list[dict[str, float | str]] = []
+
+    for idx, label in enumerate(turbine_labels):
+        x, y = _auto_turbine_coordinate(idx, len(turbine_labels))
+        layout.append({"label": label, "x": x, "y": y})
+
+    return layout
+
+
+def _values_by_label(labels: list, values: list) -> dict[str, float]:
+    result: dict[str, float] = {}
+    for label, value in zip(labels, values):
+        result[str(label)] = _to_float(value)
+    return result
+
+
+def _scaled_vector(speed, direction_deg, scale: float = 18.0) -> tuple[float, float]:
+    dx, dy = _vector_components(speed, direction_deg)
+    return dx * scale, dy * scale
+
+
+def init_farm_map(signals: list) -> None:
+    global farm_map, map_turbine_points, map_turbine_labels, map_local_vectors
+    global map_local_heads, map_global_vector, map_global_head, map_global_label, map_layout
+
+    wind_speed_signal = _find_signal(signals, "Wind Speed")
+    if wind_speed_signal is not None:
+        _name, _unit, labels, _values, _y_range = wind_speed_signal
+    else:
+        labels = [f"T{i + 1}" for i in range(9)]
+
+    map_layout = _build_turbine_layout(labels)
+    farm_map = plots_widget.addPlot(row=LAYOUT_ROWS - 1, col=1, title="Live Turbine Wind Map")
+    farm_map.setLabel("left", "Northing")
+    farm_map.setLabel("bottom", "Easting")
+    farm_map.showGrid(x=True, y=True, alpha=0.25)
+    farm_map.setAspectLocked(True)
+
+    xs = [float(t["x"]) for t in map_layout]
+    ys = [float(t["y"]) for t in map_layout]
+    map_turbine_points = pg.ScatterPlotItem(
+        x=xs,
+        y=ys,
+        size=13,
+        brush=pg.mkBrush(235, 238, 244, 230),
+        pen=pg.mkPen(20, 24, 30, width=1.5),
+    )
+    farm_map.addItem(map_turbine_points)
+
+    for turbine in map_layout:
+        label = pg.TextItem(str(turbine["label"]), color="#f4f7fb", anchor=(0.5, 1.35))
+        label.setPos(float(turbine["x"]), float(turbine["y"]))
+        farm_map.addItem(label)
+        map_turbine_labels.append(label)
+
+        vector = farm_map.plot([], [], pen=pg.mkPen(color=(92, 190, 255), width=2))
+        head = pg.ArrowItem(angle=0, headLen=14, tailLen=0, brush=(92, 190, 255), pen=pg.mkPen(92, 190, 255))
+        farm_map.addItem(head)
+        map_local_vectors.append(vector)
+        map_local_heads.append(head)
+
+    map_global_vector = farm_map.plot([], [], pen=pg.mkPen(color=(255, 230, 110), width=5))
+    map_global_head = pg.ArrowItem(angle=0, headLen=24, tailLen=0, brush=(255, 230, 110), pen=pg.mkPen(255, 230, 110, width=2))
+    farm_map.addItem(map_global_head)
+    map_global_label = pg.TextItem("Global", color="#ffe66d", anchor=(0.5, -0.2))
+    farm_map.addItem(map_global_label)
+
+    margin = TURBINE_MAP_MARGIN
+    farm_map.setXRange(min(xs) - margin, max(xs) + margin, padding=0)
+    farm_map.setYRange(min(ys) - margin, max(ys) + margin, padding=0)
+
+
+def init_empty_plot() -> None:
+    global empty_plot
+
+    empty_plot = plots_widget.addPlot(row=LAYOUT_ROWS - 1, col=2, title="")
+    empty_plot.hideAxis("left")
+    empty_plot.hideAxis("bottom")
+    empty_plot.setMouseEnabled(x=False, y=False)
+    empty_plot.setMenuEnabled(False)
 
 
 def _valid_y_range(y_range) -> tuple[float, float] | None:
@@ -413,7 +576,55 @@ def init_layout(signals: list, ws: int) -> None:
         if (idx + 1) % LAYOUT_COLS == 0:
             plots_widget.nextRow()
 
+    init_farm_map(signals)
+    init_empty_plot()
     initialized = True
+
+
+def update_farm_map(signals: list) -> None:
+    if farm_map is None or not map_layout:
+        return
+
+    wind_speed_signal = _find_signal(signals, "Wind Speed")
+    wind_direction_signal = _find_signal(signals, "Wind Direction")
+    if wind_speed_signal is None or wind_direction_signal is None:
+        return
+
+    _name, _unit, speed_labels, speed_values, _y_range = wind_speed_signal
+    _name, _unit, direction_labels, direction_values, _y_range = wind_direction_signal
+    speeds = _values_by_label(speed_labels, speed_values)
+    directions = _values_by_label(direction_labels, direction_values)
+
+    for idx, turbine in enumerate(map_layout):
+        label = str(turbine["label"])
+        x = float(turbine["x"])
+        y = float(turbine["y"])
+        dx, dy = _scaled_vector(speeds.get(label, 0.0), directions.get(label, 0.0))
+        end_x = x + dx
+        end_y = y + dy
+
+        if idx < len(map_local_vectors):
+            map_local_vectors[idx].setData([x, end_x], [y, end_y])
+        if idx < len(map_local_heads):
+            map_local_heads[idx].setPos(end_x, end_y)
+            map_local_heads[idx].setStyle(angle=_direction_angle_deg(dx, dy))
+
+    global_speed = speeds.get("Global", 0.0)
+    global_direction = directions.get("Global", 0.0)
+    dx, dy = _scaled_vector(global_speed, global_direction, scale=28.0)
+    start_x = 0.0
+    start_y = -520.0
+    end_x = start_x + dx
+    end_y = start_y + dy
+
+    if map_global_vector is not None:
+        map_global_vector.setData([start_x, end_x], [start_y, end_y])
+    if map_global_head is not None:
+        map_global_head.setPos(end_x, end_y)
+        map_global_head.setStyle(angle=_direction_angle_deg(dx, dy))
+    if map_global_label is not None:
+        map_global_label.setText(f"Global {global_speed:.1f} m/s, {global_direction:.0f} deg")
+        map_global_label.setPos(end_x, end_y)
 
 
 def update_leds(lights_data: list) -> None:
@@ -562,6 +773,7 @@ def poll_and_update() -> None:
             histories[i][j].append(float(v))
             curves[i][j].setData(x=x_axis, y=list(histories[i][j]))
 
+    update_farm_map(signals)
     main_window.setWindowTitle(f"Wind Farm HMI  -  tick {tick}  -  {ENDPOINT}")
 
 

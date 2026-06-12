@@ -5,6 +5,7 @@
 #include <array>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <string>
 
@@ -46,7 +47,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
 
     HmiConfig cfg;
     cfg.numTurbines        = numTurbines;
-    cfg.windowSize         = 100;   // last 100 samples (= 10 s at 100 ms period)
+    cfg.windowSize         = DEFAULT_HMI_SIGNAL_WINDOW_SIZE;
 #ifdef PLATFORM_WINDOWS
         cfg.publisherEndpoint  = "tcp://*:5555";
         cfg.commandEndpoint = "tcp://*:5556";
@@ -158,6 +159,13 @@ HmiConfig defaultHmiConfig(int numTurbines)
             turbineLabels(),
             [safeSlice](const GlobalData& d) { return safeSlice(d.lastRPM); },
             std::make_pair(-.1, 13)
+        },
+        // -- Per-turbine generator torque ------------------------------------
+        {
+            "Generator Torque", "Nm",
+            turbineLabels(),
+            [safeSlice](const GlobalData& d) { return safeSlice(d.lastGenTorque); },
+            std::make_pair(-1.0, 5e6)
         }
     };
 
