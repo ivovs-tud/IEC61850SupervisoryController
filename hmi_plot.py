@@ -50,7 +50,12 @@ LAYOUT_ROWS = 3
 LAYOUT_COLS = 3
 RESERVED_GRID_CELLS = 2
 MAX_PLOTS = LAYOUT_ROWS * LAYOUT_COLS - RESERVED_GRID_CELLS
+TURBINE_MAP_BOUNDS: tuple[float, float, float, float] | None = (0.0, 1900.0, 0.0, 1900.0)
 TURBINE_MAP_MARGIN = 420.0
+LOCAL_WIND_VECTOR_SCALE = 18.0
+GLOBAL_WIND_VECTOR_SCALE = 28.0
+GLOBAL_WIND_VECTOR_START_XY = (954.0, 150.0)
+GLOBAL_WIND_LABEL_OFFSET_XY = (0.0, 0.0)
 
 # Wind-farm map coordinates, ordered as T1, T2, T3, ...
 # Leave empty to auto-generate a compact grid from the turbine labels.
@@ -413,6 +418,12 @@ def _direction_angle_deg(dx: float, dy: float) -> float:
     return math.degrees(math.atan2(dy, dx))
 
 
+def _arrow_item_angle_deg(dx: float, dy: float) -> float:
+    # ArrowItem's 0 degrees points upward, while the plotted stem angle is
+    # measured counter-clockwise from +x. Convert so head and stem line up.
+    return 90.0 - _direction_angle_deg(dx, dy)
+
+
 def _build_turbine_layout(labels: list[str]) -> list[dict[str, float | str]]:
     turbine_labels = [str(label) for label in labels if not _is_global_label(str(label))]
     if TURBINE_COORDINATES_XY:
@@ -462,6 +473,22 @@ def _scaled_vector(speed, direction_deg, scale: float = 18.0) -> tuple[float, fl
     return dx * scale, dy * scale
 
 
+def _set_farm_map_bounds(xs: list[float], ys: list[float]) -> None:
+    if farm_map is None:
+        return
+
+    if TURBINE_MAP_BOUNDS is not None:
+        x_min, x_max, y_min, y_max = TURBINE_MAP_BOUNDS
+    else:
+        x_min = min(xs) - TURBINE_MAP_MARGIN
+        x_max = max(xs) + TURBINE_MAP_MARGIN
+        y_min = min(ys) - TURBINE_MAP_MARGIN
+        y_max = max(ys) + TURBINE_MAP_MARGIN
+
+    farm_map.setXRange(float(x_min), float(x_max), padding=0)
+    farm_map.setYRange(float(y_min), float(y_max), padding=0)
+
+
 def init_farm_map(signals: list) -> None:
     global farm_map, map_turbine_points, map_turbine_labels, map_local_vectors
     global map_local_heads, map_global_vector, map_global_head, map_global_label, map_layout
@@ -508,9 +535,7 @@ def init_farm_map(signals: list) -> None:
     map_global_label = pg.TextItem("Global", color="#ffe66d", anchor=(0.5, -0.2))
     farm_map.addItem(map_global_label)
 
-    margin = TURBINE_MAP_MARGIN
-    farm_map.setXRange(min(xs) - margin, max(xs) + margin, padding=0)
-    farm_map.setYRange(min(ys) - margin, max(ys) + margin, padding=0)
+    _set_farm_map_bounds(xs, ys)
 
 
 def init_empty_plot() -> None:
@@ -607,13 +632,12 @@ def update_farm_map(signals: list) -> None:
             map_local_vectors[idx].setData([x, end_x], [y, end_y])
         if idx < len(map_local_heads):
             map_local_heads[idx].setPos(end_x, end_y)
-            map_local_heads[idx].setStyle(angle=_direction_angle_deg(dx, dy))
+            map_local_heads[idx].setStyle(angle=_arrow_item_angle_deg(dx, dy))
 
     global_speed = speeds.get("Global", 0.0)
     global_direction = directions.get("Global", 0.0)
-    dx, dy = _scaled_vector(global_speed, global_direction, scale=28.0)
-    start_x = 0.0
-    start_y = -520.0
+    dx, dy = _scaled_vector(global_speed, global_direction, scale=GLOBAL_WIND_VECTOR_SCALE)
+    start_x, start_y = GLOBAL_WIND_VECTOR_START_XY
     end_x = start_x + dx
     end_y = start_y + dy
 
@@ -621,10 +645,11 @@ def update_farm_map(signals: list) -> None:
         map_global_vector.setData([start_x, end_x], [start_y, end_y])
     if map_global_head is not None:
         map_global_head.setPos(end_x, end_y)
-        map_global_head.setStyle(angle=_direction_angle_deg(dx, dy))
+        map_global_head.setStyle(angle=_arrow_item_angle_deg(dx, dy))
     if map_global_label is not None:
+        label_dx, label_dy = GLOBAL_WIND_LABEL_OFFSET_XY
         map_global_label.setText(f"Global {global_speed:.1f} m/s, {global_direction:.0f} deg")
-        map_global_label.setPos(end_x, end_y)
+        map_global_label.setPos(end_x + label_dx, end_y + label_dy)
 
 
 def update_leds(lights_data: list) -> None:
