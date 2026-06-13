@@ -56,11 +56,9 @@ LOCAL_WIND_VECTOR_SCALE = 38.0
 GLOBAL_WIND_VECTOR_SCALE = 58.0
 GLOBAL_WIND_VECTOR_START_XY = (-700.0, 954.0)
 GLOBAL_WIND_LABEL_OFFSET_XY = (0.0, 0.0)
-TURBINE_UNWAKED_COLOR = (235, 238, 244)
-TURBINE_WAKED_COLOR = (255, 118, 82)
 TURBINE_WAKED_SPEED_RATIO_THRESHOLD = 0.95
 TURBINE_MIN_WAKE_BRIGHTNESS = 0.35
-TURBINE_BODY_LENGTH = 150.0
+TURBINE_BODY_LENGTH = 250.0
 TURBINE_NACELLE_RADIUS = 22.0
 TURBINE_ORIENTATION_OFFSET_DEG = 0.0
 TURBINE_ORIENTATION_SIGN = 1.0
@@ -79,17 +77,18 @@ TURBINE_COORDINATES_XY: list[tuple[float, float]] = [
     (1527.0, 382.0),   # T9
 ]
 
-# Colour palette: one colour per line within a subplot.
-COLORS = [
-    (21,  99, 160),  # blue
-    (255, 127,  14),  # orange
-    (44,  160,  44),  # green
-    (214,  39,  40),  # red
-    (148, 103, 189),  # purple
-    (140,  86,  75),  # brown
-    (227, 119, 194),  # pink
-    (127, 127, 127),  # grey
-]
+# Fixed identity colors used everywhere turbine identity is shown.
+TURBINE_COLORS: dict[str, tuple[int, int, int]] = {
+    "T1": (21, 99, 160),
+    "T2": (255, 127, 14),
+    "T3": (44, 160, 44),
+    "T4": (214, 39, 40),
+    "T5": (148, 103, 189),
+    "T6": (140, 86, 75),
+    "T7": (227, 119, 194),
+    "T8": (127, 127, 127),
+    "T9": (188, 189, 34),
+}
 
 WIND_GLOBAL_COLORS = {
     "wind speed": (34, 213, 238),
@@ -341,12 +340,15 @@ main_window.show()
 # ---------------------------------------------------------------------------
 plots: list[pg.PlotItem] = []
 curves: list[list[pg.PlotDataItem]] = []
+curve_turbines: list[list[str | None]] = []
 histories: list[list[deque]] = []
 window_size: int = 500
 initialized: bool = False
 mode_labels: list[str] = ["Auto", "Curtailment", "Safe Shutdown"]
 farm_map: pg.PlotItem | None = None
-empty_plot: pg.PlotItem | None = None
+legend_plot: pg.PlotItem | None = None
+legend_entries: dict[str, "TurbineLegendEntry"] = {}
+active_turbines: set[str] = set()
 map_turbine_glyphs: list[pg.PlotDataItem] = []
 map_turbine_labels: list[pg.TextItem] = []
 map_local_vectors: list[pg.PlotDataItem] = []
@@ -357,6 +359,52 @@ map_global_label: pg.TextItem | None = None
 map_layout: list[dict[str, float | str]] = []
 
 
+class TurbineLegendEntry(pg.GraphicsObject):
+    def __init__(self, label: str, color: tuple[int, int, int], toggle_callback):
+        super().__init__()
+        self.label = label
+        self.color = color
+        self.active = True
+        self._toggle_callback = toggle_callback
+        self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton if hasattr(QtCore.Qt, "MouseButton") else QtCore.Qt.LeftButton)
+        self._label_item = pg.TextItem(anchor=(0, 0.5))
+        self._label_item.setParentItem(self)
+        self._label_item.setPos(22, 12)
+        self._update_label()
+
+    def boundingRect(self):
+        return QtCore.QRectF(0, 0, 180, 24)
+
+    def paint(self, painter, _option, _widget):
+        painter.setRenderHint(_qt_painter_hint("Antialiasing"), True)
+        alpha = 235 if self.active else 75
+        patch_color = QtGui.QColor(*self.color, alpha)
+
+        painter.setPen(QtGui.QPen(QtGui.QColor(20, 24, 30, alpha), 1))
+        painter.setBrush(QtGui.QBrush(patch_color))
+        painter.drawRect(QtCore.QRectF(0, 5, 14, 14))
+
+        if not self.active:
+            painter.setPen(QtGui.QPen(QtGui.QColor(238, 243, 249, 120), 1.5))
+            painter.drawLine(QtCore.QPointF(22, 12), QtCore.QPointF(65, 12))
+
+    def _update_label(self) -> None:
+        color = "#eef3f9" if self.active else "#78808a"
+        text = f"<s>{self.label}</s>" if not self.active else self.label
+        self._label_item.setHtml(
+            f"<span style='color: {color}; font-size: 10pt; font-weight: 700;'>{text}</span>"
+        )
+
+    def set_active(self, active: bool) -> None:
+        self.active = bool(active)
+        self._update_label()
+        self.update()
+
+    def mouseClickEvent(self, event) -> None:
+        self._toggle_callback(self.label)
+        event.accept()
+
+
 def _qt_pen_style(name: str):
     """Return Qt pen style value for both Qt5 and Qt6 enum layouts."""
     # Qt6: QtCore.Qt.PenStyle.SolidLine / DashLine
@@ -365,13 +413,6 @@ def _qt_pen_style(name: str):
         return getattr(pen_style_enum, name)
     # Qt5: QtCore.Qt.SolidLine / DashLine
     return getattr(QtCore.Qt, name)
-
-
-def _blend_rgb(color: tuple[int, int, int], target: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
-    return tuple(
-        int(round(channel + (target_channel - channel) * amount))
-        for channel, target_channel in zip(color, target)
-    )
 
 
 def _scale_rgb(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
@@ -391,8 +432,27 @@ def _is_global_label(label: str) -> bool:
     return str(label).strip().lower().startswith("global")
 
 
+def _turbine_id_from_label(label: str) -> str | None:
+    first_token = str(label).strip().split(maxsplit=1)[0]
+    if first_token in TURBINE_COLORS:
+        return first_token
+    return None
+
+
+def _turbine_color(turbine_id: str | None, fallback_index: int = 0) -> tuple[int, int, int]:
+    if turbine_id in TURBINE_COLORS:
+        return TURBINE_COLORS[turbine_id]
+    palette = list(TURBINE_COLORS.values())
+    return palette[fallback_index % len(palette)]
+
+
+def _is_setpoint_label(label: str) -> bool:
+    return "setpoint" in str(label).lower()
+
+
 def _pen_for_curve(signal_name: str, label: str, line_index: int):
-    color = COLORS[line_index % len(COLORS)]
+    turbine_id = _turbine_id_from_label(label)
+    color = _turbine_color(turbine_id, line_index)
     line_style = _qt_pen_style("SolidLine")
     width = 2
 
@@ -402,12 +462,27 @@ def _pen_for_curve(signal_name: str, label: str, line_index: int):
             color = WIND_GLOBAL_COLORS.get(signal_key, (255, 255, 255))
             width = 3
         else:
-            color = _blend_rgb(color, (150, 158, 170), 0.38)
             line_style = _qt_pen_style("DashLine")
-    elif "setpoint" in str(label).lower():
+    elif _is_setpoint_label(label):
         line_style = _qt_pen_style("DashLine")
 
     return pg.mkPen(color=color, width=width, style=line_style)
+
+
+def _signal_has_multiple_line_styles(labels: list[str]) -> bool:
+    has_measurement = any(not _is_setpoint_label(label) for label in labels)
+    has_setpoint = any(_is_setpoint_label(label) for label in labels)
+    return has_measurement and has_setpoint
+
+
+def _add_style_legend(plot: pg.PlotItem, labels: list[str]) -> None:
+    if not _signal_has_multiple_line_styles(labels):
+        return
+
+    legend = plot.addLegend(offset=(10, 10))
+    legend.setBrush(pg.mkBrush(0, 0, 0, 160))
+    plot.plot([], [], pen=pg.mkPen(color=(235, 238, 244), width=2), name="Measurement")
+    plot.plot([], [], pen=pg.mkPen(color=(235, 238, 244), width=2, style=_qt_pen_style("DashLine")), name="Setpoint")
 
 
 def _parse_signal(signal: list):
@@ -513,20 +588,18 @@ def _set_farm_map_bounds(xs: list[float], ys: list[float]) -> None:
     farm_map.setYRange(float(y_min), float(y_max), padding=0)
 
 
-def _wake_color(local_speed: float, global_speed: float) -> tuple[int, int, int]:
+def _wake_color(local_speed: float, global_speed: float, base_color: tuple[int, int, int]) -> tuple[int, int, int]:
     if global_speed <= 0.0:
-        return TURBINE_UNWAKED_COLOR
+        return base_color
 
     local_to_global = _clamp(local_speed / global_speed, 0.0, 1.25)
     wake_threshold = max(0.001, TURBINE_WAKED_SPEED_RATIO_THRESHOLD)
-    wake_amount = _clamp((wake_threshold - local_to_global) / wake_threshold, 0.0, 1.0)
-    brightness = TURBINE_MIN_WAKE_BRIGHTNESS + (1.0 - TURBINE_MIN_WAKE_BRIGHTNESS) * _clamp(local_to_global, 0.0, 1.0)
-    color = _blend_rgb(TURBINE_UNWAKED_COLOR, TURBINE_WAKED_COLOR, wake_amount)
-    return _scale_rgb(color, brightness)
+    brightness = TURBINE_MIN_WAKE_BRIGHTNESS + (1.0 - TURBINE_MIN_WAKE_BRIGHTNESS) * _clamp(local_to_global / wake_threshold, 0.0, 1.0)
+    return _scale_rgb(base_color, brightness)
 
 
-def _turbine_pen(local_speed: float, global_speed: float, width: float = 2.5):
-    return pg.mkPen(color=_wake_color(local_speed, global_speed), width=width)
+def _turbine_pen(turbine_id: str, local_speed: float, global_speed: float, width: float = 2.5):
+    return pg.mkPen(color=_wake_color(local_speed, global_speed, _turbine_color(turbine_id)), width=width)
 
 
 def _orientation_values_by_label(signals: list) -> dict[str, float]:
@@ -596,7 +669,9 @@ def init_farm_map(signals: list) -> None:
     ys = [float(t["y"]) for t in map_layout]
 
     for turbine in map_layout:
-        glyph = farm_map.plot([], [], pen=pg.mkPen(color=TURBINE_UNWAKED_COLOR, width=2.5))
+        turbine_id = str(turbine["label"])
+        turbine_color = _turbine_color(turbine_id)
+        glyph = farm_map.plot([], [], pen=pg.mkPen(color=turbine_color, width=2.5))
         map_turbine_glyphs.append(glyph)
 
         label = pg.TextItem(str(turbine["label"]), color="#f4f7fb", anchor=(0.5, 1.35))
@@ -604,14 +679,14 @@ def init_farm_map(signals: list) -> None:
         farm_map.addItem(label)
         map_turbine_labels.append(label)
 
-        vector = farm_map.plot([], [], pen=pg.mkPen(color=(92, 190, 255), width=2))
-        head = pg.ArrowItem(angle=0, headLen=14, tailLen=0, brush=(92, 190, 255), pen=pg.mkPen(92, 190, 255))
+        vector = farm_map.plot([], [], pen=pg.mkPen(color=turbine_color, width=2))
+        head = pg.ArrowItem(angle=0, headLen=14, tailLen=0, brush=turbine_color, pen=pg.mkPen(turbine_color))
         farm_map.addItem(head)
         map_local_vectors.append(vector)
         map_local_heads.append(head)
 
-    map_global_vector = farm_map.plot([], [], pen=pg.mkPen(color=(255, 230, 110), width=5))
-    map_global_head = pg.ArrowItem(angle=0, headLen=18, tailLen=0, brush=(255, 230, 110), pen=pg.mkPen(255, 230, 110, width=2))
+    map_global_vector = farm_map.plot([], [], pen=pg.mkPen(color=WIND_GLOBAL_COLORS["wind speed"], width=4))
+    map_global_head = pg.ArrowItem(angle=0, headLen=18, tailLen=0, brush = WIND_GLOBAL_COLORS["wind speed"],pen=pg.mkPen(color=WIND_GLOBAL_COLORS["wind speed"], width=4))
     farm_map.addItem(map_global_head)
     map_global_label = pg.TextItem("Global", color="#ffe66d", anchor=(0.5, -0.2))
     farm_map.addItem(map_global_label)
@@ -619,14 +694,42 @@ def init_farm_map(signals: list) -> None:
     _set_farm_map_bounds(xs, ys)
 
 
-def init_empty_plot() -> None:
-    global empty_plot
+def apply_turbine_visibility() -> None:
+    for sig_curves, sig_turbines in zip(curves, curve_turbines):
+        for curve, turbine_id in zip(sig_curves, sig_turbines):
+            if turbine_id is not None:
+                curve.setVisible(turbine_id in active_turbines)
 
-    empty_plot = plots_widget.addPlot(row=LAYOUT_ROWS - 1, col=2, title="")
-    empty_plot.hideAxis("left")
-    empty_plot.hideAxis("bottom")
-    empty_plot.setMouseEnabled(x=False, y=False)
-    empty_plot.setMenuEnabled(False)
+    for turbine_id, entry in legend_entries.items():
+        entry.set_active(turbine_id in active_turbines)
+
+
+def toggle_turbine_visibility(turbine_id: str) -> None:
+    if turbine_id in active_turbines:
+        active_turbines.remove(turbine_id)
+    else:
+        active_turbines.add(turbine_id)
+    apply_turbine_visibility()
+
+
+def init_turbine_legend(turbine_labels: list[str]) -> None:
+    global legend_plot, active_turbines
+
+    legend_plot = plots_widget.addPlot(row=LAYOUT_ROWS - 1, col=2, title="Turbines")
+    legend_plot.hideAxis("left")
+    legend_plot.hideAxis("bottom")
+    legend_plot.setMouseEnabled(x=False, y=False)
+    legend_plot.setMenuEnabled(False)
+    legend_plot.setXRange(0, 220, padding=0)
+    legend_plot.setYRange(0, max(1, len(turbine_labels)) * 28 + 8, padding=0)
+
+    active_turbines = set(turbine_labels)
+    legend_entries.clear()
+    for idx, turbine_id in enumerate(turbine_labels):
+        entry = TurbineLegendEntry(turbine_id, _turbine_color(turbine_id), toggle_turbine_visibility)
+        entry.setPos(12, max(1, len(turbine_labels)) * 28 - idx * 28 - 22)
+        legend_plot.addItem(entry)
+        legend_entries[turbine_id] = entry
 
 
 def _valid_y_range(y_range) -> tuple[float, float] | None:
@@ -644,7 +747,7 @@ def _valid_y_range(y_range) -> tuple[float, float] | None:
 
 def init_layout(signals: list, ws: int) -> None:
     """Build all PlotItems and PlotDataItems from the first message."""
-    global plots, curves, histories, window_size, initialized
+    global plots, curves, curve_turbines, histories, window_size, initialized
 
     window_size = ws
     x_axis = list(range(window_size))
@@ -659,10 +762,10 @@ def init_layout(signals: list, ws: int) -> None:
         fixed_y_range = _valid_y_range(y_range)
         if fixed_y_range is not None:
             p.setYRange(fixed_y_range[0], fixed_y_range[1], padding=0)
-        legend = p.addLegend(offset=(10, 10))
-        legend.setBrush(pg.mkBrush(0, 0, 0, 160))
+        _add_style_legend(p, labels)
 
         sig_curves: list[pg.PlotDataItem] = []
+        sig_turbines: list[str | None] = []
         sig_histories: list[deque] = []
 
         for j, label in enumerate(labels):
@@ -670,20 +773,22 @@ def init_layout(signals: list, ws: int) -> None:
                 x=x_axis,
                 y=[0.0] * window_size,
                 pen=_pen_for_curve(name, label, j),
-                name=label,
             )
             sig_curves.append(c)
+            sig_turbines.append(_turbine_id_from_label(label))
             sig_histories.append(deque([0.0] * window_size, maxlen=window_size))
 
         plots.append(p)
         curves.append(sig_curves)
+        curve_turbines.append(sig_turbines)
         histories.append(sig_histories)
 
         if (idx + 1) % LAYOUT_COLS == 0:
             plots_widget.nextRow()
 
     init_farm_map(signals)
-    init_empty_plot()
+    init_turbine_legend([str(turbine["label"]) for turbine in map_layout])
+    apply_turbine_visibility()
     initialized = True
 
 
@@ -709,7 +814,7 @@ def update_farm_map(signals: list) -> None:
         x = float(turbine["x"])
         y = float(turbine["y"])
         local_speed = speeds.get(label, 0.0)
-        local_pen = _turbine_pen(local_speed, global_speed, width=2.5)
+        local_pen = _turbine_pen(label, local_speed, global_speed, width=2.5)
         dx, dy = _scaled_vector(local_speed, directions.get(label, 0.0), scale=LOCAL_WIND_VECTOR_SCALE)
         end_x = x - dx
         end_y = y - dy
@@ -720,10 +825,10 @@ def update_farm_map(signals: list) -> None:
             map_turbine_glyphs[idx].setPen(local_pen)
         if idx < len(map_local_vectors):
             map_local_vectors[idx].setData([x, end_x], [y, end_y])
-            map_local_vectors[idx].setPen(_turbine_pen(local_speed, global_speed, width=2.0))
+            map_local_vectors[idx].setPen(_turbine_pen(label, local_speed, global_speed, width=2.0))
         if idx < len(map_local_heads):
             map_local_heads[idx].setPos(end_x, end_y)
-            local_color = _wake_color(local_speed, global_speed)
+            local_color = _wake_color(local_speed, global_speed, _turbine_color(label))
             map_local_heads[idx].setStyle(
                 angle=90+_arrow_item_angle_deg(dx, dy),
                 brush=local_color,
@@ -848,7 +953,6 @@ def poll_and_update() -> None:
     if raw is None:
         return  # no new data this tick
 
-    print(int(time.time() * 1000))
     msg = msgpack.unpackb(raw, raw=False)
 
     lights_data = []
