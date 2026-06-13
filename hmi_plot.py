@@ -51,11 +51,19 @@ LAYOUT_COLS = 3
 RESERVED_GRID_CELLS = 2
 MAX_PLOTS = LAYOUT_ROWS * LAYOUT_COLS - RESERVED_GRID_CELLS
 TURBINE_MAP_BOUNDS: tuple[float, float, float, float] | None = (0.0, 1900.0, 0.0, 1900.0)
-TURBINE_MAP_MARGIN = 420.0
+TURBINE_MAP_MARGIN = 600.0
 LOCAL_WIND_VECTOR_SCALE = 38.0
 GLOBAL_WIND_VECTOR_SCALE = 58.0
-GLOBAL_WIND_VECTOR_START_XY = (-954.0, 954.0)
+GLOBAL_WIND_VECTOR_START_XY = (-700.0, 954.0)
 GLOBAL_WIND_LABEL_OFFSET_XY = (0.0, 0.0)
+TURBINE_UNWAKED_COLOR = (235, 238, 244)
+TURBINE_WAKED_COLOR = (255, 118, 82)
+TURBINE_WAKED_SPEED_RATIO_THRESHOLD = 0.95
+TURBINE_MIN_WAKE_BRIGHTNESS = 0.35
+TURBINE_BODY_LENGTH = 150.0
+TURBINE_NACELLE_RADIUS = 22.0
+TURBINE_ORIENTATION_OFFSET_DEG = 0.0
+TURBINE_ORIENTATION_SIGN = 1.0
 
 # Wind-farm map coordinates, ordered as T1, T2, T3, ...
 # Leave empty to auto-generate a compact grid from the turbine labels.
@@ -140,6 +148,10 @@ class LedIndicator(QtWidgets.QWidget):
             self._on = bool(state)
             self.update()
 
+        def set_color(self, color: tuple[int, int, int]) -> None:
+            self._color = color
+            self.update()
+
         def paintEvent(self, _event) -> None:
             p = QtGui.QPainter(self)
             try:
@@ -197,6 +209,10 @@ class LedIndicator(QtWidgets.QWidget):
 
     def set_state(self, is_on: bool) -> None:
         self._face.set_on(is_on)
+
+    def set_color(self, color_name: str) -> None:
+        self._color = self._color_map.get(color_name.lower(), (230, 54, 54))
+        self._face.set_color(self._color)
 
 
 class CircularModeButton(QtWidgets.QPushButton):
@@ -331,7 +347,7 @@ initialized: bool = False
 mode_labels: list[str] = ["Auto", "Curtailment", "Safe Shutdown"]
 farm_map: pg.PlotItem | None = None
 empty_plot: pg.PlotItem | None = None
-map_turbine_points: pg.ScatterPlotItem | None = None
+map_turbine_glyphs: list[pg.PlotDataItem] = []
 map_turbine_labels: list[pg.TextItem] = []
 map_local_vectors: list[pg.PlotDataItem] = []
 map_local_heads: list[pg.ArrowItem] = []
@@ -356,6 +372,14 @@ def _blend_rgb(color: tuple[int, int, int], target: tuple[int, int, int], amount
         int(round(channel + (target_channel - channel) * amount))
         for channel, target_channel in zip(color, target)
     )
+
+
+def _scale_rgb(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+    return tuple(int(round(channel * amount)) for channel in color)
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
 
 
 def _is_wind_signal(name: str) -> bool:
@@ -409,13 +433,13 @@ def _to_float(value, default: float = 0.0) -> float:
 
 
 def _vector_components(speed, direction_deg) -> tuple[float, float]:
-    magnitude = max(max(0.0, _to_float(speed)), 8.0)
+    magnitude = max(max(0.0, _to_float(speed)), 2.0)
     radians = math.radians(_to_float(direction_deg) % 360.0)
     return magnitude * math.sin(radians), magnitude * math.cos(radians)
 
 
 def _direction_angle_deg(dx: float, dy: float) -> float:
-    return math.degrees(math.atan2(dy, dx))
+    return math.degrees(math.pi + math.atan2(dy, dx))
 
 
 def _arrow_item_angle_deg(dx: float, dy: float) -> float:
@@ -489,8 +513,70 @@ def _set_farm_map_bounds(xs: list[float], ys: list[float]) -> None:
     farm_map.setYRange(float(y_min), float(y_max), padding=0)
 
 
+def _wake_color(local_speed: float, global_speed: float) -> tuple[int, int, int]:
+    if global_speed <= 0.0:
+        return TURBINE_UNWAKED_COLOR
+
+    local_to_global = _clamp(local_speed / global_speed, 0.0, 1.25)
+    wake_threshold = max(0.001, TURBINE_WAKED_SPEED_RATIO_THRESHOLD)
+    wake_amount = _clamp((wake_threshold - local_to_global) / wake_threshold, 0.0, 1.0)
+    brightness = TURBINE_MIN_WAKE_BRIGHTNESS + (1.0 - TURBINE_MIN_WAKE_BRIGHTNESS) * _clamp(local_to_global, 0.0, 1.0)
+    color = _blend_rgb(TURBINE_UNWAKED_COLOR, TURBINE_WAKED_COLOR, wake_amount)
+    return _scale_rgb(color, brightness)
+
+
+def _turbine_pen(local_speed: float, global_speed: float, width: float = 2.5):
+    return pg.mkPen(color=_wake_color(local_speed, global_speed), width=width)
+
+
+def _orientation_values_by_label(signals: list) -> dict[str, float]:
+    yaw_signal = _find_signal(signals, "Yaw Offset and Setpoints")
+    if yaw_signal is None:
+        return {}
+
+    _name, _unit, labels, values, _y_range = yaw_signal
+    yaw_values = _values_by_label(labels, values)
+    orientations: dict[str, float] = {}
+
+    for turbine in map_layout:
+        label = str(turbine["label"])
+        orientations[label] = yaw_values.get(f"{label} Yaw Offset", yaw_values.get(label, 0.0))
+
+    return orientations
+
+
+def _turbine_shape_points(x: float, y: float, orientation_deg: float) -> tuple[list[float], list[float]]:
+    heading_deg = TURBINE_ORIENTATION_OFFSET_DEG + TURBINE_ORIENTATION_SIGN * _to_float(orientation_deg)
+    radians = math.radians(heading_deg % 360.0)
+
+    # Compass convention: 0 deg is north/up, 90 deg is east/right.
+    heading_x = math.sin(radians)
+    heading_y = math.cos(radians)
+    right_x = math.cos(radians)
+    right_y = -math.sin(radians)
+
+    left_x = x - right_x * TURBINE_BODY_LENGTH * 0.5
+    left_y = y - right_y * TURBINE_BODY_LENGTH * 0.5
+    right_tip_x = x + right_x * TURBINE_BODY_LENGTH * 0.5
+    right_tip_y = y + right_y * TURBINE_BODY_LENGTH * 0.5
+
+    xs = [left_x, right_tip_x, float("nan")]
+    ys = [left_y, right_tip_y, float("nan")]
+
+    for i in range(13):
+        a = -math.pi / 2.0 + math.pi * i / 12.0
+        lateral = math.sin(a) * TURBINE_NACELLE_RADIUS
+        rearward = math.cos(a) * TURBINE_NACELLE_RADIUS
+        arc_x = x + right_x * lateral - heading_x * rearward
+        arc_y = y + right_y * lateral - heading_y * rearward
+        xs.append(arc_x)
+        ys.append(arc_y)
+
+    return xs, ys
+
+
 def init_farm_map(signals: list) -> None:
-    global farm_map, map_turbine_points, map_turbine_labels, map_local_vectors
+    global farm_map, map_turbine_glyphs, map_turbine_labels, map_local_vectors
     global map_local_heads, map_global_vector, map_global_head, map_global_label, map_layout
 
     wind_speed_signal = _find_signal(signals, "Wind Speed")
@@ -508,16 +594,11 @@ def init_farm_map(signals: list) -> None:
 
     xs = [float(t["x"]) for t in map_layout]
     ys = [float(t["y"]) for t in map_layout]
-    map_turbine_points = pg.ScatterPlotItem(
-        x=xs,
-        y=ys,
-        size=13,
-        brush=pg.mkBrush(235, 238, 244, 230),
-        pen=pg.mkPen(20, 24, 30, width=1.5),
-    )
-    farm_map.addItem(map_turbine_points)
 
     for turbine in map_layout:
+        glyph = farm_map.plot([], [], pen=pg.mkPen(color=TURBINE_UNWAKED_COLOR, width=2.5))
+        map_turbine_glyphs.append(glyph)
+
         label = pg.TextItem(str(turbine["label"]), color="#f4f7fb", anchor=(0.5, 1.35))
         label.setPos(float(turbine["x"]), float(turbine["y"]))
         farm_map.addItem(label)
@@ -620,26 +701,40 @@ def update_farm_map(signals: list) -> None:
     speeds = _values_by_label(speed_labels, speed_values)
     directions = _values_by_label(direction_labels, direction_values)
 
+    orientations = _orientation_values_by_label(signals)
+    global_speed = speeds.get("Global", 0.0)
+
     for idx, turbine in enumerate(map_layout):
         label = str(turbine["label"])
         x = float(turbine["x"])
         y = float(turbine["y"])
-        dx, dy = _scaled_vector(speeds.get(label, 0.0), directions.get(label, 0.0), scale=LOCAL_WIND_VECTOR_SCALE)
-        end_x = x + dx
-        end_y = y + dy
+        local_speed = speeds.get(label, 0.0)
+        local_pen = _turbine_pen(local_speed, global_speed, width=2.5)
+        dx, dy = _scaled_vector(local_speed, directions.get(label, 0.0), scale=LOCAL_WIND_VECTOR_SCALE)
+        end_x = x - dx
+        end_y = y - dy
 
+        if idx < len(map_turbine_glyphs):
+            glyph_x, glyph_y = _turbine_shape_points(x, y, orientations.get(label, 0.0))
+            map_turbine_glyphs[idx].setData(glyph_x, glyph_y)
+            map_turbine_glyphs[idx].setPen(local_pen)
         if idx < len(map_local_vectors):
             map_local_vectors[idx].setData([x, end_x], [y, end_y])
+            map_local_vectors[idx].setPen(_turbine_pen(local_speed, global_speed, width=2.0))
         if idx < len(map_local_heads):
             map_local_heads[idx].setPos(end_x, end_y)
-            map_local_heads[idx].setStyle(angle=90+_arrow_item_angle_deg(dx, dy))
+            local_color = _wake_color(local_speed, global_speed)
+            map_local_heads[idx].setStyle(
+                angle=90+_arrow_item_angle_deg(dx, dy),
+                brush=local_color,
+                pen=pg.mkPen(color=local_color, width=1.5),
+            )
 
-    global_speed = speeds.get("Global", 0.0)
     global_direction = directions.get("Global", 0.0)
     dx, dy = _scaled_vector(global_speed, global_direction, scale=GLOBAL_WIND_VECTOR_SCALE)
     start_x, start_y = GLOBAL_WIND_VECTOR_START_XY
-    end_x = start_x + dx
-    end_y = start_y + dy
+    end_x = start_x - dx
+    end_y = start_y - dy
 
     if map_global_vector is not None:
         map_global_vector.setData([start_x, end_x], [start_y, end_y])
@@ -662,6 +757,7 @@ def update_leds(lights_data: list) -> None:
             led = LedIndicator(key, str(color))
             leds[key] = led
             add_light_widget(led, len(leds) - 1)
+        leds[key].set_color(str(color))
         leds[key].set_state(bool(is_on))
 
 

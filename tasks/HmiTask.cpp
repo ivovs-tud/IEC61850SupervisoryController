@@ -307,7 +307,7 @@ void HmiTask::execute()
     bool alarmHorWdDir = false;
     bool alarmHorWdDirChg = false;
     bool alarmHorWdSpdChg = false;
-    bool systemRunning = false;
+    int connectedTurbines = 0;
     bool yawSteeringEnabled = false;
     std::string yawSteeringCommandName;
     bool enableTurbinesActive = false;
@@ -323,8 +323,8 @@ void HmiTask::execute()
         alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;
         alarmHorWdDir = d.alarmHorWdDir;
 		alarmHorWdDirChg = d.alarmHorWdDirChg;
-		alarmHorWdSpdChg = d.alarmHorWdSpdChg;
-        systemRunning = d.systemRunning;
+        alarmHorWdSpdChg = d.alarmHorWdSpdChg;
+        connectedTurbines = d.connectedTurbines;
         yawSteeringEnabled = d.yawSteeringEnabled;
         yawSteeringCommandName = d.yawSteeringCommandName;
         enableTurbinesActive = !d.enableTurbine.empty() && d.enableTurbine[0] != 0;
@@ -365,9 +365,15 @@ void HmiTask::execute()
     }
 
     const std::array<const char*, 3> modeLabels{{"ROSCO", "Lio\nDownregulation", "Safe\nShutdown"}};
+    const char* systemRunningColor = "red";
+    if (connectedTurbines >= config_.numTurbines && config_.numTurbines > 0) {
+        systemRunningColor = "green";
+    } else if (connectedTurbines > 0) {
+        systemRunningColor = "amber";
+    }
 
     pk.pack_array(9);
-    pk.pack_array(3); pk.pack("System Running");    pk.pack(systemRunning);      pk.pack("green");
+    pk.pack_array(3); pk.pack("System Running");    pk.pack(true);      pk.pack(systemRunningColor);
     pk.pack_array(3); pk.pack("Power: Received vs Measured");    pk.pack(alarmWRecMeas); pk.pack("red");
     pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("red");
     pk.pack_array(3); pk.pack("Power vs Torque*RotorSpeed");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");

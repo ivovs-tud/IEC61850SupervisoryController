@@ -11,7 +11,7 @@
 
 #include <zmq.hpp>
 
-inline constexpr int DEFAULT_HMI_SIGNAL_WINDOW_SIZE = 500;
+inline constexpr int DEFAULT_HMI_SIGNAL_WINDOW_SIZE = 300;
 
 // ---------------------------------------------------------------------------
 // HmiSignalDef – one subplot in the HMI display.

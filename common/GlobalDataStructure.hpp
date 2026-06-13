@@ -32,6 +32,7 @@ struct GlobalData
 {
     // ── System state ────────────────────────────────────────────────────────
     bool        systemRunning  {false};
+    int         connectedTurbines {0};
     std::string statusMessage;
 
     // ── Raw Measurement Vectors ─────────────────────────────────────────────
@@ -124,12 +125,21 @@ struct GlobalData
                               int turbineControllerId)
     {
         systemRunning = false;
+        connectedTurbines = 0;
         statusMessage.clear();
 
         std::fill(lastWS.begin(), lastWS.end(), 0.0);
+        std::fill(lastWS_t.begin(), lastWS_t.end(), 0);
         std::fill(lastWD.begin(), lastWD.end(), 0.0);
+        std::fill(lastWD_t.begin(), lastWD_t.end(), 0);
         std::fill(lastYawOffset.begin(), lastYawOffset.end(), 0.0);
+        std::fill(lastYawOffset_t.begin(), lastYawOffset_t.end(), 0);
         std::fill(lastRPM.begin(), lastRPM.end(), 0.0);
+        std::fill(lastRPM_t.begin(), lastRPM_t.end(), 0);
+        std::fill(lastPower.begin(), lastPower.end(), 0.0);
+        std::fill(lastPower_t.begin(), lastPower_t.end(), 0);
+        std::fill(lastGenTorque.begin(), lastGenTorque.end(), 0.0);
+        std::fill(lastGenTorque_t.begin(), lastGenTorque_t.end(), 0);
 
         for (auto& h : wsHistory)
             h.clear();
@@ -202,4 +212,3 @@ private:
     std::mutex mutex_;
     GlobalData data_;
 };
-
