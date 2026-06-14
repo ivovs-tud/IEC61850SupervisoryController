@@ -65,6 +65,9 @@ TURBINE_BODY_LENGTH = 250.0
 TURBINE_NACELLE_RADIUS = 22.0
 TURBINE_ORIENTATION_OFFSET_DEG = 0.0
 TURBINE_ORIENTATION_SIGN = 1.0
+INACTIVE_CURVE_ALPHA = 72
+ACTIVE_CURVE_ALPHA = 230
+SELECTED_CURVE_ALPHA = 255
 
 # Wind-farm map coordinates, ordered as T1, T2, T3, ...
 # Leave empty to auto-generate a compact grid from the turbine labels.
@@ -135,6 +138,13 @@ def _qt_pen_enum(name: str):
     if pen_style_enum is not None and hasattr(pen_style_enum, name):
         return getattr(pen_style_enum, name)
     # Qt5: QtCore.Qt.NoPen
+    return getattr(QtCore.Qt, name)
+
+
+def _qt_brush_enum(name: str):
+    brush_style_enum = getattr(QtCore.Qt, "BrushStyle", None)
+    if brush_style_enum is not None and hasattr(brush_style_enum, name):
+        return getattr(brush_style_enum, name)
     return getattr(QtCore.Qt, name)
 
 
@@ -294,7 +304,7 @@ class MiniTurbineButton(QtWidgets.QPushButton):
         self.turbine_id = int(turbine_id)
         self.setCheckable(True)
         self.setChecked(bool(checked))
-        self.setFixedSize(44, 34)
+        self.setFixedSize(46, 34)
         self.setToolTip(f"Enable/disable turbine {turbine_id}")
         self.setStyleSheet(
             "QPushButton {"
@@ -310,11 +320,12 @@ class MiniTurbineButton(QtWidgets.QPushButton):
             "border: 2px solid #8ee3b2;"
             "}"
             "QPushButton:!checked {"
-            "background-color: #5b2530;"
+            "background-color: #7a2635;"
             "border: 2px solid #d86b7b;"
+            "color: #f7c7ce;"
             "}"
             "QPushButton:hover {"
-            "background-color: #2a3342;"
+            "border: 2px solid #f0f3f8;"
             "}"
         )
 
@@ -324,9 +335,17 @@ class MiniTurbineButton(QtWidgets.QPushButton):
         self.blockSignals(False)
 
 
-class AttackResourceWidget(QtWidgets.QWidget):
+class AttackResourceWidget(QtWidgets.QFrame):
     def __init__(self):
         super().__init__()
+        self.setObjectName("attackResourceWidget")
+        self.setStyleSheet(
+            "QFrame#attackResourceWidget {"
+            "background-color: #151b24;"
+            "border: 1px solid #2a3340;"
+            "border-radius: 8px;"
+            "}"
+        )
         self.tap_label = QtWidgets.QLabel("Tap 0/0")
         self.fdi_label = QtWidgets.QLabel("FDI 0/0")
         self.signals_label = QtWidgets.QLabel("FDI signals: none")
@@ -335,11 +354,11 @@ class AttackResourceWidget(QtWidgets.QWidget):
             label.setStyleSheet("color: #f0f3f8; font-size: 13px; font-weight: 800;")
         self.signals_label.setStyleSheet("color: #aeb8c7; font-size: 12px; font-weight: 600;")
         self.signals_label.setWordWrap(True)
-        self.signals_label.setMaximumWidth(260)
+        self.signals_label.setMaximumWidth(210)
 
         layout = QtWidgets.QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(3)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(12)
@@ -350,7 +369,7 @@ class AttackResourceWidget(QtWidgets.QWidget):
         self.setLayout(layout)
 
     def update_usage(self, tap_used: int, tap_total: int, fdi_used: int, fdi_total: int, signals: list[str]) -> None:
-        self.tap_label.setText(f"Tapped {tap_used}/{tap_total}")
+        self.tap_label.setText(f"Tap {tap_used}/{tap_total}")
         self.fdi_label.setText(f"FDI {fdi_used}/{fdi_total}")
         signal_text = ", ".join(str(signal) for signal in signals) if signals else "none"
         self.signals_label.setText(f"FDI signals: {signal_text}")
@@ -377,9 +396,9 @@ control_layout = QtWidgets.QHBoxLayout(control_panel)
 control_layout.setContentsMargins(14, 10, 14, 10)
 control_layout.setSpacing(18)
 
-max_rows = 4
+max_rows = 3
 lights_box = QtWidgets.QGridLayout()
-lights_box.setSpacing(6)
+lights_box.setSpacing(5)
 lights_box.setContentsMargins(0, 0, 0, 0)
 leds: dict[str, LedIndicator] = {}
 
@@ -391,6 +410,7 @@ turbine_enable_buttons: dict[int, MiniTurbineButton] = {}
 turbine_enable_box: QtWidgets.QGridLayout | None = None
 attack_resource_widget: AttackResourceWidget | None = None
 cli_command_queue: queue.Queue[int] = queue.Queue()
+
 
 def add_light_widget(widget: QtWidgets.QWidget, index: int) -> None:
     """Add a widget at the given index, auto-calculating grid position."""
@@ -416,7 +436,10 @@ main_window.show()
 plots: list[pg.PlotItem] = []
 curves: list[list[pg.PlotDataItem]] = []
 curve_turbines: list[list[str | None]] = []
+curve_signal_names: list[str] = []
+curve_labels: list[list[str]] = []
 histories: list[list[deque]] = []
+no_data_items: list[pg.TextItem] = []
 window_size: int = 500
 sample_period_ms: int = DEFAULT_SAMPLE_PERIOD_MS
 initialized: bool = False
@@ -425,10 +448,12 @@ farm_map: pg.PlotItem | None = None
 legend_plot: pg.PlotItem | None = None
 legend_entries: dict[str, "TurbineLegendEntry"] = {}
 active_turbines: set[str] = set()
+selected_turbine: str | None = None
 map_turbine_glyphs: list[pg.PlotDataItem] = []
 map_turbine_labels: list[pg.TextItem] = []
 map_local_vectors: list[pg.PlotDataItem] = []
 map_local_heads: list[pg.ArrowItem] = []
+map_select_points: pg.ScatterPlotItem | None = None
 map_global_vector: pg.PlotDataItem | None = None
 map_global_head: pg.ArrowItem | None = None
 map_global_label: pg.TextItem | None = None
@@ -436,12 +461,13 @@ map_layout: list[dict[str, float | str]] = []
 
 
 class TurbineLegendEntry(pg.GraphicsObject):
-    def __init__(self, label: str, color: tuple[int, int, int], toggle_callback):
+    def __init__(self, label: str, color: tuple[int, int, int], select_callback):
         super().__init__()
         self.label = label
         self.color = color
         self.active = True
-        self._toggle_callback = toggle_callback
+        self.selected = False
+        self._select_callback = select_callback
         self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton if hasattr(QtCore.Qt, "MouseButton") else QtCore.Qt.LeftButton)
         self._label_item = pg.TextItem(anchor=(0, 0.5))
         self._label_item.setParentItem(self)
@@ -460,12 +486,17 @@ class TurbineLegendEntry(pg.GraphicsObject):
         painter.setBrush(QtGui.QBrush(patch_color))
         painter.drawRect(QtCore.QRectF(0, 5, 14, 14))
 
+        if self.selected:
+            painter.setPen(QtGui.QPen(QtGui.QColor("#f0f3f8"), 2))
+            painter.setBrush(QtGui.QBrush(_qt_brush_enum("NoBrush")))
+            painter.drawRect(QtCore.QRectF(0, 5, 14, 14))
+
         if not self.active:
             painter.setPen(QtGui.QPen(QtGui.QColor(238, 243, 249, 120), 1.5))
             painter.drawLine(QtCore.QPointF(22, 12), QtCore.QPointF(65, 12))
 
     def _update_label(self) -> None:
-        color = "#eef3f9" if self.active else "#78808a"
+        color = "#ffffff" if self.selected else ("#eef3f9" if self.active else "#78808a")
         text = f"<s>{self.label}</s>" if not self.active else self.label
         self._label_item.setHtml(
             f"<span style='color: {color}; font-size: 10pt; font-weight: 700;'>{text}</span>"
@@ -476,8 +507,18 @@ class TurbineLegendEntry(pg.GraphicsObject):
         self._update_label()
         self.update()
 
+    def set_selected(self, selected: bool) -> None:
+        self.selected = bool(selected)
+        self._update_label()
+        self.update()
+
     def mouseClickEvent(self, event) -> None:
-        self._toggle_callback(self.label)
+        modifiers = QtWidgets.QApplication.keyboardModifiers()
+        control_modifier = QtCore.Qt.KeyboardModifier.ControlModifier if hasattr(QtCore.Qt, "KeyboardModifier") else QtCore.Qt.ControlModifier
+        if modifiers & control_modifier:
+            toggle_turbine_visibility(self.label)
+        else:
+            self._select_callback(self.label)
         event.accept()
 
 
@@ -526,23 +567,25 @@ def _is_setpoint_label(label: str) -> bool:
     return "setpoint" in str(label).lower()
 
 
-def _pen_for_curve(signal_name: str, label: str, line_index: int):
+def _pen_for_curve(signal_name: str, label: str, line_index: int, alpha: int = ACTIVE_CURVE_ALPHA, selected: bool = False):
     turbine_id = _turbine_id_from_label(label)
     color = _turbine_color(turbine_id, line_index)
     line_style = _qt_pen_style("SolidLine")
-    width = 2
+    width = 3 if selected else 2
 
     signal_key = str(signal_name).lower()
     if _is_wind_signal(signal_name):
         if _is_global_label(label):
             color = WIND_GLOBAL_COLORS.get(signal_key, (255, 255, 255))
             width = 3
+            alpha = ACTIVE_CURVE_ALPHA
         else:
             line_style = _qt_pen_style("DashLine")
     elif _is_setpoint_label(label):
         line_style = _qt_pen_style("DashLine")
 
-    return pg.mkPen(color=color, width=width, style=line_style)
+    qcolor = QtGui.QColor(*color, alpha)
+    return pg.mkPen(color=qcolor, width=width, style=line_style)
 
 
 def _signal_has_multiple_line_styles(labels: list[str]) -> bool:
@@ -675,7 +718,9 @@ def _wake_color(local_speed: float, global_speed: float, base_color: tuple[int, 
 
 
 def _turbine_pen(turbine_id: str, local_speed: float, global_speed: float, width: float = 2.5):
-    return pg.mkPen(color=_wake_color(local_speed, global_speed, _turbine_color(turbine_id)), width=width)
+    color = _wake_color(local_speed, global_speed, _turbine_color(turbine_id))
+    alpha = SELECTED_CURVE_ALPHA if turbine_id == selected_turbine else (120 if selected_turbine else ACTIVE_CURVE_ALPHA)
+    return pg.mkPen(color=QtGui.QColor(*color, alpha), width=width)
 
 
 def _orientation_values_by_label(signals: list) -> dict[str, float]:
@@ -726,7 +771,7 @@ def _turbine_shape_points(x: float, y: float, orientation_deg: float) -> tuple[l
 
 def init_farm_map(signals: list) -> None:
     global farm_map, map_turbine_glyphs, map_turbine_labels, map_local_vectors
-    global map_local_heads, map_global_vector, map_global_head, map_global_label, map_layout
+    global map_local_heads, map_global_vector, map_global_head, map_global_label, map_layout, map_select_points
 
     wind_speed_signal = _find_signal(signals, "Wind Speed")
     if wind_speed_signal is not None:
@@ -761,6 +806,10 @@ def init_farm_map(signals: list) -> None:
         map_local_vectors.append(vector)
         map_local_heads.append(head)
 
+    map_select_points = pg.ScatterPlotItem()
+    map_select_points.sigClicked.connect(lambda _plot, points: select_turbine(str(points[0].data())) if points else None)
+    farm_map.addItem(map_select_points)
+
     map_global_vector = farm_map.plot([], [], pen=pg.mkPen(color=WIND_GLOBAL_COLORS["wind speed"], width=4))
     map_global_head = pg.ArrowItem(angle=0, headLen=18, tailLen=0, brush = WIND_GLOBAL_COLORS["wind speed"],pen=pg.mkPen(color=WIND_GLOBAL_COLORS["wind speed"], width=4))
     farm_map.addItem(map_global_head)
@@ -771,13 +820,39 @@ def init_farm_map(signals: list) -> None:
 
 
 def apply_turbine_visibility() -> None:
-    for sig_curves, sig_turbines in zip(curves, curve_turbines):
-        for curve, turbine_id in zip(sig_curves, sig_turbines):
+    for signal_name, sig_labels, sig_curves, sig_turbines in zip(curve_signal_names, curve_labels, curves, curve_turbines):
+        for line_index, (curve, turbine_id, label) in enumerate(zip(sig_curves, sig_turbines, sig_labels)):
             if turbine_id is not None:
                 curve.setVisible(turbine_id in active_turbines)
+                is_selected = selected_turbine == turbine_id
+                alpha = SELECTED_CURVE_ALPHA if is_selected else (INACTIVE_CURVE_ALPHA if selected_turbine else ACTIVE_CURVE_ALPHA)
+                curve.setPen(_pen_for_curve(signal_name, label, line_index, alpha=alpha, selected=is_selected))
 
     for turbine_id, entry in legend_entries.items():
         entry.set_active(turbine_id in active_turbines)
+        entry.set_selected(turbine_id == selected_turbine)
+
+    if map_select_points is not None:
+        spots = []
+        for turbine in map_layout:
+            turbine_id = str(turbine["label"])
+            color = _turbine_color(turbine_id)
+            alpha = 255 if turbine_id == selected_turbine else 80
+            spots.append({
+                "pos": (float(turbine["x"]), float(turbine["y"])),
+                "data": turbine_id,
+                "size": 34 if turbine_id == selected_turbine else 26,
+                "brush": pg.mkBrush(255, 255, 255, 0),
+                "pen": pg.mkPen(QtGui.QColor(*color, alpha), width=3 if turbine_id == selected_turbine else 1),
+            })
+        map_select_points.setData(spots)
+
+
+def select_turbine(turbine_id: str) -> None:
+    global selected_turbine
+
+    selected_turbine = None if selected_turbine == turbine_id else turbine_id
+    apply_turbine_visibility()
 
 
 def toggle_turbine_visibility(turbine_id: str) -> None:
@@ -802,7 +877,7 @@ def init_turbine_legend(turbine_labels: list[str]) -> None:
     active_turbines = set(turbine_labels)
     legend_entries.clear()
     for idx, turbine_id in enumerate(turbine_labels):
-        entry = TurbineLegendEntry(turbine_id, _turbine_color(turbine_id), toggle_turbine_visibility)
+        entry = TurbineLegendEntry(turbine_id, _turbine_color(turbine_id), select_turbine)
         entry.setPos(12, max(1, len(turbine_labels)) * 28 - idx * 28 - 22)
         legend_plot.addItem(entry)
         legend_entries[turbine_id] = entry
@@ -853,6 +928,43 @@ def _apply_relative_time_axis(plot: pg.PlotItem, size: int, period_ms: int) -> N
     plot.getAxis("bottom").setTicks([_relative_time_ticks(size, period_ms)])
 
 
+class ValueAxisItem(pg.AxisItem):
+    def __init__(self, unit: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.raw_unit = str(unit)
+        self.display_unit = self.raw_unit
+        self.scale_factor = 1.0
+        if self.raw_unit == "W":
+            self.display_unit = "MW"
+            self.scale_factor = 1e-6
+        elif self.raw_unit == "Nm":
+            self.display_unit = "MNm"
+            self.scale_factor = 1e-6
+
+    def tickStrings(self, values, scale, spacing):
+        labels = []
+        for value in values:
+            scaled = float(value) * self.scale_factor
+            if abs(scaled) >= 100:
+                labels.append(f"{scaled:.0f}")
+            elif abs(scaled) >= 10:
+                labels.append(f"{scaled:.1f}".rstrip("0").rstrip("."))
+            else:
+                labels.append(f"{scaled:.2f}".rstrip("0").rstrip("."))
+        return labels
+
+
+def _has_signal_data(values: list) -> bool:
+    for value in values:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(numeric) and abs(numeric) > 1e-9:
+            return True
+    return False
+
+
 def init_layout(signals: list, ws: int) -> None:
     """Build all PlotItems and PlotDataItems from the first message."""
     global plots, curves, curve_turbines, histories, window_size, initialized
@@ -862,8 +974,9 @@ def init_layout(signals: list, ws: int) -> None:
 
     for idx, signal in enumerate(signals[:MAX_PLOTS]):
         name, unit, labels, _values, y_range = _parse_signal(signal)
-        p: pg.PlotItem = plots_widget.addPlot(title=name)
-        p.setLabel("left", unit)
+        left_axis = ValueAxisItem(unit, orientation="left")
+        p: pg.PlotItem = plots_widget.addPlot(title=name, axisItems={"left": left_axis})
+        p.setLabel("left", left_axis.display_unit)
         _apply_relative_time_axis(p, window_size, sample_period_ms)
         p.showGrid(x=True, y=True, alpha=0.25)
         p.setXRange(0, window_size - 1 + max(2.0, window_size * 0.025), padding=0)
@@ -886,10 +999,17 @@ def init_layout(signals: list, ws: int) -> None:
             sig_turbines.append(_turbine_id_from_label(label))
             sig_histories.append(deque([0.0] * window_size, maxlen=window_size))
 
+        no_data_item = pg.TextItem("No data", color="#9aa6b6", anchor=(0.5, 0.5))
+        no_data_item.setVisible(False)
+        p.addItem(no_data_item)
+
         plots.append(p)
         curves.append(sig_curves)
         curve_turbines.append(sig_turbines)
+        curve_signal_names.append(str(name))
+        curve_labels.append([str(label) for label in labels])
         histories.append(sig_histories)
+        no_data_items.append(no_data_item)
 
         if (idx + 1) % LAYOUT_COLS == 0:
             plots_widget.nextRow()
@@ -922,7 +1042,8 @@ def update_farm_map(signals: list) -> None:
         x = float(turbine["x"])
         y = float(turbine["y"])
         local_speed = speeds.get(label, 0.0)
-        local_pen = _turbine_pen(label, local_speed, global_speed, width=2.5)
+        is_selected = label == selected_turbine
+        local_pen = _turbine_pen(label, local_speed, global_speed, width=4.0 if is_selected else 2.5)
         dx, dy = _scaled_vector(local_speed, directions.get(label, 0.0), scale=LOCAL_WIND_VECTOR_SCALE)
         end_x = x - dx
         end_y = y - dy
@@ -933,14 +1054,15 @@ def update_farm_map(signals: list) -> None:
             map_turbine_glyphs[idx].setPen(local_pen)
         if idx < len(map_local_vectors):
             map_local_vectors[idx].setData([x, end_x], [y, end_y])
-            map_local_vectors[idx].setPen(_turbine_pen(label, local_speed, global_speed, width=2.0))
+            map_local_vectors[idx].setPen(_turbine_pen(label, local_speed, global_speed, width=3.0 if is_selected else 2.0))
         if idx < len(map_local_heads):
             map_local_heads[idx].setPos(end_x, end_y)
             local_color = _wake_color(local_speed, global_speed, _turbine_color(label))
+            local_alpha = 255 if is_selected else (130 if selected_turbine else 230)
             map_local_heads[idx].setStyle(
                 angle=90+_arrow_item_angle_deg(dx, dy),
-                brush=local_color,
-                pen=pg.mkPen(color=local_color, width=1.5),
+                brush=QtGui.QColor(*local_color, local_alpha),
+                pen=pg.mkPen(color=QtGui.QColor(*local_color, local_alpha), width=2.0 if is_selected else 1.5),
             )
 
     global_direction = directions.get("Global", 0.0)
@@ -1054,6 +1176,18 @@ def update_turbine_enable_buttons(payload) -> None:
             turbine_enable_box.addWidget(button, index // 3, index % 3)
         else:
             turbine_enable_buttons[turbine_id].set_state(is_enabled)
+
+
+def update_no_data_overlay(plot_index: int, values: list) -> None:
+    if plot_index >= len(no_data_items) or plot_index >= len(plots):
+        return
+
+    item = no_data_items[plot_index]
+    has_data = _has_signal_data(values)
+    item.setVisible(not has_data)
+    if not has_data:
+        x_range, y_range = plots[plot_index].viewRange()
+        item.setPos((x_range[0] + x_range[1]) * 0.5, (y_range[0] + y_range[1]) * 0.5)
 
 
 def update_attack_resources(payload) -> None:
@@ -1213,6 +1347,7 @@ def poll_and_update() -> None:
         if i >= len(curves):
             break
         _name, _unit, _labels, values, _y_range = _parse_signal(signal)
+        update_no_data_overlay(i, values)
         for j, v in enumerate(values):
             if j >= len(curves[i]):
                 break
