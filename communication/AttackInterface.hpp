@@ -7,6 +7,8 @@
 #include <functional>
 #include <cstring>
 #include <set>
+#include <mutex>
+#include <cstddef>
 
 #include "common/config.hpp"
 #include "common/GlobalDataStructure.hpp"
@@ -149,6 +151,7 @@ namespace AttackInterface
 
                 // Variables needed for proper handling or RQ_ and AT_ messages
                 std::mutex rq_at_mutex_;        // mutex to protect the following variables
+                mutable std::mutex state_mutex_; // protects LinkStates
                 bool awaiting_at_response = false; // whether we are currently waiting for an AT_DATA message in response to a RQ_DATA message
                 bool at_response_received = false; // whether we have received the expected AT_DATA message in response to a RQ_DATA message
                 float at_response_val = 0.0f; // the value received in the AT_DATA message in response to a RQ_DATA message
@@ -189,18 +192,21 @@ namespace AttackInterface
                 int fdiAvailable = 0;
                 std::set<std::string> fdiSignals;
 
-                for (const auto& linkState : state.LinkStates) {
-                    for (const auto& [dataType, enabled] : linkState.tapEnabled) {
-                        ++tapAvailable;
-                        if (enabled) {
-                            ++tapEnabled;
+                {
+                    std::lock_guard<std::mutex> stateLock(state.state_mutex_);
+                    for (const auto& linkState : state.LinkStates) {
+                        for (const auto& [dataType, enabled] : linkState.tapEnabled) {
+                            ++tapAvailable;
+                            if (enabled) {
+                                ++tapEnabled;
+                            }
                         }
-                    }
-                    for (const auto& [dataType, enabled] : linkState.fdiEnabled) {
-                        ++fdiAvailable;
-                        if (enabled) {
-                            ++fdiEnabled;
-                            fdiSignals.insert(dataTypeName(dataType));
+                        for (const auto& [dataType, enabled] : linkState.fdiEnabled) {
+                            ++fdiAvailable;
+                            if (enabled) {
+                                ++fdiEnabled;
+                                fdiSignals.insert(dataTypeName(dataType));
+                            }
                         }
                     }
                 }
@@ -227,9 +233,6 @@ namespace AttackInterface
                 constexpr size_t compactPrefixLength = 4 + sizeof(ControlSignal) + sizeof(TxDataType);
                 const size_t compactLength = compactPrefixLength + static_cast<size_t>(numTurbines);
 
-                const ControlSignal signal = *reinterpret_cast<const ControlSignal *>(data + 4);
-                const TxDataType dataType = *reinterpret_cast<const TxDataType *>(data + 4 + sizeof(ControlSignal));
-
                 const uint8_t* enableBytes = nullptr;
                 if (length >= fullStructLength) {
                     enableBytes = data + sizeof(CtDataMessage);
@@ -242,25 +245,36 @@ namespace AttackInterface
                     return;
                 }
 
+                ControlSignal signal = CTRL_NONE;
+                TxDataType dataType = TX_NONE;
+                std::memcpy(&signal, data + 4, sizeof(signal));
+                std::memcpy(&dataType, data + 4 + sizeof(signal), sizeof(dataType));
+
                 ATTACK_LOG_V2("Parsed CT_DATA command with signal: " << static_cast<int>(signal)
                               << ", dataType: " << static_cast<int>(dataType));
 
                 if (signal == CTRL_TAP) {
-                    for (int i = 0; i < numTurbines; ++i) {
-                        const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
-                        state.LinkStates[i].tapEnabled[dataType] = enabled;
-                        ATTACK_LOG_V1("Toggled control for turbine " << (i + 1)
-                                      << ", dataType " << static_cast<int>(dataType)
-                                      << " to " << enabled);
+                    {
+                        std::lock_guard<std::mutex> stateLock(state.state_mutex_);
+                        for (int i = 0; i < numTurbines; ++i) {
+                            const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
+                            state.LinkStates[i].tapEnabled[dataType] = enabled;
+                            ATTACK_LOG_V1("Toggled control for turbine " << (i + 1)
+                                          << ", dataType " << static_cast<int>(dataType)
+                                          << " to " << enabled);
+                        }
                     }
                     publishResourceUsage();
                 } else if(signal == CTRL_FDI) {
-                    for (int i = 0; i < numTurbines; ++i) {
-                        const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
-                        state.LinkStates[i].fdiEnabled[dataType] = enabled;
-                        ATTACK_LOG_V1("Toggled false data injection for turbine " << (i + 1)
-                                      << ", dataType " << static_cast<int>(dataType)
-                                      << " to " << enabled);
+                    {
+                        std::lock_guard<std::mutex> stateLock(state.state_mutex_);
+                        for (int i = 0; i < numTurbines; ++i) {
+                            const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
+                            state.LinkStates[i].fdiEnabled[dataType] = enabled;
+                            ATTACK_LOG_V1("Toggled false data injection for turbine " << (i + 1)
+                                          << ", dataType " << static_cast<int>(dataType)
+                                          << " to " << enabled);
+                        }
                     }
                     publishResourceUsage();
 
@@ -285,23 +299,27 @@ namespace AttackInterface
                     }
                 }
 
-                const AtDataMessage* msg = reinterpret_cast<const AtDataMessage*>(data);
-                ATTACK_LOG_V2("Parsed AT_DATA command for turbine " << static_cast<int>(msg->turbineId)
-                              << ", dataType " << static_cast<int>(msg->dataType)
-                              << ", fakeValue " << msg->fake_value);
-
-                // Check if this is a response to a RQ_DATA message we sent
-                if (msg->dataType != state.rq_DataType || msg->turbineId != state.rq_TurbineId) {
-                    ATTACK_LOG_V2("Received AT_DATA does not match any pending RQ_DATA request. Ignoring.");
-                    return;
-                }
+                uint8_t turbineId = 0;
+                TxDataType dataType = TX_NONE;
+                float fakeValue = 0.0f;
+                std::memcpy(&turbineId, data + offsetof(AtDataMessage, turbineId), sizeof(turbineId));
+                std::memcpy(&dataType, data + offsetof(AtDataMessage, dataType), sizeof(dataType));
+                std::memcpy(&fakeValue, data + offsetof(AtDataMessage, fake_value), sizeof(fakeValue));
+                ATTACK_LOG_V2("Parsed AT_DATA command for turbine " << static_cast<int>(turbineId)
+                              << ", dataType " << static_cast<int>(dataType)
+                              << ", fakeValue " << fakeValue);
 
                 {
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
+                    // Check if this is a response to a RQ_DATA message we sent
+                    if (dataType != state.rq_DataType || turbineId != state.rq_TurbineId) {
+                        ATTACK_LOG_V2("Received AT_DATA does not match any pending RQ_DATA request. Ignoring.");
+                        return;
+                    }
                     // Extra fail-safe in case in between receiving and parsing the rq_thread timed out
                     state.at_response_received = true & state.awaiting_at_response; 
                     state.awaiting_at_response = false;
-                    state.at_response_val = msg->fake_value;
+                    state.at_response_val = fakeValue;
                 }
             }
 
@@ -311,13 +329,11 @@ namespace AttackInterface
                     return;
                 }
 
-                const CfgDataMessage* msg = reinterpret_cast<const CfgDataMessage*>(data);
-
                 CfgDataMessage parsed{};
-                std::memcpy(parsed.teamName, msg->teamName, sizeof(parsed.teamName));
+                std::memcpy(parsed.teamName, data + offsetof(CfgDataMessage, teamName), sizeof(parsed.teamName));
                 parsed.teamName[sizeof(parsed.teamName) - 1] = '\0';
-                parsed.scenarioId = msg->scenarioId;
-                parsed.turbineController = msg->turbineController;
+                std::memcpy(&parsed.scenarioId, data + offsetof(CfgDataMessage, scenarioId), sizeof(parsed.scenarioId));
+                std::memcpy(&parsed.turbineController, data + offsetof(CfgDataMessage, turbineController), sizeof(parsed.turbineController));
                 
                 resetState();
 
@@ -339,9 +355,8 @@ namespace AttackInterface
                     return;
                 }
 
-                const SimCtrlMessage* msg = reinterpret_cast<const SimCtrlMessage*>(data);
                 SimCtrlMessage parsed{};
-                parsed.simStart = msg->simStart;
+                std::memcpy(&parsed.simStart, data + offsetof(SimCtrlMessage, simStart), sizeof(parsed.simStart));
 
                 ATTACK_LOG_V1("Parsed SIM_CTRL command: simStart=" << parsed.simStart);
 
@@ -400,12 +415,15 @@ namespace AttackInterface
             }
 
             void resetState() {
-                for (auto& linkState : state.LinkStates) {
-                    for (auto& [dataType, _] : linkState.tapEnabled) {
-                        linkState.tapEnabled[dataType] = false;
-                    }
-                    for (auto& [dataType, _] : linkState.fdiEnabled) {
-                        linkState.fdiEnabled[dataType] = false;
+                {
+                    std::lock_guard<std::mutex> stateLock(state.state_mutex_);
+                    for (auto& linkState : state.LinkStates) {
+                        for (auto& [dataType, _] : linkState.tapEnabled) {
+                            linkState.tapEnabled[dataType] = false;
+                        }
+                        for (auto& [dataType, _] : linkState.fdiEnabled) {
+                            linkState.fdiEnabled[dataType] = false;
+                        }
                     }
                 }
                 tx_fails = 0;
@@ -426,7 +444,10 @@ namespace AttackInterface
                     return;
                 }
 
-                if (!state.LinkStates[turbineId - 1].tapEnabled[dataType]) return;
+                {
+                    std::lock_guard<std::mutex> stateLock(state.state_mutex_);
+                    if (!state.LinkStates[turbineId - 1].tapEnabled[dataType]) return;
+                }
 
                 ATTACK_LOG_V2("txData called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType)
                               << ", value " << value);
@@ -454,7 +475,10 @@ namespace AttackInterface
                     return AI_ERROR;
                 }
 
-                if (!state.LinkStates[turbineId - 1].fdiEnabled[dataType]) return AI_DISABLED;
+                {
+                    std::lock_guard<std::mutex> stateLock(state.state_mutex_);
+                    if (!state.LinkStates[turbineId - 1].fdiEnabled[dataType]) return AI_DISABLED;
+                }
 
                 ATTACK_LOG_V1("overwrite called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType)
                               << ", original value " << val);
@@ -531,4 +555,3 @@ namespace AttackInterface
             
     };
 }
-

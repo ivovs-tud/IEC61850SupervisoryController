@@ -1,6 +1,7 @@
 #include <iostream>
 #include <sstream>
 #include <cmath>
+#include <algorithm>
 
 #include "ControlTask.hpp"
 #include "common/config.hpp"
@@ -27,11 +28,9 @@ void ControlTask::execute()
     float glob_ws_i = 0.0f;
     float glob_wd_i = 0.0f;
 
-	auto gds = GlobalDataStructure::instance().data();
-
-
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+        const auto& gds = GlobalDataStructure::instance().data();
         powerSetpoint = gds.RequestedReferencePower;
         glob_ws_i = gds.glob_ws_i;
         glob_wd_i = gds.glob_wd_i;
@@ -45,7 +44,13 @@ void ControlTask::execute()
     std::vector<float> power_sp = std::vector<float>(numTurbines_, -1.0);
     std::vector<int> yaw_sp = std::vector<int>(numTurbines_, glob_wd_i);
     
-    if (GlobalDataStructure::instance().data().yawSteeringEnabled) {
+    bool yawSteeringEnabled = false;
+    {
+        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+        yawSteeringEnabled = GlobalDataStructure::instance().data().yawSteeringEnabled;
+    }
+
+    if (yawSteeringEnabled) {
         // This means power maximization, i.e. yaw steering --> Use LUT and round to nearest int
         yaw_sp = std::vector<int>();
         const auto yaw_sp_float = yawLut_.lookup(glob_ws_i, glob_wd_i);
@@ -72,9 +77,15 @@ void ControlTask::execute()
     // Next, we push this to the global data structure, to be send automatically to the turbines by the CommunicationTask.
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        for (int i = 0; i < numTurbines_; ++i) {
-            GlobalDataStructure::instance().data().TurbinePowerSetpoints[i] = power_sp[i];
-            GlobalDataStructure::instance().data().TurbineYawSetpoints[i] = yaw_sp[i];
+        auto& gds = GlobalDataStructure::instance().data();
+        const int n = std::min({numTurbines_,
+                                static_cast<int>(gds.TurbinePowerSetpoints.size()),
+                                static_cast<int>(gds.TurbineYawSetpoints.size()),
+                                static_cast<int>(power_sp.size()),
+                                static_cast<int>(yaw_sp.size())});
+        for (int i = 0; i < n; ++i) {
+            gds.TurbinePowerSetpoints[i] = power_sp[i];
+            gds.TurbineYawSetpoints[i] = static_cast<float>(yaw_sp[i]);
         }
     }
 }

@@ -18,6 +18,7 @@ MonitoringTask::MonitoringTask(std::chrono::milliseconds period) : PeriodicTask(
 
 void MonitoringTask::execute() {
     // TODO: implement monitoring loop (thresholds, alarms, GOOSE events)
+    std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
     auto& gds = GlobalDataStructure::instance().data();
 
     if (!gds.systemRunning) return;
@@ -61,6 +62,9 @@ bool MonitoringTask::checkConsistencyPowerGeneratedVsReceived() {
     //float total = 0;
     //std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
     auto& gds = GlobalDataStructure::instance().data();
+    if (gds.Wtotal_meas.empty()) {
+        return false;
+    }
     
     /*for (auto i = 0; i < gds.powerHistory.size(); i++) {
 		total += gds.powerHistory[i].back();

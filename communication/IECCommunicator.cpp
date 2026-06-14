@@ -150,11 +150,35 @@ void IECCommunicator::touchActivityTime()
 
 void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
 {
+    float floatValue = 0.0f;
+    int intValue = 0;
+    uint32_t uintValue = 0;
+    bool boolValue = false;
     void* value = nullptr;
     float f;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        value = desc.gdsPtr(GlobalDataStructure::instance().data(), turbineId_ - 1);
+        void* sharedValue = desc.gdsPtr(GlobalDataStructure::instance().data(), turbineId_ - 1);
+        switch (desc.type) {
+            case IEC_FLOAT32:
+                floatValue = *static_cast<float*>(sharedValue);
+                value = &floatValue;
+                break;
+            case IEC_INT32:
+                intValue = *static_cast<int*>(sharedValue);
+                value = &intValue;
+                break;
+            case IEC_UINT32:
+                uintValue = *static_cast<uint32_t*>(sharedValue);
+                value = &uintValue;
+                break;
+            case IEC_BOOL:
+                boolValue = *static_cast<bool*>(sharedValue);
+                value = &boolValue;
+                break;
+            default:
+                return;
+        }
     }
 
     std::string logMsg = "[SC→WT" + std::to_string(turbineId_) + "]" + std::to_string(getCurrentTimeMs()) + ";" + descToString(value, desc);

@@ -45,10 +45,12 @@ void SignalProcessingTask::execute()
     // Example:
     //   std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
     //   GlobalDataStructure::instance().data().measuredVoltage = readAdc();
-    auto& gds = GlobalDataStructure::instance().data();
     const uint64_t nowMs = getCurrentTimeMs();
+    float loggedWs = 0.0f;
+    float loggedWd = 0.0f;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+        auto& gds = GlobalDataStructure::instance().data();
 		
 		gds.Wtotal_meas.push_back(std::accumulate(gds._W.begin(), gds._W.end(), 0.0));
         gds.TotalPower_recv = 0;
@@ -68,6 +70,7 @@ void SignalProcessingTask::execute()
     float count = 0;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+        auto& gds = GlobalDataStructure::instance().data();
         for (std::size_t i = 0; i < gds.lastWD.size(); ++i) {
             if (gds.lastWS[i] > 0.0f) { // Assuming a valid wind speed is always positive
                 wd_sum += gds.lastWD[i];
@@ -79,6 +82,7 @@ void SignalProcessingTask::execute()
     // For wind speed, we use the three biggest found items, and take their average
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+        auto& gds = GlobalDataStructure::instance().data();
         std::vector<float> tmp(3);
         std::partial_sort_copy(
             std::begin(gds.lastWS), std::end(gds.lastWS), //.begin/.end in C++98/C++03
@@ -87,8 +91,10 @@ void SignalProcessingTask::execute()
         );
         float res = std::accumulate(std::begin(tmp), std::end(tmp), 0.0f) / 3.0f;
         gds.glob_ws_i = res;
+        loggedWs = gds.glob_ws_i;
+        loggedWd = gds.glob_wd_i;
     }
 
-    std::string logMsg = "[SP]" + std::to_string(getCurrentTimeMs()) + ";GV=" + std::to_string(GlobalDataStructure::instance().data().glob_ws_i) + ";GD=" + std::to_string(GlobalDataStructure::instance().data().glob_wd_i);
+    std::string logMsg = "[SP]" + std::to_string(getCurrentTimeMs()) + ";GV=" + std::to_string(loggedWs) + ";GD=" + std::to_string(loggedWd);
     DataHistorian::instance().log(logMsg);
 }

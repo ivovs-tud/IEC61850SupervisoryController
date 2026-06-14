@@ -125,8 +125,9 @@ HmiConfig defaultHmiConfig(int numTurbines)
             "Farm Reference vs. Total Power", "W",
             {"Reference", "Total (Meas)", "Total (Received)"},
             [](const GlobalData& d) {
+                const double measuredTotal = d.Wtotal_meas.empty() ? 0.0 : d.Wtotal_meas.back();
                 return std::vector<double>{
-					static_cast<double>(d.RequestedReferencePower), d.Wtotal_meas.back(), d.TotalPower_recv
+					static_cast<double>(d.RequestedReferencePower), measuredTotal, d.TotalPower_recv
                 };
             },
             std::make_pair(-1.0, 9*5e6)

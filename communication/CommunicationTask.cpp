@@ -41,7 +41,13 @@ void CommunicationOrchestrator::init()
             std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
             GlobalDataStructure::instance().data().RequestedReferencePower = value;
             COMMTASK_LOG_V1("Updated RequestedReferencePower to " << value);
-        } else if (length >= 5 && (*reinterpret_cast<const uint32_t*>(data) == 0x01010101)) {
+        } else if (length >= 5) {
+            uint32_t marker = 0;
+            std::memcpy(&marker, data, sizeof(marker));
+            if (marker != 0x01010101) {
+                COMMTASK_ERR("Received operator message with unexpected format or size: " << length << " (data[0] = " << std::to_string(data[0]) << ")");
+                return;
+            }
             bool simStopped = (*(data + 4) == 0);
             {
                 std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
@@ -90,15 +96,19 @@ void CommunicationOrchestrator::init()
 
     attackInterface_.setSimCtrlCommandCallback([this](const AttackInterface::SimCtrlMessage& cmd) {
         COMMTASK_LOG_V1("Received Simulator Control command: simStart " << cmd.simStart);
-        DataHistorian::instance().log("Simulation started with scenario " + std::to_string(GlobalDataStructure::instance().data().simScenario)
-                            + " and team " + GlobalDataStructure::instance().data().simTeamName);
+        int simScenario = 0;
+        std::string simTeamName;
         {
             std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
             auto& gds = GlobalDataStructure::instance().data();
+            simScenario = gds.simScenario;
+            simTeamName = gds.simTeamName;
             if (gds.simConfigured && cmd.simStart) {
                 gds.simStarted = true;
             }
         }
+        DataHistorian::instance().log("Simulation started with scenario " + std::to_string(simScenario)
+                            + " and team " + simTeamName);
     });
 
     createCommunicators();
