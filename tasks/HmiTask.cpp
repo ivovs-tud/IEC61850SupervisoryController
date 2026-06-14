@@ -288,6 +288,21 @@ void HmiTask::handleCommands()
                     d.statusMessage = std::string("Enable Turbines: ") + (buttonState != 0 ? "On" : "Off");
                 }
             }
+            else if (cmd == "set_turbine_enable") {
+                if (obj.via.array.size < 3) continue;
+                int turbineId = obj.via.array.ptr[1].as<int>();
+                int enabled = obj.via.array.ptr[2].as<int>();
+
+                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+                GlobalData& d = GlobalDataStructure::instance().data();
+                if (turbineId < 1 || turbineId > static_cast<int>(d.enableTurbine.size())) {
+                    continue;
+                }
+
+                d.enableTurbine[static_cast<std::size_t>(turbineId - 1)] = (enabled != 0) ? 1U : 0U;
+                d.statusMessage = "T" + std::to_string(turbineId) + std::string(" turbine: ")
+                    + (enabled != 0 ? "Enabled" : "Disabled");
+            }
         } catch (const std::exception&) {
             // Ignore malformed commands and continue.
         }
@@ -310,7 +325,12 @@ void HmiTask::execute()
     int connectedTurbines = 0;
     bool yawSteeringEnabled = false;
     std::string yawSteeringCommandName;
-    bool enableTurbinesActive = false;
+    std::vector<uint32_t> enableTurbineStates;
+    int attackTapEnabled = 0;
+    int attackTapAvailable = 0;
+    int attackFdiEnabled = 0;
+    int attackFdiAvailable = 0;
+    std::vector<std::string> attackFdiSignals;
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         const GlobalData& d = GlobalDataStructure::instance().data();
@@ -327,7 +347,12 @@ void HmiTask::execute()
         connectedTurbines = d.connectedTurbines;
         yawSteeringEnabled = d.yawSteeringEnabled;
         yawSteeringCommandName = d.yawSteeringCommandName;
-        enableTurbinesActive = !d.enableTurbine.empty() && d.enableTurbine[0] != 0;
+        enableTurbineStates = d.enableTurbine;
+        attackTapEnabled = d.attackTapEnabled;
+        attackTapAvailable = d.attackTapAvailable;
+        attackFdiEnabled = d.attackFdiEnabled;
+        attackFdiAvailable = d.attackFdiAvailable;
+        attackFdiSignals = d.attackFdiSignals;
     }
 
     ++tickCount_;
@@ -343,7 +368,7 @@ void HmiTask::execute()
     msgpack::sbuffer buf;
     msgpack::packer<msgpack::sbuffer> pk(buf);
 
-    pk.pack_array(7);
+    pk.pack_array(9);
     pk.pack(tickCount_);
     pk.pack(static_cast<int32_t>(config_.windowSize));
 
@@ -364,7 +389,7 @@ void HmiTask::execute()
         }
     }
 
-    const std::array<const char*, 3> modeLabels{{"ROSCO", "Lio\nDownregulation", "Safe\nShutdown"}};
+    const std::array<const char*, 3> modeLabels{{"Kω²", "Down-\nregulation", "Shutdown"}};
     const char* systemRunningColor = "red";
     if (connectedTurbines >= config_.numTurbines && config_.numTurbines > 0) {
         systemRunningColor = "green";
@@ -388,12 +413,26 @@ void HmiTask::execute()
     pk.pack(modeLabels);
 
     pk.pack_array(2);
+    pk.pack("sample_period_ms");
+    pk.pack(static_cast<int>(period_.count()));
+
+    pk.pack_array(4);
     pk.pack(static_cast<int>(yawSteeringEnabled));
     pk.pack(yawSteeringCommandName);
+    pk.pack("Yaw\nSteering Off");
+    pk.pack("Yaw\nSteering On");
 
     pk.pack_array(2);
-    pk.pack(static_cast<int>(enableTurbinesActive));
-    pk.pack("Enable Turbines");
+    pk.pack("turbine_enable_states");
+    pk.pack(enableTurbineStates);
+
+    pk.pack_array(6);
+    pk.pack("attack_resources");
+    pk.pack(attackTapEnabled);
+    pk.pack(attackTapAvailable);
+    pk.pack(attackFdiEnabled);
+    pk.pack(attackFdiAvailable);
+    pk.pack(attackFdiSignals);
 
     zmq::message_t msg(buf.data(), buf.size());
     pubSocket_->send(msg, zmq::send_flags::dontwait);

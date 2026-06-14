@@ -99,6 +99,11 @@ struct GlobalData
 	std::string yawSteeringCommandName = "Yaw Steering";
 	std::vector<uint32_t> enableTurbine = std::vector<uint32_t>(N_TURBINES, 1); // Per-turbine enable/disable flags (1 = enabled, 0 = disabled)
 	std::vector<uint32_t> TurbineController = std::vector<uint32_t>(N_TURBINES, 1); // Per-turbine operation mode (minimum is 1)
+    int attackTapEnabled = 0;
+    int attackTapAvailable = 0;
+    int attackFdiEnabled = 0;
+    int attackFdiAvailable = 0;
+    std::vector<std::string> attackFdiSignals;
     
 
     // -- Monitoring Task Related ---
@@ -169,6 +174,11 @@ struct GlobalData
 
         yawSteeringEnabled = false;
         yawSteeringCommandName = "Yaw Steering";
+        attackTapEnabled = 0;
+        attackTapAvailable = 0;
+        attackFdiEnabled = 0;
+        attackFdiAvailable = 0;
+        attackFdiSignals.clear();
 
         alarmWRecMeas = false;
         alarmOrientationMisalign = false;

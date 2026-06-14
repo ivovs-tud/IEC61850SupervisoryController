@@ -6,8 +6,10 @@
 #include <string>
 #include <functional>
 #include <cstring>
+#include <set>
 
 #include "common/config.hpp"
+#include "common/GlobalDataStructure.hpp"
 #include "common/util.hpp"
 #include "libiec_wrapper.hpp"
 #include "socket/SocketWrapper.hpp"
@@ -161,6 +163,57 @@ namespace AttackInterface
             int tx_fails = 0;
             const int max_fails = 10;
 
+            static std::string dataTypeName(TxDataType dataType) {
+                switch (dataType) {
+                    case TX_WS: return "Wind speed";
+                    case TX_WD: return "Wind direction";
+                    case TX_ST: return "Turbine status";
+                    case TX_PW: return "Power";
+                    case TX_YAW: return "Yaw angle";
+                    case TX_RPM: return "Rotor speed";
+                    case TX_PTCH: return "Pitch angle";
+                    case TX_SPT_YAW: return "Yaw setpoint";
+                    case TX_SPT_PWR: return "Power setpoint";
+                    case TX_GENTORQ: return "Generator torque";
+                    case TX_OP_CMD: return "Operation command";
+                    case TX_NONE: return "None";
+                    case TX_ARRAY: return "Array";
+                }
+                return "Unknown";
+            }
+
+            void publishResourceUsage() const {
+                int tapEnabled = 0;
+                int tapAvailable = 0;
+                int fdiEnabled = 0;
+                int fdiAvailable = 0;
+                std::set<std::string> fdiSignals;
+
+                for (const auto& linkState : state.LinkStates) {
+                    for (const auto& [dataType, enabled] : linkState.tapEnabled) {
+                        ++tapAvailable;
+                        if (enabled) {
+                            ++tapEnabled;
+                        }
+                    }
+                    for (const auto& [dataType, enabled] : linkState.fdiEnabled) {
+                        ++fdiAvailable;
+                        if (enabled) {
+                            ++fdiEnabled;
+                            fdiSignals.insert(dataTypeName(dataType));
+                        }
+                    }
+                }
+
+                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
+                auto& data = GlobalDataStructure::instance().data();
+                data.attackTapEnabled = tapEnabled;
+                data.attackTapAvailable = tapAvailable;
+                data.attackFdiEnabled = fdiEnabled;
+                data.attackFdiAvailable = fdiAvailable;
+                data.attackFdiSignals.assign(fdiSignals.begin(), fdiSignals.end());
+            }
+
             void parseCTCommand(const uint8_t* data, size_t length) {
                 // Native-layout wire format used by the harness:
                 // [CtDataMessage struct bytes][enable_1]...[enable_N]
@@ -200,6 +253,7 @@ namespace AttackInterface
                                       << ", dataType " << static_cast<int>(dataType)
                                       << " to " << enabled);
                     }
+                    publishResourceUsage();
                 } else if(signal == CTRL_FDI) {
                     for (int i = 0; i < numTurbines; ++i) {
                         const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
@@ -208,6 +262,7 @@ namespace AttackInterface
                                       << ", dataType " << static_cast<int>(dataType)
                                       << " to " << enabled);
                     }
+                    publishResourceUsage();
 
                 } else {
                     ATTACK_ERR("Unsupported control signal received in CT_DATA: " << static_cast<int>(signal));
@@ -337,6 +392,7 @@ namespace AttackInterface
                     };
                     state.LinkStates.push_back(ls);
                 }
+                publishResourceUsage();
 
                 socket.AttachAttackInterfaceCallback([this](const uint8_t* data, size_t length) {
                     this->AttackHandler(data, length);
@@ -353,6 +409,7 @@ namespace AttackInterface
                     }
                 }
                 tx_fails = 0;
+                publishResourceUsage();
             }
 
             void signalReady() {
@@ -474,5 +531,4 @@ namespace AttackInterface
             
     };
 }
-
 

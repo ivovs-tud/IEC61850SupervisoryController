@@ -19,6 +19,8 @@ import os
 import sys
 from collections import deque
 import math
+import queue
+import threading
 import time
 
 # Prefer XCB unless the user already chose a Qt platform plugin.
@@ -46,6 +48,7 @@ else:
 #"ipc:///tmp/supervisory_controller_hmi.sock"
 
 POLL_INTERVAL_MS = 50  # how often the Qt timer checks for new ZMQ messages
+DEFAULT_SAMPLE_PERIOD_MS = 500
 LAYOUT_ROWS = 3
 LAYOUT_COLS = 3
 RESERVED_GRID_CELLS = 2
@@ -285,6 +288,74 @@ class OffOnButton(QtWidgets.QPushButton):
         self.blockSignals(False)
 
 
+class MiniTurbineButton(QtWidgets.QPushButton):
+    def __init__(self, turbine_id: int, checked: bool = True):
+        super().__init__(f"T{turbine_id}")
+        self.turbine_id = int(turbine_id)
+        self.setCheckable(True)
+        self.setChecked(bool(checked))
+        self.setFixedSize(44, 34)
+        self.setToolTip(f"Enable/disable turbine {turbine_id}")
+        self.setStyleSheet(
+            "QPushButton {"
+            "border-radius: 7px;"
+            "border: 2px solid #2a3340;"
+            "background-color: #232a35;"
+            "color: #f0f3f8;"
+            "font-size: 13px;"
+            "font-weight: 800;"
+            "}"
+            "QPushButton:checked {"
+            "background-color: #1f9d62;"
+            "border: 2px solid #8ee3b2;"
+            "}"
+            "QPushButton:!checked {"
+            "background-color: #5b2530;"
+            "border: 2px solid #d86b7b;"
+            "}"
+            "QPushButton:hover {"
+            "background-color: #2a3342;"
+            "}"
+        )
+
+    def set_state(self, is_on: bool) -> None:
+        self.blockSignals(True)
+        self.setChecked(bool(is_on))
+        self.blockSignals(False)
+
+
+class AttackResourceWidget(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.tap_label = QtWidgets.QLabel("Tap 0/0")
+        self.fdi_label = QtWidgets.QLabel("FDI 0/0")
+        self.signals_label = QtWidgets.QLabel("FDI signals: none")
+
+        for label in (self.tap_label, self.fdi_label):
+            label.setStyleSheet("color: #f0f3f8; font-size: 13px; font-weight: 800;")
+        self.signals_label.setStyleSheet("color: #aeb8c7; font-size: 12px; font-weight: 600;")
+        self.signals_label.setWordWrap(True)
+        self.signals_label.setMaximumWidth(260)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(12)
+        row.addWidget(self.tap_label)
+        row.addWidget(self.fdi_label)
+        layout.addLayout(row)
+        layout.addWidget(self.signals_label)
+        self.setLayout(layout)
+
+    def update_usage(self, tap_used: int, tap_total: int, fdi_used: int, fdi_total: int, signals: list[str]) -> None:
+        self.tap_label.setText(f"Tapped {tap_used}/{tap_total}")
+        self.fdi_label.setText(f"FDI {fdi_used}/{fdi_total}")
+        signal_text = ", ".join(str(signal) for signal in signals) if signals else "none"
+        self.signals_label.setText(f"FDI signals: {signal_text}")
+
+
 main_window = QtWidgets.QMainWindow()
 main_window.setWindowTitle(f"Wind Farm HMI  -  {ENDPOINT}")
 main_window.resize(1380, 940)
@@ -316,6 +387,10 @@ buttons_box = QtWidgets.QHBoxLayout()
 buttons_box.setSpacing(16)
 mode_buttons: list[CircularModeButton] = []
 button_controls: dict[str, OffOnButton] = {}
+turbine_enable_buttons: dict[int, MiniTurbineButton] = {}
+turbine_enable_box: QtWidgets.QGridLayout | None = None
+attack_resource_widget: AttackResourceWidget | None = None
+cli_command_queue: queue.Queue[int] = queue.Queue()
 
 def add_light_widget(widget: QtWidgets.QWidget, index: int) -> None:
     """Add a widget at the given index, auto-calculating grid position."""
@@ -343,6 +418,7 @@ curves: list[list[pg.PlotDataItem]] = []
 curve_turbines: list[list[str | None]] = []
 histories: list[list[deque]] = []
 window_size: int = 500
+sample_period_ms: int = DEFAULT_SAMPLE_PERIOD_MS
 initialized: bool = False
 mode_labels: list[str] = ["Auto", "Curtailment", "Safe Shutdown"]
 farm_map: pg.PlotItem | None = None
@@ -745,6 +821,38 @@ def _valid_y_range(y_range) -> tuple[float, float] | None:
     return y_min, y_max
 
 
+def _nice_time_step_seconds(total_seconds: float) -> int:
+    target = max(1.0, total_seconds / 4.0)
+    candidates = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600]
+    return min(candidates, key=lambda value: abs(value - target))
+
+
+def _relative_time_ticks(size: int, period_ms: int) -> list[tuple[float, str]]:
+    if size <= 1:
+        return [(0.0, "Now")]
+
+    right = float(size - 1)
+    period_s = max(0.001, float(period_ms) / 1000.0)
+    total_seconds = right * period_s
+    step_seconds = _nice_time_step_seconds(total_seconds)
+    oldest_tick_seconds = int(total_seconds // step_seconds) * step_seconds
+
+    ticks: list[tuple[float, str]] = []
+    for age_seconds in range(oldest_tick_seconds, 0, -step_seconds):
+        position = right - (float(age_seconds) / period_s)
+        if position >= 0.0:
+            ticks.append((position, f"-{age_seconds}sec"))
+
+    ticks.append((right, "Now"))
+
+    return ticks
+
+
+def _apply_relative_time_axis(plot: pg.PlotItem, size: int, period_ms: int) -> None:
+    plot.setLabel("bottom", "")
+    plot.getAxis("bottom").setTicks([_relative_time_ticks(size, period_ms)])
+
+
 def init_layout(signals: list, ws: int) -> None:
     """Build all PlotItems and PlotDataItems from the first message."""
     global plots, curves, curve_turbines, histories, window_size, initialized
@@ -756,9 +864,9 @@ def init_layout(signals: list, ws: int) -> None:
         name, unit, labels, _values, y_range = _parse_signal(signal)
         p: pg.PlotItem = plots_widget.addPlot(title=name)
         p.setLabel("left", unit)
-        p.setLabel("bottom", "Sample  (newest → right)")
+        _apply_relative_time_axis(p, window_size, sample_period_ms)
         p.showGrid(x=True, y=True, alpha=0.25)
-        p.setXRange(0, window_size - 1, padding=0)
+        p.setXRange(0, window_size - 1 + max(2.0, window_size * 0.025), padding=0)
         fixed_y_range = _valid_y_range(y_range)
         if fixed_y_range is not None:
             p.setYRange(fixed_y_range[0], fixed_y_range[1], padding=0)
@@ -883,6 +991,105 @@ def send_button_command(command_name: str, is_on: bool) -> None:
         pass
 
 
+def send_turbine_enable_command(turbine_id: int, is_on: bool) -> None:
+    payload = ["set_turbine_enable", int(turbine_id), int(bool(is_on))]
+    try:
+        cmd_sock.send(msgpack.packb(payload, use_bin_type=True), zmq.NOBLOCK)
+    except zmq.ZMQError:
+        pass
+
+
+def read_cli_commands() -> None:
+    print("HMI CLI: type a turbine id and press Enter to show/hide that turbine's plots.")
+    for line in sys.stdin:
+        command = line.strip()
+        if not command:
+            continue
+        try:
+            cli_command_queue.put(int(command))
+        except ValueError:
+            print("HMI CLI: enter a numeric turbine id.")
+
+
+def drain_cli_commands() -> None:
+    if not initialized:
+        return
+
+    while True:
+        try:
+            turbine_id = cli_command_queue.get_nowait()
+        except queue.Empty:
+            break
+        turbine_label = f"T{turbine_id}"
+        if turbine_label in legend_entries:
+            toggle_turbine_visibility(turbine_label)
+        else:
+            print(f"HMI CLI: turbine id {turbine_id} is not in this HMI layout.")
+
+
+def update_turbine_enable_buttons(payload) -> None:
+    global turbine_enable_box
+
+    if not isinstance(payload, list) or len(payload) < 2:
+        return
+    states = payload[1]
+    if not isinstance(states, list):
+        return
+
+    if turbine_enable_box is None:
+        turbine_enable_box = QtWidgets.QGridLayout()
+        turbine_enable_box.setContentsMargins(0, 0, 0, 0)
+        turbine_enable_box.setSpacing(6)
+        buttons_box.addLayout(turbine_enable_box)
+
+    for index, state in enumerate(states):
+        turbine_id = index + 1
+        is_enabled = bool(state)
+        if turbine_id not in turbine_enable_buttons:
+            button = MiniTurbineButton(turbine_id, checked=is_enabled)
+            button.toggled.connect(
+                lambda checked, tid=turbine_id: send_turbine_enable_command(tid, checked)
+            )
+            turbine_enable_buttons[turbine_id] = button
+            turbine_enable_box.addWidget(button, index // 3, index % 3)
+        else:
+            turbine_enable_buttons[turbine_id].set_state(is_enabled)
+
+
+def update_attack_resources(payload) -> None:
+    global attack_resource_widget
+
+    if not isinstance(payload, list) or len(payload) < 6:
+        return
+
+    try:
+        tap_used = int(payload[1])
+        tap_total = int(payload[2])
+        fdi_used = int(payload[3])
+        fdi_total = int(payload[4])
+    except (TypeError, ValueError):
+        return
+
+    signals = payload[5] if isinstance(payload[5], list) else []
+    if attack_resource_widget is None:
+        attack_resource_widget = AttackResourceWidget()
+        buttons_box.addWidget(attack_resource_widget)
+    attack_resource_widget.update_usage(tap_used, tap_total, fdi_used, fdi_total, signals)
+
+
+def update_sample_period(payload) -> None:
+    global sample_period_ms
+
+    if not isinstance(payload, list) or len(payload) < 2:
+        return
+    try:
+        period_ms = int(payload[1])
+    except (TypeError, ValueError):
+        return
+    if period_ms > 0:
+        sample_period_ms = period_ms
+
+
 def update_onoff_button(button_data) -> None:
     global button_controls
 
@@ -911,6 +1118,7 @@ def update_onoff_button(button_data) -> None:
         button.off_text = off_text
         button.on_text = on_text
         button.toggled.disconnect()
+        button.toggled.connect(button._update_label)
         button.toggled.connect(
             lambda checked, cmd=command_name: send_button_command(cmd, checked)
         )
@@ -939,7 +1147,7 @@ def poll_and_update() -> None:
     """Qt timer callback: drain the ZMQ socket and refresh plots."""
     global initialized
 
-    
+    drain_cli_commands()
 
     # Drain up to 10 queued frames so we don't fall perpetually behind,
     # but always render only the latest one.
@@ -967,6 +1175,10 @@ def poll_and_update() -> None:
     else:
         tick, ws, signals = msg
 
+    for button_data in button_data_list:
+        if isinstance(button_data, list) and button_data and button_data[0] == "sample_period_ms":
+            update_sample_period(button_data)
+
     if not initialized:
         init_layout(signals, ws)
 
@@ -984,7 +1196,16 @@ def poll_and_update() -> None:
     # Process all button data
     for button_data in button_data_list:
         if button_data is not None:
-            update_onoff_button(button_data)
+            if isinstance(button_data, list) and button_data:
+                payload_type = button_data[0]
+                if payload_type == "turbine_enable_states":
+                    update_turbine_enable_buttons(button_data)
+                elif payload_type == "attack_resources":
+                    update_attack_resources(button_data)
+                elif payload_type == "sample_period_ms":
+                    update_sample_period(button_data)
+                else:
+                    update_onoff_button(button_data)
 
     x_axis = list(range(window_size))
 
@@ -1005,6 +1226,9 @@ def poll_and_update() -> None:
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
+cli_thread = threading.Thread(target=read_cli_commands, daemon=True)
+cli_thread.start()
+
 timer = QtCore.QTimer()
 timer.timeout.connect(poll_and_update)
 timer.start(POLL_INTERVAL_MS)
