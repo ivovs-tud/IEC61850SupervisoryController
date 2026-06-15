@@ -68,6 +68,7 @@ TURBINE_ORIENTATION_SIGN = 1.0
 INACTIVE_CURVE_ALPHA = 72
 ACTIVE_CURVE_ALPHA = 230
 SELECTED_CURVE_ALPHA = 255
+RATED_ROTOR_SPEED_RPM = 12.0
 
 # Wind-farm map coordinates, ordered as T1, T2, T3, ...
 # Leave empty to auto-generate a compact grid from the turbine labels.
@@ -98,7 +99,7 @@ TURBINE_COLORS: dict[str, tuple[int, int, int]] = {
 
 WIND_GLOBAL_COLORS = {
     "wind speed": (34, 213, 238),
-    "wind direction": (250, 204, 21),
+    "wind direction": (34, 213, 238),
 }
 
 # ---------------------------------------------------------------------------
@@ -117,7 +118,7 @@ cmd_sock.connect(COMMAND_ENDPOINT)
 # ---------------------------------------------------------------------------
 # pyqtgraph application
 # ---------------------------------------------------------------------------
-pg.setConfigOptions(antialias=True, foreground="w", background="#12161d")
+pg.setConfigOptions(antialias=True, foreground="w", background="#1b222c")
 app = pg.mkQApp("Wind Farm HMI")
 
 
@@ -387,8 +388,8 @@ main_layout.setSpacing(10)
 control_panel = QtWidgets.QFrame()
 control_panel.setStyleSheet(
     "QFrame {"
-    "background-color: #171c24;"
-    "border: 1px solid #2c3442;"
+    "background-color: #202834;"
+    "border: 1px solid #394454;"
     "border-radius: 12px;"
     "}"
 )
@@ -594,14 +595,40 @@ def _signal_has_multiple_line_styles(labels: list[str]) -> bool:
     return has_measurement and has_setpoint
 
 
-def _add_style_legend(plot: pg.PlotItem, labels: list[str]) -> None:
-    if not _signal_has_multiple_line_styles(labels):
+def _legend_pen(color: tuple[int, int, int], style_name: str = "SolidLine", width: int = 2):
+    return pg.mkPen(color=color, width=width, style=_qt_pen_style(style_name))
+
+
+def _add_legend_sample(plot: pg.PlotItem, name: str, pen) -> None:
+    plot.plot([], [], pen=pen, name=name)
+
+
+def _add_plot_legend(plot: pg.PlotItem, signal_name: str, labels: list[str]) -> None:
+    signal_key = str(signal_name).strip().lower()
+    has_legend = (
+        _signal_has_multiple_line_styles(labels)
+        or signal_key == "farm reference vs. total power"
+        or _is_wind_signal(signal_name)
+    )
+    if not has_legend:
         return
 
     legend = plot.addLegend(offset=(10, 10))
     legend.setBrush(pg.mkBrush(0, 0, 0, 160))
-    plot.plot([], [], pen=pg.mkPen(color=(235, 238, 244), width=2), name="Measurement")
-    plot.plot([], [], pen=pg.mkPen(color=(235, 238, 244), width=2, style=_qt_pen_style("DashLine")), name="Setpoint")
+
+    if signal_key == "farm reference vs. total power":
+        for idx, label in enumerate(labels):
+            _add_legend_sample(plot, str(label), _pen_for_curve(signal_name, str(label), idx))
+        return
+
+    if _is_wind_signal(signal_name):
+        global_color = WIND_GLOBAL_COLORS.get(signal_key, (255, 255, 255))
+        _add_legend_sample(plot, "Global", _legend_pen(global_color, width=3))
+        _add_legend_sample(plot, "Turbines", _legend_pen((235, 238, 244), "DashLine", 2))
+        return
+
+    _add_legend_sample(plot, "Measurement", _legend_pen((235, 238, 244)))
+    _add_legend_sample(plot, "Setpoint", _legend_pen((235, 238, 244), "DashLine"))
 
 
 def _parse_signal(signal: list):
@@ -938,8 +965,8 @@ class ValueAxisItem(pg.AxisItem):
             self.display_unit = "MW"
             self.scale_factor = 1e-6
         elif self.raw_unit == "Nm":
-            self.display_unit = "MNm"
-            self.scale_factor = 1e-6
+            self.display_unit = "kNm"
+            self.scale_factor = 1e-3
 
     def tickStrings(self, values, scale, spacing):
         labels = []
@@ -983,7 +1010,16 @@ def init_layout(signals: list, ws: int) -> None:
         fixed_y_range = _valid_y_range(y_range)
         if fixed_y_range is not None:
             p.setYRange(fixed_y_range[0], fixed_y_range[1], padding=0)
-        _add_style_legend(p, labels)
+        _add_plot_legend(p, name, labels)
+
+        if str(name).strip().lower() == "rotor speed":
+            p.addLine(
+                y=RATED_ROTOR_SPEED_RPM,
+                pen=pg.mkPen(color=(245, 248, 252), width=2),
+            )
+            rated_label = pg.TextItem("Rated", color="#f5f8fc", anchor=(0.5, 1.0))
+            rated_label.setPos(window_size * 0.94, RATED_ROTOR_SPEED_RPM + 0.25)
+            p.addItem(rated_label)
 
         sig_curves: list[pg.PlotDataItem] = []
         sig_turbines: list[str | None] = []

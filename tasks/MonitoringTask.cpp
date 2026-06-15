@@ -125,7 +125,7 @@ bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
         }
 
 
-        float expectedPower = gds.lastRPM[i] * gds.lastGenTorque[i]; // Placeholder for actual power-torque-speed relation
+        float expectedPower = gds.lastRPM[i] * gds.lastGenTorque[i] * gds.gearboxRatio; // Placeholder for actual power-torque-speed relation
         if (abs(gds.lastPower[i] - expectedPower) > 10e5) { // Placeholder threshold
             // alarm |= true;
             return true;

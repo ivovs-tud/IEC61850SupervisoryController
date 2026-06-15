@@ -123,6 +123,27 @@ struct GlobalData
     bool simConfigured = false;
     std::string simTeamName;
     int simScenario = 0;
+
+    // Turbine Parameter Values
+    static constexpr const char* turbineModelName = "NREL5MW";
+    static constexpr double airDensity = 1.225; // kg/m^3
+    static constexpr double rotorDiameter = 126.0; // m
+    static constexpr double optimalPowerCoefficient = 0.482;
+    static constexpr double optimalTipSpeedRatio = 7.55;
+    static constexpr double rotorInertia = 4e6; // kg m^2
+    static constexpr double gearboxRatio = 97.0;
+    static constexpr double generatorEfficiency = 0.944;
+    static constexpr double ratedPower = 5e6; // W
+    static constexpr double cutInWindSpeed = 3.0; // m/s
+    static constexpr double ratedWindSpeed = 11.4; // m/s
+    static constexpr double cutOutWindSpeed = 25.0; // m/s
+    static constexpr double ratedRotorSpeed = 12.1; // rpm
+    static constexpr double minimumRotorSpeed = 0.722; // rad/s
+    static constexpr double pitchRate = 10.0; // deg/s
+    static constexpr double brakeTorque = 28116.2; // Nm
+    static constexpr double yawingRate = 5.0; // deg/s
+    static constexpr double ratedTorque = 31465000.0; // Nm
+    static constexpr double maximumGeneratorTorque = 47402.91; // Nm
     
 
     void resetForNewRunFields(const std::string& teamName,
