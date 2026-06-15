@@ -166,7 +166,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
             "Generator Torque", "Nm",
             turbineLabels(),
             [safeSlice](const GlobalData& d) { return safeSlice(d.lastGenTorque); },
-            std::make_pair(-1.0, 5e6)
+            std::make_pair(-1.0, 5e4)
         }
     };
 

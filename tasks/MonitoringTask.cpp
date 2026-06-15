@@ -4,6 +4,7 @@
 #include "common/GlobalDataStructure.hpp"
 #include "common/util.hpp"
 
+#define M_PI           3.14159265358979323846  /* pi */
 
 
 // ---------------------------------------------------------------------------
@@ -125,8 +126,8 @@ bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
         }
 
 
-        float expectedPower = gds.lastRPM[i] * gds.lastGenTorque[i] * gds.gearboxRatio; // Placeholder for actual power-torque-speed relation
-        if (abs(gds.lastPower[i] - expectedPower) > 10e5) { // Placeholder threshold
+        float expectedPower = gds.generatorEfficiency * gds.lastRPM[i] * 2 * M_PI / 60 * gds.lastGenTorque[i] * gds.gearboxRatio; // Placeholder for actual power-torque-speed relation
+        if (abs(gds.lastPower[i] - expectedPower) > 4e5) { // Placeholder threshold
             // alarm |= true;
             return true;
         }

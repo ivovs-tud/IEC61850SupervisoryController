@@ -77,7 +77,7 @@ void SignalProcessingTask::execute()
                 count++;
             }
         }
-        if (count > 0) gds.glob_wd_i = static_cast<float>(wd_sum / count);
+        if (count > 0) gds.glob_wd_i = 0.05*static_cast<float>(wd_sum / count) + 0.95* gds.glob_wd_i;
     }
     // For wind speed, we use the three biggest found items, and take their average
     {
@@ -90,7 +90,7 @@ void SignalProcessingTask::execute()
             std::greater<float>() //remove "int" in C++14
         );
         float res = std::accumulate(std::begin(tmp), std::end(tmp), 0.0f) / 3.0f;
-        gds.glob_ws_i = res;
+        gds.glob_ws_i = 0.9 * gds.glob_ws_i + 0.1 * res;
         loggedWs = gds.glob_ws_i;
         loggedWd = gds.glob_wd_i;
     }
