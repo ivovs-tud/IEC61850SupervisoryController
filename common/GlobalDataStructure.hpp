@@ -80,7 +80,7 @@ struct GlobalData
     std::vector<double> rpm_avg20 = std::vector<double>(N_TURBINES, 0.0); // 20-s moving average of RPM per turbine
     float glob_ws_i = 0.0f; // global instantaneous wind speed (e.g. farm-level average)
     float glob_ws_avg20 = 0.0f; // global 20-s moving average of wind speed
-    float glob_wd_i = 0.0f; // global instantaneous wind direction (e.g. farm-level average)
+    float glob_wd_i = 270.0f; // global instantaneous wind direction (e.g. farm-level average)
     float glob_wd_avg20 = 0.0f; // global 20-s moving average of wind direction
 
     // ── Per-turbine setpoints (written by ControlTask, read by CommunicationTask)
