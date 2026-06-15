@@ -320,6 +320,7 @@ void HmiTask::execute()
     bool alarmWRecMeas = false;
     bool alarmOrientationMisalign = false;
     bool alarmWTorqueRotSpd = false;
+    bool alarmPowerExpected = false;
     bool alarmHorWdDir = false;
     bool alarmHorWdDirChg = false;
     bool alarmHorWdSpdChg = false;
@@ -342,6 +343,7 @@ void HmiTask::execute()
         alarmWRecMeas = d.alarmWRecMeas;
         alarmOrientationMisalign = d.alarmOrientationMisalign;
         alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;
+        alarmPowerExpected = d.alarmPowerExpected;
         alarmHorWdDir = d.alarmHorWdDir;
 		alarmHorWdDirChg = d.alarmHorWdDirChg;
         alarmHorWdSpdChg = d.alarmHorWdSpdChg;
@@ -401,12 +403,12 @@ void HmiTask::execute()
     pk.pack_array(9);
     pk.pack_array(3); pk.pack("System Running");    pk.pack(true);      pk.pack(systemRunningColor);
     pk.pack_array(3); pk.pack("Power: Received vs Measured");    pk.pack(alarmWRecMeas); pk.pack("red");
+    pk.pack_array(3); pk.pack("Power: Measured vs Expected");    pk.pack(alarmPowerExpected); pk.pack("red");
     pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("red");
     pk.pack_array(3); pk.pack("Power vs Torque*RotorSpeed");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
     pk.pack_array(3); pk.pack("Wind Direction Consistency");    pk.pack(alarmHorWdDir);  pk.pack("red");
     pk.pack_array(3); pk.pack("Wind Direction Change");    pk.pack(alarmHorWdDirChg);  pk.pack("red");
     pk.pack_array(3); pk.pack("Wind Speed Change");    pk.pack(alarmHorWdSpdChg);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Placeholder");    pk.pack(false);  pk.pack("red");
     pk.pack_array(3); pk.pack("Placeholder");    pk.pack(false);  pk.pack("red");
 
     pk.pack_array(2);

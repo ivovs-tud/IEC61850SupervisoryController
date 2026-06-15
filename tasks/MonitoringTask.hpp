@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cmath>
+#include <cstdint>
+#include <vector>
 
 #include "common/PeriodicTask.hpp"
 
@@ -18,14 +19,20 @@ protected:
     // Variables used internally for monitoring logic and state
     // -----------------------------------------------------------
     // Orientation-Related.
-    /* TODO : Some of these are placeholders */
-    const float orientation_time_constant = 10.0f; // Time constant for the orientation prediction model (in seconds). Depends on the turbine's yaw actuation dynamics.
-    const float alpha_psi = exp(-period_.count() / 1000.0f / orientation_time_constant); // Constant defining the 'dynamics' of the orientation
-    const float orientation_threshold = 5.0f; // Threshold for triggering the yaw misalignment alarm (in degrees)
+    const float orientation_threshold = 8.0f; // Threshold for triggering the yaw misalignment alarm (in degrees)
     const float observer_gain = 0.5f; // Gain for a simple observer to estimate the true orientation based on measurements (placeholder value, needs tuning)
-    // const uint64_t yaw_measurement_timeout_ms = 1000; // Time after which we consider the yaw measurement to be outdated (in milliseconds)
+    const uint64_t yaw_measurement_timeout_ms = 1000; // Time after which we consider the yaw measurement to be outdated (in milliseconds)
     std::vector<uint64_t> last_yaw_measurement_time; // Timestamp of the last yaw measurement that was used for detection
+    std::vector<uint64_t> last_orientation_prediction_time; // Timestamp of the last orientation prediction update
     std::vector<float> orientation_state;
+
+    // Power tracking detector.
+    const uint64_t power_tracking_grace_period_ms = 30000;
+    const uint64_t power_measurement_timeout_ms = 2000;
+    const double power_tracking_absolute_tolerance_w = 2.5e5;
+    const double power_tracking_relative_tolerance = 0.05;
+    std::vector<uint64_t> power_tracking_mismatch_start_time;
+    std::vector<double> last_expected_power;
 
     uint64_t last_reset_ms = 0;
 
@@ -49,14 +56,20 @@ protected:
             v.s. the 'locally measured total power' for consistency check.
     */
 
+    bool checkConsistencyMeasuredPowerVsExpected();
+    /**
+        @brief Checks measured turbine power against min(power reference, available power).
+
+        A mismatch is tolerated for a short transient window. The timer resets as
+        soon as measured power returns close to the expected value.
+    */
+
     bool checkConsistencyOrientationDynamics();
     /**
         @brief Checks for consistency between where the turbine is expected to point and what is received
 
-        In particular, the prediction model is 
-        $$\psi_{k+1}^{(i)} = (1-\alpha_{\psi})\psi^{(i)}_{k} + \alpha_{\psi}\psi_{\mathrm{spt}}^{(i)}, \quad\text{ with }\, \alpha_{\psi} = \frac{\Delta t}{\tau_{\gamma} + \Delta t}.$$
-
-        TODO: possibly upgrade this to an estimation/observer type of predictor
+        In particular, the prediction model advances the previous orientation toward the
+        yaw setpoint by at most the turbine yawing rate times the elapsed monitor time.
     */
 
     bool checkConsistencyPowerTorqueRotorSpeed();

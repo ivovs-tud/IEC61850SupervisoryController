@@ -111,6 +111,7 @@ struct GlobalData
     bool alarmWRecMeas = false;
     bool alarmOrientationMisalign = false;
     bool alarmWTorqueRotSpd = false;
+    bool alarmPowerExpected = false;
     bool alarmHorWdDir = false;
     bool alarmHorWdDirChg = false;
     bool alarmHorWdSpdChg = false;
@@ -204,6 +205,7 @@ struct GlobalData
         alarmWRecMeas = false;
         alarmOrientationMisalign = false;
         alarmWTorqueRotSpd = false;
+        alarmPowerExpected = false;
         alarmHorWdDir = false;
         alarmHorWdDirChg = false;
         alarmHorWdSpdChg = false;

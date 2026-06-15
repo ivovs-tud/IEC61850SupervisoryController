@@ -1,10 +1,47 @@
 #include <vector>
+#include <algorithm>
+#include <cmath>
 
 #include "MonitoringTask.hpp"
 #include "common/GlobalDataStructure.hpp"
 #include "common/util.hpp"
 
 #define M_PI           3.14159265358979323846  /* pi */
+
+namespace {
+float normalizeAngleDeg(float angle)
+{
+    angle = std::fmod(angle, 360.0f);
+    if (angle < 0.0f) {
+        angle += 360.0f;
+    }
+    return angle;
+}
+
+float shortestAngleDiffDeg(float from, float to)
+{
+    float diff = normalizeAngleDeg(to) - normalizeAngleDeg(from);
+    if (diff > 180.0f) {
+        diff -= 360.0f;
+    } else if (diff < -180.0f) {
+        diff += 360.0f;
+    }
+    return diff;
+}
+
+float angularDistanceDeg(float a, float b)
+{
+    return std::abs(shortestAngleDiffDeg(a, b));
+}
+
+float predictYawAtRate(float currentOrientation, float yawSetpoint, float yawingRateDegPerSec, float dtSec)
+{
+    const float diff = shortestAngleDiffDeg(currentOrientation, yawSetpoint);
+    const float maxStep = std::max(0.0f, yawingRateDegPerSec * dtSec);
+    const float step = std::clamp(diff, -maxStep, maxStep);
+    return normalizeAngleDeg(currentOrientation + step);
+}
+}
 
 
 // ---------------------------------------------------------------------------
@@ -15,6 +52,9 @@ MonitoringTask::MonitoringTask(std::chrono::milliseconds period) : PeriodicTask(
     // TODO: set up GOOSE subscriber via libiec_wrapper
     orientation_state = std::vector<float>(N_TURBINES, 0.0f);
     last_yaw_measurement_time = std::vector<uint64_t>(N_TURBINES, 0);
+    last_orientation_prediction_time = std::vector<uint64_t>(N_TURBINES, 0);
+    power_tracking_mismatch_start_time = std::vector<uint64_t>(N_TURBINES, 0);
+    last_expected_power = std::vector<double>(N_TURBINES, -1.0);
 }
 
 void MonitoringTask::execute() {
@@ -25,6 +65,7 @@ void MonitoringTask::execute() {
     if (!gds.systemRunning) return;
 
     gds.alarmWRecMeas |= checkConsistencyPowerGeneratedVsReceived();
+    gds.alarmPowerExpected |= checkConsistencyMeasuredPowerVsExpected();
     gds.alarmOrientationMisalign |= checkConsistencyOrientationDynamics();
     gds.alarmWTorqueRotSpd |= checkConsistencyPowerTorqueRotorSpeed();
     gds.alarmHorWdDir |= checkConsistencyWindDirection();
@@ -35,6 +76,7 @@ void MonitoringTask::execute() {
     uint64_t current_ms = getCurrentTimeMs();
     if (current_ms - last_reset_ms >= 3000) {
         gds.alarmWRecMeas = false;
+        gds.alarmPowerExpected = false;
         gds.alarmOrientationMisalign = false;
         gds.alarmWTorqueRotSpd = false;
         gds.alarmHorWdDir = false;
@@ -79,31 +121,104 @@ bool MonitoringTask::checkOutOfBoundsAll() {
     return false;
 }
 
-bool MonitoringTask::checkConsistencyOrientationDynamics() {
-    // Implementation for checking orientation dynamics consistency
-    // TODO: There should be a check here that skips a turbine, if we did not receive a yaw measurement that is recent enough. This is to avoid false alarms due to communication issues.
+bool MonitoringTask::checkConsistencyMeasuredPowerVsExpected() {
     auto& gds = GlobalDataStructure::instance().data();
+    const uint64_t current_ms = getCurrentTimeMs();
 
     bool alarm = false;
 
     for (auto i = 0; i < N_TURBINES; i++) {
-        // First predict the next orientation based on the simple model
-        float predictedOrientation = (1 - alpha_psi) * orientation_state[i] + alpha_psi * gds.TurbineYawSetpoints[i];
+        const bool hasRecentPowerMeasurement =
+            gds.lastPower_t[i] > 0 &&
+            gds.lastPower_t[i] >= current_ms - power_measurement_timeout_ms;
 
-        // Then compare the predicted orientation to the latest received one
-        // Only if we did not already use this measurement for detection before (i.e. it is new), we check for an alarm condition
-        if (gds.lastYawOffset_t[i] > last_yaw_measurement_time[i] && gds.lastYawOffset_t[i] >= getCurrentTimeMs() - 1000) { // TODO: replace 2000 with yaw_measurement_timeout_ms
-            if (abs(predictedOrientation - gds.lastYawOffset[i]) > orientation_threshold) {
+        if (!hasRecentPowerMeasurement || gds.TurbinePowerSetpoints[i] < 0.0f) {
+            power_tracking_mismatch_start_time[i] = 0;
+            last_expected_power[i] = -1.0;
+            continue;
+        }
+
+        const double expectedPower = std::min(
+            static_cast<double>(gds.TurbinePowerSetpoints[i]),
+            std::max(0.0, gds.AvailablePower[i]));
+
+        const double tolerance = std::max(
+            power_tracking_absolute_tolerance_w,
+            power_tracking_relative_tolerance * std::max(expectedPower, 0.0));
+
+        if (last_expected_power[i] < 0.0 || std::abs(expectedPower - last_expected_power[i]) > tolerance) {
+            power_tracking_mismatch_start_time[i] = 0;
+            last_expected_power[i] = expectedPower;
+        }
+
+        const double measuredPower = gds.lastPower[i];
+        const bool closeEnough = std::abs(measuredPower - expectedPower) <= tolerance;
+
+        if (closeEnough) {
+            power_tracking_mismatch_start_time[i] = 0;
+            continue;
+        }
+
+        if (power_tracking_mismatch_start_time[i] == 0) {
+            power_tracking_mismatch_start_time[i] = current_ms;
+            continue;
+        }
+
+        if (current_ms - power_tracking_mismatch_start_time[i] >= power_tracking_grace_period_ms) {
+            alarm = true;
+        }
+    }
+
+    return alarm;
+}
+
+bool MonitoringTask::checkConsistencyOrientationDynamics() {
+    auto& gds = GlobalDataStructure::instance().data();
+    const uint64_t current_ms = getCurrentTimeMs();
+
+    bool alarm = false;
+
+    for (auto i = 0; i < N_TURBINES; i++) {
+        const bool hasRecentMeasurement =
+            gds.lastYawOffset_t[i] > 0 &&
+            gds.lastYawOffset_t[i] >= current_ms - yaw_measurement_timeout_ms;
+
+        if (last_orientation_prediction_time[i] == 0) {
+            if (!hasRecentMeasurement) {
+                continue;
+            }
+
+            orientation_state[i] = normalizeAngleDeg(static_cast<float>(gds.lastYawOffset[i]));
+            gds.orientations[i] = orientation_state[i];
+            last_orientation_prediction_time[i] = current_ms;
+            last_yaw_measurement_time[i] = gds.lastYawOffset_t[i];
+            continue;
+        }
+
+        const float dt_sec = static_cast<float>(current_ms - last_orientation_prediction_time[i]) / 1000.0f;
+        const float predictedOrientation = predictYawAtRate(
+            orientation_state[i],
+            gds.TurbineYawSetpoints[i],
+            static_cast<float>(GlobalData::yawingRate),
+            dt_sec);
+
+        last_orientation_prediction_time[i] = current_ms;
+
+        // Only check a fresh measurement, and only while it is recent enough to avoid communication-delay false alarms.
+        if (hasRecentMeasurement && gds.lastYawOffset_t[i] > last_yaw_measurement_time[i]) {
+            if (angularDistanceDeg(predictedOrientation, static_cast<float>(gds.lastYawOffset[i])) > orientation_threshold) {
                 alarm |= true; // Alarm condition met
             }
             last_yaw_measurement_time[i] = gds.lastYawOffset_t[i];
-        }
-        // if (abs(predictedOrientation - gds.lastYawOffset[i]) > orientation_threshold) {
-        //     alarm |= true; // Alarm condition met
-        // }
 
-        // Finally update the orientation state using a simple observer-like update (this is a placeholder, more sophisticated estimation could be used)
-        orientation_state[i] = predictedOrientation + observer_gain * (gds.lastYawOffset[i] - predictedOrientation);
+            const float measurementError = shortestAngleDiffDeg(
+                predictedOrientation,
+                static_cast<float>(gds.lastYawOffset[i]));
+            orientation_state[i] = normalizeAngleDeg(predictedOrientation + observer_gain * measurementError);
+        } else {
+            orientation_state[i] = predictedOrientation;
+        }
+
         gds.orientations[i] = orientation_state[i];
     }   
 
@@ -112,8 +227,6 @@ bool MonitoringTask::checkConsistencyOrientationDynamics() {
 
 bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
     // Implementation for checking power, torque, and rotor speed consistency
-    bool alarm = false;
-    
     auto& gds = GlobalDataStructure::instance().data();
 
     for (auto i = 0; i < N_TURBINES; i++) {
