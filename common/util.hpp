@@ -7,6 +7,8 @@
 #include <iomanip>
 #include <variant>
 
+constexpr double kPi = 3.14159265358979323846;
+
 inline uint64_t getCurrentTimeMs()
 {
     const auto now = std::chrono::system_clock::now();
@@ -30,5 +32,4 @@ inline std::string formatTime(uint64_t totalMs) {
 inline std::string getCurrentTimeFormatted() {
     return formatTime(getCurrentTimeMs());
 }
-
 

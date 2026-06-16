@@ -26,6 +26,21 @@ bool hasRecentMeasurement(const GlobalData& gds, int turbineIndex, uint64_t nowM
         return timestamp != 0 && timestamp + TURBINE_CONNECTION_TIMEOUT_MS >= nowMs;
     });
 }
+
+double calculateAvailablePower(double windSpeed)
+{
+    if (windSpeed < GlobalData::cutInWindSpeed || windSpeed >= GlobalData::cutOutWindSpeed) {
+        return 0.0;
+    }
+
+    const double rotorRadius = GlobalData::rotorDiameter / 2.0;
+    const double sweptArea = kPi * rotorRadius * rotorRadius;
+    const double aerodynamicPower =
+        0.5 * GlobalData::airDensity * sweptArea *
+        GlobalData::optimalPowerCoefficient * windSpeed * windSpeed * windSpeed;
+
+    return std::min(aerodynamicPower, GlobalData::ratedPower);
+}
 }
 
 SignalProcessingTask::SignalProcessingTask(std::chrono::milliseconds period)
@@ -61,6 +76,7 @@ void SignalProcessingTask::execute()
             if (hasRecentMeasurement(gds, i, nowMs)) {
                 ++connectedTurbines;
             }
+            gds.AvailablePower[i] = calculateAvailablePower(gds.lastWS[i]);
         }
         gds.connectedTurbines = connectedTurbines;
     }
