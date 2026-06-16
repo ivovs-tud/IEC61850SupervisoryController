@@ -97,7 +97,7 @@ void IECCommunicator::executeRx()
 
         for (size_t i = 0; i < reportValues.size(); ++i) {
             if (reportValues[i]) {
-				COMMTASK_ST("IEComm[" << turbineId_ << "] Processing buffered report value for " << RX_DESCRIPTORS[i].name << ": " << reportValues[i]->value << " " << RX_DESCRIPTORS[i].unit);
+				COMMTASK_LOG_V2("IEComm[" << turbineId_ << "] Processing buffered report value for " << RX_DESCRIPTORS[i].name << ": " << reportValues[i]->value << " " << RX_DESCRIPTORS[i].unit);
                 processRxMeasurement(RX_DESCRIPTORS[i], reportValues[i]->value, reportValues[i]->timestampMs);
             }
         }

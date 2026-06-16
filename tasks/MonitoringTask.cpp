@@ -82,7 +82,7 @@ double yawAdjustedAvailablePower(const GlobalData& gds, int turbineIndex, uint64
     const double rotorRadius = GlobalData::rotorDiameter / 2.0;
     const double sweptArea = kPi * rotorRadius * rotorRadius;
     const double aerodynamicPower =
-        0.5 * GlobalData::airDensity * sweptArea *
+        0.5 * GlobalData::generatorEfficiency * GlobalData::airDensity * sweptArea *
         GlobalData::optimalPowerCoefficient * windSpeed * windSpeed * windSpeed;
 
     const bool yawMeasurementRecent =
@@ -97,7 +97,7 @@ double yawAdjustedAvailablePower(const GlobalData& gds, int turbineIndex, uint64
     const double yawCos = std::max(0.0, std::cos(yawErrorDeg * kPi / 180.0));
     const double yawLoss = yawCos * yawCos * yawCos;
 
-    return std::min(aerodynamicPower * yawLoss, GlobalData::ratedPower);
+    return aerodynamicPower * yawLoss;
 }
 
 double linearRange(const History<double>& values)
