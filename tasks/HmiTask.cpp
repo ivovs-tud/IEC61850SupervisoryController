@@ -324,6 +324,7 @@ void HmiTask::execute()
     bool alarmHorWdDir = false;
     bool alarmHorWdDirChg = false;
     bool alarmHorWdSpdChg = false;
+    bool alarmTelemetryFreezeReplay = false;
     int connectedTurbines = 0;
     bool yawSteeringEnabled = false;
     std::string yawSteeringCommandName;
@@ -347,6 +348,7 @@ void HmiTask::execute()
         alarmHorWdDir = d.alarmHorWdDir;
 		alarmHorWdDirChg = d.alarmHorWdDirChg;
         alarmHorWdSpdChg = d.alarmHorWdSpdChg;
+        alarmTelemetryFreezeReplay = d.alarmTelemetryFreezeReplay;
         connectedTurbines = d.connectedTurbines;
         yawSteeringEnabled = d.yawSteeringEnabled;
         yawSteeringCommandName = d.yawSteeringCommandName;
@@ -409,7 +411,7 @@ void HmiTask::execute()
     pk.pack_array(3); pk.pack("Wind Direction Consistency");    pk.pack(alarmHorWdDir);  pk.pack("red");
     pk.pack_array(3); pk.pack("Wind Direction Change");    pk.pack(alarmHorWdDirChg);  pk.pack("red");
     pk.pack_array(3); pk.pack("Wind Speed Change");    pk.pack(alarmHorWdSpdChg);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Placeholder");    pk.pack(false);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Telemetry Freeze/Replay");    pk.pack(alarmTelemetryFreezeReplay);  pk.pack("red");
 
     pk.pack_array(2);
     pk.pack(operationMode - 1);

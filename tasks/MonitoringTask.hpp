@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <vector>
 
 #include "common/PeriodicTask.hpp"
@@ -33,6 +34,28 @@ protected:
     const double power_tracking_relative_tolerance = 0.05;
     std::vector<uint64_t> power_tracking_mismatch_start_time;
     std::vector<double> last_expected_power;
+
+    // Wind-change detectors use short-window evidence and persistence to avoid
+    // alarming on normal turbulence or one noisy sample.
+    const double wind_speed_step_threshold_ms = 3.0;
+    const double wind_speed_range_threshold_ms = 4.0;
+    const double wind_direction_step_threshold_deg = 25.0;
+    const double wind_direction_range_threshold_deg = 40.0;
+    const int wind_change_required_strikes = 3;
+    std::vector<int> wind_speed_change_strike_count;
+    std::vector<int> wind_direction_change_strike_count;
+
+    // Telemetry freeze/replay detector for plausible-looking false data.
+    const std::size_t telemetry_freeze_window_samples = 8;
+    const uint64_t telemetry_freeze_persistence_ms = 5000;
+    const uint64_t telemetry_freeze_measurement_timeout_ms = 3000;
+    const double telemetry_freeze_ws_range_ms = 0.02;
+    const double telemetry_freeze_wd_range_deg = 0.05;
+    const double telemetry_freeze_yaw_range_deg = 0.05;
+    const double telemetry_freeze_rpm_range = 0.02;
+    const double telemetry_freeze_power_range_w = 1000.0;
+    const double telemetry_freeze_torque_range_nm = 50.0;
+    std::vector<uint64_t> telemetry_freeze_suspicion_start_time;
 
     uint64_t last_reset_ms = 0;
 
@@ -94,6 +117,12 @@ protected:
     /**
      * @brief Checks for consistency between change in wind speed over time. 
      * This will in general be a very rough check of the order of 1 m/s^2.
+     */
+
+    bool checkConsistencyTelemetryFreezeReplay();
+    /**
+     * @brief Checks for frozen/replayed telemetry while turbine timestamps
+     * continue to refresh.
      */
 
     /*bool checkConsistencyPowerGeneratedVsAvailable();

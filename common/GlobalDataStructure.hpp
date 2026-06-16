@@ -93,8 +93,12 @@ struct GlobalData
     float RequestedReferencePower = -1.0f; 
 
     // -- HMI control + annunciator state
-    // operationMode values:
-    //   0 = Auto, 1 = Curtailment, 2 = Safe Shutdown
+    static constexpr uint32_t turbineControllerKomega2 = 1;
+    static constexpr uint32_t turbineControllerDownregulation = 2;
+    static constexpr uint32_t turbineControllerShutdown = 3;
+
+    // TurbineController values:
+    //   1 = Komega^2, 2 = down-regulation, 3 = shutdown
 	bool yawSteeringEnabled = false;
 	std::string yawSteeringCommandName = "Yaw Steering";
 	std::vector<uint32_t> enableTurbine = std::vector<uint32_t>(N_TURBINES, 1); // Per-turbine enable/disable flags (1 = enabled, 0 = disabled)
@@ -115,6 +119,7 @@ struct GlobalData
     bool alarmHorWdDir = false;
     bool alarmHorWdDirChg = false;
     bool alarmHorWdSpdChg = false;
+    bool alarmTelemetryFreezeReplay = false;
     std::vector<float> orientations = std::vector<float>(N_TURBINES, 0.0);
 
 
@@ -209,6 +214,7 @@ struct GlobalData
         alarmHorWdDir = false;
         alarmHorWdDirChg = false;
         alarmHorWdSpdChg = false;
+        alarmTelemetryFreezeReplay = false;
 
         simStarted = false;
         simConfigured = true;
