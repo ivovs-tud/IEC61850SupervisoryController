@@ -36,6 +36,7 @@ protected:
     const double power_tracking_relative_tolerance = 0.05;
     std::vector<uint64_t> power_tracking_mismatch_start_time;
     std::vector<double> last_expected_power;
+    TurbineHistory<double> expected_power_history;
 
     // Wind-change detectors use short-window evidence and persistence to avoid
     // alarming on normal turbulence or one noisy sample.

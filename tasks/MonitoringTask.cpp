@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cmath>
+#include <numeric>
 #include <utility>
 
 #include "MonitoringTask.hpp"
@@ -51,6 +52,16 @@ double median(std::vector<double> values)
     const auto middle = values.begin() + static_cast<std::ptrdiff_t>(values.size() / 2);
     std::nth_element(values.begin(), middle, values.end());
     return *middle;
+}
+
+double averageHistory(const History<double>& values)
+{
+    if (values.empty()) {
+        return 0.0;
+    }
+
+    return std::accumulate(values.begin(), values.end(), 0.0) /
+           static_cast<double>(values.size());
 }
 
 float circularMeanDeg(const History<double>& values, std::size_t count)
@@ -256,6 +267,7 @@ MonitoringTask::MonitoringTask(std::chrono::milliseconds period) : PeriodicTask(
     last_orientation_prediction_time = std::vector<uint64_t>(N_TURBINES, 0);
     power_tracking_mismatch_start_time = std::vector<uint64_t>(N_TURBINES, 0);
     last_expected_power = std::vector<double>(N_TURBINES, -1.0);
+    expected_power_history = makeTurbineHistory<double>(N_TURBINES, GlobalData::N_hist);
     wind_speed_change_strike_count = std::vector<int>(N_TURBINES, 0);
     wind_direction_change_strike_count = std::vector<int>(N_TURBINES, 0);
     telemetry_freeze_suspicion_start_time = std::vector<std::array<uint64_t, 6>>(N_TURBINES);
@@ -319,18 +331,28 @@ void MonitoringTask::onGooseMessage(void* subscriber, void* parameter) {
 // ---------------------------------------------------------------------------
 
 bool MonitoringTask::checkConsistencyPowerGeneratedVsReceived() {
-    //float total = 0;
-    //std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
     auto& gds = GlobalDataStructure::instance().data();
     if (gds.Wtotal_meas.empty()) {
         return false;
     }
-    
-    /*for (auto i = 0; i < gds.powerHistory.size(); i++) {
-		total += gds.powerHistory[i].back();
-    }*/
-    
-    return abs(gds.TotalPower_recv - gds.Wtotal_meas.back()) > 10e6;
+
+    const uint64_t current_ms = getCurrentTimeMs();
+    double receivedTotalAverage = 0.0;
+    bool hasReceivedPowerHistory = false;
+    for (auto i = 0; i < N_TURBINES; i++) {
+        if (isRecent(gds.lastPower_t[i], current_ms, power_measurement_timeout_ms) &&
+            !gds.powerHistory[i].empty()) {
+            receivedTotalAverage += averageHistory(gds.powerHistory[i]);
+            hasReceivedPowerHistory = true;
+        }
+    }
+
+    if (!hasReceivedPowerHistory) {
+        return false;
+    }
+
+    const double measuredTotalAverage = averageHistory(gds.Wtotal_meas);
+    return std::abs(receivedTotalAverage - measuredTotalAverage) > 10e6;
 }
 
 bool MonitoringTask::checkOutOfBoundsAll() {
@@ -354,20 +376,29 @@ bool MonitoringTask::checkConsistencyMeasuredPowerVsExpected() {
         if (!expectedPowerForController(gds, static_cast<int>(i), current_ms, expectedPower, yawAdjustedPower)) {
             power_tracking_mismatch_start_time[i] = 0;
             last_expected_power[i] = -1.0;
+            expected_power_history[i].clear();
             continue;
         }
 
+        expected_power_history[i].push_back(expectedPower);
+        const double expectedPowerAverage = averageHistory(expected_power_history[i]);
+
         const double tolerance = std::max(
             power_tracking_absolute_tolerance_w,
-            power_tracking_relative_tolerance * std::max(expectedPower, 0.0));
+            power_tracking_relative_tolerance * std::max(expectedPowerAverage, 0.0));
 
-        if (last_expected_power[i] < 0.0 || std::abs(expectedPower - last_expected_power[i]) > tolerance) {
+        if (last_expected_power[i] < 0.0 ||
+            std::abs(expectedPowerAverage - last_expected_power[i]) > tolerance) {
             power_tracking_mismatch_start_time[i] = 0;
-            last_expected_power[i] = expectedPower;
+            last_expected_power[i] = expectedPowerAverage;
         }
 
-        const double measuredPower = hasRecentPowerMeasurement ? gds.lastPower[i] : 0.0;
-        const bool closeEnough = std::abs(measuredPower - expectedPower) <= tolerance;
+        const double measuredPowerAverage =
+            hasRecentPowerMeasurement && !gds.powerHistory[i].empty()
+                ? averageHistory(gds.powerHistory[i])
+                : 0.0;
+        const bool closeEnough =
+            std::abs(measuredPowerAverage - expectedPowerAverage) <= tolerance;
 
         if (closeEnough) {
             power_tracking_mismatch_start_time[i] = 0;
