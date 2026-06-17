@@ -142,7 +142,7 @@ struct GlobalData
     static constexpr double rotorInertia = 4e6; // kg m^2
     static constexpr double gearboxRatio = 97.0;
     static constexpr double generatorEfficiency = 0.944;
-    static constexpr double ratedPower = 5e6; // W
+    static constexpr double ratedPower = 6e6; // W
     static constexpr double cutInWindSpeed = 3.0; // m/s
     static constexpr double ratedWindSpeed = 11.4; // m/s
     static constexpr double cutOutWindSpeed = 25.0; // m/s

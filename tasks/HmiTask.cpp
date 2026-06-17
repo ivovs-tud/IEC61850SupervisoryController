@@ -86,19 +86,19 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 }
                 return v;
             },
-			std::make_pair(-100000.0, 5e6)
+			std::make_pair(-100000.0, 7e6)
         },
         // ── Per-turbine measured yaw offset and setpoints in one subplot ─────
         {
-            "Yaw Offset and Setpoints", "deg",
+            "Turbine Orientation and Setpoints", "deg",
             [numTurbines]() {
                 std::vector<std::string> labels;
                 labels.reserve(static_cast<std::size_t>(numTurbines * 2));
                 for (int i = 1; i <= numTurbines; ++i) {
-                    labels.push_back("T" + std::to_string(i) + " Yaw Offset");
+                    labels.push_back("T" + std::to_string(i) + " Orientation");
                 }
                 for (int i = 1; i <= numTurbines; ++i) {
-                    labels.push_back("T" + std::to_string(i) + " Yaw Setpoint");
+                    labels.push_back("T" + std::to_string(i) + " Orientation Setpoint");
                 }
                 return labels;
             }(),
@@ -118,7 +118,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 }
                 return v;
             },
-			std::make_pair(-190.0, 190.0)
+			std::make_pair(215.0, 325.0)
         },
         // ── Farm-level reference vs. total delivered power ────────────────────
         {
@@ -130,7 +130,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
 					static_cast<double>(d.RequestedReferencePower), measuredTotal, d.TotalPower_recv
                 };
             },
-            std::make_pair(-1000000.0, 9*5e6)
+            std::make_pair(-1000000.0, 9*7e6)
         },
         // ── Per-turbine wind speed ────────────────────────────────────────────
         {
@@ -141,7 +141,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 v.push_back(static_cast<double>(d.glob_ws_i));
                 return v;
             },
-            std::make_pair(-1.0, 15.0)
+            std::make_pair(-1.0, 22.0)
         },
         // ── Per-turbine wind direction ────────────────────────────────────────
         {
@@ -159,7 +159,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
             "Rotor Speed", "RPM",
             turbineLabels(),
             [safeSlice](const GlobalData& d) { return safeSlice(d.lastRPM); },
-            std::make_pair(-1, 13)
+            std::make_pair(-1, 20)
         },
         // -- Per-turbine generator torque ------------------------------------
         {

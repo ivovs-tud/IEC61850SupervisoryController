@@ -68,7 +68,7 @@ TURBINE_ORIENTATION_SIGN = 1.0
 INACTIVE_CURVE_ALPHA = 72
 ACTIVE_CURVE_ALPHA = 230
 SELECTED_CURVE_ALPHA = 255
-RATED_ROTOR_SPEED_RPM = 12.0
+RATED_ROTOR_SPEED_RPM = 14.0
 
 # Wind-farm map coordinates, ordered as T1, T2, T3, ...
 # Leave empty to auto-generate a compact grid from the turbine labels.
@@ -751,7 +751,7 @@ def _turbine_pen(turbine_id: str, local_speed: float, global_speed: float, width
 
 
 def _orientation_values_by_label(signals: list) -> dict[str, float]:
-    yaw_signal = _find_signal(signals, "Yaw Offset and Setpoints")
+    yaw_signal = _find_signal(signals, "Turbine Orientation and Setpoints")
     if yaw_signal is None:
         return {}
 
@@ -761,7 +761,7 @@ def _orientation_values_by_label(signals: list) -> dict[str, float]:
 
     for turbine in map_layout:
         label = str(turbine["label"])
-        orientations[label] = yaw_values.get(f"{label} Yaw Offset", yaw_values.get(label, 0.0))
+        orientations[label] = yaw_values.get(f"{label} Orientation", yaw_values.get(label, 0.0))
 
     return orientations
 

@@ -107,7 +107,7 @@ double yawAdjustedAvailablePower(const GlobalData& gds, int turbineIndex, uint64
     const double yawCos = std::max(0.0, std::cos(yawErrorDeg * kPi / 180.0));
     const double yawLoss = yawCos * yawCos * yawCos;
 
-    return aerodynamicPower * yawLoss;
+    return std::min(aerodynamicPower * yawLoss, GlobalData::ratedPower);
 }
 
 double linearRange(const History<double>& values)
