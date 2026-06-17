@@ -120,6 +120,9 @@ struct GlobalData
     bool alarmHorWdDirChg = false;
     bool alarmHorWdSpdChg = false;
     bool alarmTelemetryFreezeReplay = false;
+    bool alarmDrivetrainUnderResponse = false;
+    bool alarmStaticBounds = false;
+    bool alarmFleetPeerOutlier = false;
     std::vector<float> orientations = std::vector<float>(N_TURBINES, 0.0);
 
 
@@ -215,6 +218,9 @@ struct GlobalData
         alarmHorWdDirChg = false;
         alarmHorWdSpdChg = false;
         alarmTelemetryFreezeReplay = false;
+        alarmDrivetrainUnderResponse = false;
+        alarmStaticBounds = false;
+        alarmFleetPeerOutlier = false;
 
         simStarted = false;
         simConfigured = true;

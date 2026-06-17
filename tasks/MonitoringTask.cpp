@@ -72,9 +72,19 @@ float circularMeanDeg(const History<double>& values, std::size_t count)
     return normalizeAngleDeg(static_cast<float>(std::atan2(sinSum, cosSum) * 180.0 / kPi));
 }
 
+bool isRecent(uint64_t timestampMs, uint64_t currentMs, uint64_t timeoutMs)
+{
+    return timestampMs > 0 && timestampMs + timeoutMs >= currentMs;
+}
+
 double yawAdjustedAvailablePower(const GlobalData& gds, int turbineIndex, uint64_t currentMs)
 {
-    const double windSpeed = gds.lastWS[turbineIndex];
+    const double windSpeed = isRecent(gds.lastWS_t[turbineIndex], currentMs, 2000)
+        ? gds.lastWS[turbineIndex]
+        : static_cast<double>(gds.glob_ws_i);
+    const double windDirection = isRecent(gds.lastWD_t[turbineIndex], currentMs, 2000)
+        ? gds.lastWD[turbineIndex]
+        : static_cast<double>(gds.glob_wd_i);
     if (windSpeed < GlobalData::cutInWindSpeed || windSpeed >= GlobalData::cutOutWindSpeed) {
         return 0.0;
     }
@@ -92,7 +102,7 @@ double yawAdjustedAvailablePower(const GlobalData& gds, int turbineIndex, uint64
         ? gds.lastYawOffset[turbineIndex]
         : static_cast<double>(gds.TurbineYawSetpoints[turbineIndex]);
     const double yawErrorDeg = angularDistanceDeg(
-        static_cast<float>(gds.lastWD[turbineIndex]),
+        static_cast<float>(windDirection),
         static_cast<float>(yawAngle));
     const double yawCos = std::max(0.0, std::cos(yawErrorDeg * kPi / 180.0));
     const double yawLoss = yawCos * yawCos * yawCos;
@@ -126,30 +136,111 @@ double angularSpreadDeg(const History<double>& values)
     return spread;
 }
 
-bool isRecent(uint64_t timestampMs, uint64_t currentMs, uint64_t timeoutMs)
+bool isTurbineCommandedOff(const GlobalData& gds, int turbineIndex)
 {
-    return timestampMs > 0 && timestampMs + timeoutMs >= currentMs;
+    return gds.enableTurbine[turbineIndex] == 0 ||
+           gds.TurbineController[turbineIndex] == GlobalData::turbineControllerShutdown;
 }
 
-int countDynamicPeers(const TurbineHistory<double>& histories,
-                      int turbineIndex,
-                      std::size_t minSamples,
-                      double dynamicRange,
-                      bool angular)
+double effectiveYawAdjustedWindSpeed(const GlobalData& gds, int turbineIndex, uint64_t currentMs)
 {
-    int dynamicPeers = 0;
-    for (int peer = 0; peer < static_cast<int>(histories.size()); ++peer) {
-        if (peer == turbineIndex || histories[peer].size() < minSamples) {
-            continue;
-        }
+    const double windSpeed = isRecent(gds.lastWS_t[turbineIndex], currentMs, 2000)
+        ? gds.lastWS[turbineIndex]
+        : static_cast<double>(gds.glob_ws_i);
+    const double windDirection = isRecent(gds.lastWD_t[turbineIndex], currentMs, 2000)
+        ? gds.lastWD[turbineIndex]
+        : static_cast<double>(gds.glob_wd_i);
+    const bool yawMeasurementRecent =
+        isRecent(gds.lastYawOffset_t[turbineIndex], currentMs, 2000);
+    const double yawAngle = yawMeasurementRecent
+        ? gds.lastYawOffset[turbineIndex]
+        : static_cast<double>(gds.TurbineYawSetpoints[turbineIndex]);
+    const double yawErrorDeg = angularDistanceDeg(
+        static_cast<float>(windDirection),
+        static_cast<float>(yawAngle));
+    const double yawCos = std::max(0.0, std::cos(yawErrorDeg * kPi / 180.0));
+    return std::max(0.0, windSpeed * yawCos);
+}
 
-        const double range = angular ? angularSpreadDeg(histories[peer])
-                                     : linearRange(histories[peer]);
-        if (range > dynamicRange) {
-            ++dynamicPeers;
-        }
+bool expectedPowerForController(const GlobalData& gds,
+                                int turbineIndex,
+                                uint64_t currentMs,
+                                double& expectedPower,
+                                double& yawAdjustedPower)
+{
+    expectedPower = 0.0;
+    yawAdjustedPower = 0.0;
+
+    if (isTurbineCommandedOff(gds, turbineIndex)) {
+        return true;
     }
-    return dynamicPeers;
+
+    yawAdjustedPower = yawAdjustedAvailablePower(gds, turbineIndex, currentMs);
+    if (gds.TurbineController[turbineIndex] == GlobalData::turbineControllerKomega2) {
+        expectedPower = yawAdjustedPower;
+        return true;
+    }
+
+    if (gds.TurbinePowerSetpoints[turbineIndex] < 0.0f) {
+        return false;
+    }
+
+    expectedPower = std::min(
+        static_cast<double>(gds.TurbinePowerSetpoints[turbineIndex]),
+        yawAdjustedPower);
+    return true;
+}
+
+double expectedRotorSpeedRpm(const GlobalData& gds, int turbineIndex, uint64_t currentMs)
+{
+    const double effectiveWindSpeed = effectiveYawAdjustedWindSpeed(gds, turbineIndex, currentMs);
+    if (effectiveWindSpeed < GlobalData::cutInWindSpeed ||
+        effectiveWindSpeed >= GlobalData::cutOutWindSpeed) {
+        return 0.0;
+    }
+
+    const double rotorRadius = GlobalData::rotorDiameter / 2.0;
+    const double rotorSpeedRadPerSec =
+        GlobalData::optimalTipSpeedRatio * effectiveWindSpeed / rotorRadius;
+    const double rotorSpeedRpm = rotorSpeedRadPerSec * 60.0 / (2.0 * kPi);
+    const double minimumRotorSpeedRpm = GlobalData::minimumRotorSpeed * 60.0 / (2.0 * kPi);
+    return std::clamp(rotorSpeedRpm, minimumRotorSpeedRpm, GlobalData::ratedRotorSpeed);
+}
+
+double expectedGeneratorTorqueNm(double expectedPower, double expectedRotorSpeedRpm)
+{
+    const double rotorSpeedRadPerSec = expectedRotorSpeedRpm * 2.0 * kPi / 60.0;
+    if (expectedPower <= 0.0 || rotorSpeedRadPerSec <= 0.0) {
+        return 0.0;
+    }
+
+    const double torque =
+        expectedPower /
+        (GlobalData::generatorEfficiency * rotorSpeedRadPerSec * GlobalData::gearboxRatio);
+    return std::clamp(torque, 0.0, GlobalData::maximumGeneratorTorque);
+}
+
+double medianAbsoluteDeviation(std::vector<double> values, double center)
+{
+    for (double& value : values) {
+        value = std::abs(value - center);
+    }
+    return median(std::move(values));
+}
+
+enum FreezeSignalIndex
+{
+    FreezeWindSpeed = 0,
+    FreezeWindDirection = 1,
+    FreezeYaw = 2,
+    FreezeRpm = 3,
+    FreezePower = 4,
+    FreezeTorque = 5,
+};
+
+void resetFreezeTimers(std::array<uint64_t, 6>& timers)
+{
+    timers.fill(0);
 }
 }
 
@@ -167,7 +258,12 @@ MonitoringTask::MonitoringTask(std::chrono::milliseconds period) : PeriodicTask(
     last_expected_power = std::vector<double>(N_TURBINES, -1.0);
     wind_speed_change_strike_count = std::vector<int>(N_TURBINES, 0);
     wind_direction_change_strike_count = std::vector<int>(N_TURBINES, 0);
-    telemetry_freeze_suspicion_start_time = std::vector<uint64_t>(N_TURBINES, 0);
+    telemetry_freeze_suspicion_start_time = std::vector<std::array<uint64_t, 6>>(N_TURBINES);
+    for (auto& timers : telemetry_freeze_suspicion_start_time) {
+        resetFreezeTimers(timers);
+    }
+    drivetrain_under_response_start_time = std::vector<uint64_t>(N_TURBINES, 0);
+    fleet_peer_outlier_start_time = std::vector<uint64_t>(N_TURBINES, 0);
 }
 
 void MonitoringTask::execute() {
@@ -185,6 +281,9 @@ void MonitoringTask::execute() {
     gds.alarmHorWdDirChg |= checkConsistencyWindDirectionChange();
     gds.alarmHorWdSpdChg |= checkConsistencyWindSpeedChange();
     gds.alarmTelemetryFreezeReplay |= checkConsistencyTelemetryFreezeReplay();
+    gds.alarmDrivetrainUnderResponse |= checkConsistencyDrivetrainUnderResponse();
+    gds.alarmStaticBounds |= checkStaticTelemetryBounds();
+    gds.alarmFleetPeerOutlier |= checkConsistencyFleetPeerOutlier();
 
     // TODO: implement reset mechanisms
     uint64_t current_ms = getCurrentTimeMs();
@@ -197,6 +296,9 @@ void MonitoringTask::execute() {
         gds.alarmHorWdDirChg = false;
         gds.alarmHorWdSpdChg = false;
         gds.alarmTelemetryFreezeReplay = false;
+        gds.alarmDrivetrainUnderResponse = false;
+        gds.alarmStaticBounds = false;
+        gds.alarmFleetPeerOutlier = false;
         last_reset_ms = current_ms;
     }
 }
@@ -247,39 +349,12 @@ bool MonitoringTask::checkConsistencyMeasuredPowerVsExpected() {
             gds.lastPower_t[i] > 0 &&
             gds.lastPower_t[i] >= current_ms - power_measurement_timeout_ms;
 
-        const bool turbineCommandedOff =
-            gds.enableTurbine[i] == 0 ||
-            gds.TurbineController[i] == GlobalData::turbineControllerShutdown;
-
-        if (!hasRecentPowerMeasurement ||
-            (!turbineCommandedOff &&
-             gds.TurbineController[i] != GlobalData::turbineControllerKomega2 &&
-             gds.TurbinePowerSetpoints[i] < 0.0f)) {
+        double expectedPower = 0.0;
+        double yawAdjustedPower = 0.0;
+        if (!expectedPowerForController(gds, static_cast<int>(i), current_ms, expectedPower, yawAdjustedPower)) {
             power_tracking_mismatch_start_time[i] = 0;
             last_expected_power[i] = -1.0;
             continue;
-        }
-
-        const bool hasRecentWindMeasurement =
-            gds.lastWS_t[i] > 0 &&
-            gds.lastWS_t[i] >= current_ms - power_measurement_timeout_ms;
-
-        double expectedPower = 0.0;
-        if (!turbineCommandedOff) {
-            if (!hasRecentWindMeasurement) {
-                power_tracking_mismatch_start_time[i] = 0;
-                last_expected_power[i] = -1.0;
-                continue;
-            }
-
-            const double yawAdjustedPower = yawAdjustedAvailablePower(gds, static_cast<int>(i), current_ms);
-            if (gds.TurbineController[i] == GlobalData::turbineControllerKomega2) {
-                expectedPower = yawAdjustedPower;
-            } else {
-                expectedPower = std::min(
-                    static_cast<double>(gds.TurbinePowerSetpoints[i]),
-                    yawAdjustedPower);
-            }
         }
 
         const double tolerance = std::max(
@@ -291,7 +366,7 @@ bool MonitoringTask::checkConsistencyMeasuredPowerVsExpected() {
             last_expected_power[i] = expectedPower;
         }
 
-        const double measuredPower = gds.lastPower[i];
+        const double measuredPower = hasRecentPowerMeasurement ? gds.lastPower[i] : 0.0;
         const bool closeEnough = std::abs(measuredPower - expectedPower) <= tolerance;
 
         if (closeEnough) {
@@ -485,127 +560,333 @@ bool MonitoringTask::checkConsistencyTelemetryFreezeReplay() {
     const uint64_t current_ms = getCurrentTimeMs();
     bool alarm = false;
 
-    const int minDynamicPeers = 2;
-    const double peerWsDynamicRange = 0.15;
-    const double peerWdDynamicSpread = 1.0;
-    const double peerYawDynamicSpread = 1.0;
-    const double peerRpmDynamicRange = 0.05;
-    const double peerPowerDynamicRangeW = 2.0e4;
-    const double peerTorqueDynamicRangeNm = 200.0;
+    const auto updateFreezeTimer =
+        [&](int turbineIndex,
+            FreezeSignalIndex signal,
+            const History<double>& history,
+            uint64_t timestampMs,
+            double latestValue,
+            double minimumActiveValue,
+            double minimumExpectedRange,
+            bool angular) {
+            auto& signalStartTime =
+                telemetry_freeze_suspicion_start_time[turbineIndex][static_cast<std::size_t>(signal)];
 
-    for (auto i = 0; i < N_TURBINES; i++) {
-        const bool turbineCommandedOff =
-            gds.enableTurbine[i] == 0 ||
-            gds.TurbineController[i] == GlobalData::turbineControllerShutdown;
+            const bool enoughSamples = history.size() >= telemetry_freeze_window_samples;
+            const bool freshSignal =
+                isRecent(timestampMs, current_ms, telemetry_freeze_measurement_timeout_ms);
+            const bool activeSignal = latestValue > minimumActiveValue;
+            const double observedRange = angular ? angularSpreadDeg(history) : linearRange(history);
+            const bool frozenSignal =
+                enoughSamples && freshSignal && activeSignal &&
+                observedRange <= minimumExpectedRange;
 
-        if (turbineCommandedOff) {
-            telemetry_freeze_suspicion_start_time[i] = 0;
-            continue;
-        }
-
-        int flatChannels = 0;
-        int peerBackedFlatChannels = 0;
-        int frozenPlantChannels = 0;
-        bool frozenMetChannel = false;
-
-        const auto addEvidence = [&](bool frozen,
-                                     bool peerBacked,
-                                     bool isMetSignal,
-                                     bool isPlantSignal) {
-            if (!frozen) {
-                return;
+            if (!frozenSignal) {
+                signalStartTime = 0;
+                return false;
             }
 
-            ++flatChannels;
-            if (peerBacked) {
-                ++peerBackedFlatChannels;
+            if (signalStartTime == 0) {
+                signalStartTime = current_ms;
+                return false;
             }
-            if (isMetSignal) {
-                frozenMetChannel = true;
-            }
-            if (isPlantSignal) {
-                ++frozenPlantChannels;
-            }
+
+            return current_ms - signalStartTime >= telemetry_freeze_persistence_ms;
         };
 
-        const bool wsFrozen =
-            gds.wsHistory[i].size() >= telemetry_freeze_window_samples &&
-            isRecent(gds.lastWS_t[i], current_ms, telemetry_freeze_measurement_timeout_ms) &&
-            linearRange(gds.wsHistory[i]) <= telemetry_freeze_ws_range_ms;
-        addEvidence(
-            wsFrozen,
-            countDynamicPeers(gds.wsHistory, i, telemetry_freeze_window_samples, peerWsDynamicRange, false) >= minDynamicPeers,
-            true,
+    for (auto i = 0; i < N_TURBINES; i++) {
+        alarm |= updateFreezeTimer(
+            static_cast<int>(i),
+            FreezeWindSpeed,
+            gds.wsHistory[i],
+            gds.lastWS_t[i],
+            gds.lastWS[i],
+            0.0,
+            telemetry_freeze_ws_range_ms,
             false);
 
-        const bool wdFrozen =
-            gds.wdHistory[i].size() >= telemetry_freeze_window_samples &&
-            isRecent(gds.lastWD_t[i], current_ms, telemetry_freeze_measurement_timeout_ms) &&
-            angularSpreadDeg(gds.wdHistory[i]) <= telemetry_freeze_wd_range_deg;
-        addEvidence(
-            wdFrozen,
-            countDynamicPeers(gds.wdHistory, i, telemetry_freeze_window_samples, peerWdDynamicSpread, true) >= minDynamicPeers,
-            true,
+        alarm |= updateFreezeTimer(
+            static_cast<int>(i),
+            FreezeWindDirection,
+            gds.wdHistory[i],
+            gds.lastWD_t[i],
+            gds.lastWD[i],
+            0.0,
+            telemetry_freeze_wd_range_deg,
+            true);
+
+        alarm |= updateFreezeTimer(
+            static_cast<int>(i),
+            FreezeYaw,
+            gds.yawOffsetHistory[i],
+            gds.lastYawOffset_t[i],
+            gds.lastYawOffset[i],
+            0.0,
+            telemetry_freeze_yaw_range_deg,
+            true);
+
+        alarm |= updateFreezeTimer(
+            static_cast<int>(i),
+            FreezeRpm,
+            gds.rpmHistory[i],
+            gds.lastRPM_t[i],
+            gds.lastRPM[i],
+            0.0,
+            telemetry_freeze_rpm_range,
             false);
 
-        const bool yawFrozen =
-            gds.yawOffsetHistory[i].size() >= telemetry_freeze_window_samples &&
-            isRecent(gds.lastYawOffset_t[i], current_ms, telemetry_freeze_measurement_timeout_ms) &&
-            angularSpreadDeg(gds.yawOffsetHistory[i]) <= telemetry_freeze_yaw_range_deg;
-        addEvidence(
-            yawFrozen,
-            countDynamicPeers(gds.yawOffsetHistory, i, telemetry_freeze_window_samples, peerYawDynamicSpread, true) >= minDynamicPeers,
-            false,
+        alarm |= updateFreezeTimer(
+            static_cast<int>(i),
+            FreezePower,
+            gds.powerHistory[i],
+            gds.lastPower_t[i],
+            gds.lastPower[i],
+            0.0,
+            telemetry_freeze_power_range_w,
             false);
 
-        const bool rpmFrozen =
-            gds.rpmHistory[i].size() >= telemetry_freeze_window_samples &&
-            isRecent(gds.lastRPM_t[i], current_ms, telemetry_freeze_measurement_timeout_ms) &&
-            linearRange(gds.rpmHistory[i]) <= telemetry_freeze_rpm_range;
-        addEvidence(
-            rpmFrozen,
-            countDynamicPeers(gds.rpmHistory, i, telemetry_freeze_window_samples, peerRpmDynamicRange, false) >= minDynamicPeers,
-            false,
-            true);
+        alarm |= updateFreezeTimer(
+            static_cast<int>(i),
+            FreezeTorque,
+            gds.genTorqueHistory[i],
+            gds.lastGenTorque_t[i],
+            gds.lastGenTorque[i],
+            0.0,
+            telemetry_freeze_torque_range_nm,
+            false);
+    }
 
-        const bool powerFrozen =
-            gds.powerHistory[i].size() >= telemetry_freeze_window_samples &&
-            isRecent(gds.lastPower_t[i], current_ms, telemetry_freeze_measurement_timeout_ms) &&
-            linearRange(gds.powerHistory[i]) <= telemetry_freeze_power_range_w;
-        addEvidence(
-            powerFrozen,
-            countDynamicPeers(gds.powerHistory, i, telemetry_freeze_window_samples, peerPowerDynamicRangeW, false) >= minDynamicPeers,
-            false,
-            true);
+    return alarm;
+}
 
-        const bool torqueFrozen =
-            gds.genTorqueHistory[i].size() >= telemetry_freeze_window_samples &&
-            isRecent(gds.lastGenTorque_t[i], current_ms, telemetry_freeze_measurement_timeout_ms) &&
-            linearRange(gds.genTorqueHistory[i]) <= telemetry_freeze_torque_range_nm;
-        addEvidence(
-            torqueFrozen,
-            countDynamicPeers(gds.genTorqueHistory, i, telemetry_freeze_window_samples, peerTorqueDynamicRangeNm, false) >= minDynamicPeers,
-            false,
-            true);
+bool MonitoringTask::checkConsistencyDrivetrainUnderResponse() {
+    auto& gds = GlobalDataStructure::instance().data();
+    const uint64_t current_ms = getCurrentTimeMs();
+    bool alarm = false;
 
-        const bool suspiciousFreeze =
-            flatChannels >= 4 &&
-            frozenMetChannel &&
-            frozenPlantChannels >= 2 &&
-            (peerBackedFlatChannels >= 2 || flatChannels >= 5);
-
-        if (!suspiciousFreeze) {
-            telemetry_freeze_suspicion_start_time[i] = 0;
+    for (auto i = 0; i < N_TURBINES; i++) {
+        if (isTurbineCommandedOff(gds, static_cast<int>(i))) {
+            drivetrain_under_response_start_time[i] = 0;
             continue;
         }
 
-        if (telemetry_freeze_suspicion_start_time[i] == 0) {
-            telemetry_freeze_suspicion_start_time[i] = current_ms;
+        const bool hasRecentRpm =
+            isRecent(gds.lastRPM_t[i], current_ms, power_measurement_timeout_ms);
+        const bool hasRecentTorque =
+            isRecent(gds.lastGenTorque_t[i], current_ms, power_measurement_timeout_ms);
+
+        const double yawAdjustedPower = yawAdjustedAvailablePower(gds, static_cast<int>(i), current_ms);
+        if (yawAdjustedPower < drivetrain_min_aerodynamic_power_w) {
+            drivetrain_under_response_start_time[i] = 0;
             continue;
         }
 
-        if (current_ms - telemetry_freeze_suspicion_start_time[i] >= telemetry_freeze_persistence_ms) {
+        double expectedPower = 0.0;
+        if (gds.TurbineController[i] == GlobalData::turbineControllerKomega2) {
+            expectedPower = yawAdjustedPower;
+        } else if (gds.TurbinePowerSetpoints[i] >= 0.0f) {
+            expectedPower = std::min(
+                static_cast<double>(gds.TurbinePowerSetpoints[i]),
+                yawAdjustedPower);
+        }
+
+        const double expectedRpm = expectedRotorSpeedRpm(gds, static_cast<int>(i), current_ms);
+        const double aerodynamicTorque = expectedGeneratorTorqueNm(yawAdjustedPower, expectedRpm);
+        const double commandedTorque = expectedGeneratorTorqueNm(expectedPower, expectedRpm);
+        if (expectedRpm <= 0.0 || aerodynamicTorque <= 0.0) {
+            drivetrain_under_response_start_time[i] = 0;
+            continue;
+        }
+
+        const bool rpmCollapsed =
+            !hasRecentRpm ||
+            gds.lastRPM[i] < drivetrain_collapsed_rpm_fraction * expectedRpm;
+        const bool torqueCollapsed =
+            !hasRecentTorque ||
+            std::abs(gds.lastGenTorque[i]) < std::max(
+                drivetrain_collapsed_torque_nm,
+                drivetrain_collapsed_torque_fraction * aerodynamicTorque);
+        const bool aerodynamicCollapse = rpmCollapsed && torqueCollapsed;
+
+        const bool rpmTooLow =
+            !hasRecentRpm ||
+            gds.lastRPM[i] < drivetrain_rpm_low_fraction * expectedRpm;
+        const bool torqueTooLow =
+            expectedPower >= drivetrain_min_expected_power_w &&
+            commandedTorque > 0.0 &&
+            (!hasRecentTorque ||
+             gds.lastGenTorque[i] < drivetrain_torque_low_fraction * commandedTorque);
+        const bool underResponse = aerodynamicCollapse || rpmTooLow || torqueTooLow;
+
+        if (!underResponse) {
+            drivetrain_under_response_start_time[i] = 0;
+            continue;
+        }
+
+        if (drivetrain_under_response_start_time[i] == 0) {
+            drivetrain_under_response_start_time[i] = current_ms;
+            continue;
+        }
+
+        const uint64_t requiredGracePeriod = aerodynamicCollapse
+            ? drivetrain_aerodynamic_collapse_grace_period_ms
+            : drivetrain_under_response_grace_period_ms;
+        if (current_ms - drivetrain_under_response_start_time[i] >= requiredGracePeriod) {
             alarm = true;
+        }
+    }
+
+    return alarm;
+}
+
+bool MonitoringTask::checkStaticTelemetryBounds() {
+    auto& gds = GlobalDataStructure::instance().data();
+    const uint64_t current_ms = getCurrentTimeMs();
+    const auto freshValueOutOfBounds =
+        [&](uint64_t timestampMs, double value, double minValue, double maxValue) {
+            return isRecent(timestampMs, current_ms, static_bounds_measurement_timeout_ms) &&
+                   (value < minValue || value > maxValue);
+        };
+
+    for (auto i = 0; i < N_TURBINES; i++) {
+        if (freshValueOutOfBounds(
+                gds.lastWS_t[i],
+                gds.lastWS[i],
+                0.0,
+                static_bounds_wind_speed_max_ms)) {
+            return true;
+        }
+
+        if (freshValueOutOfBounds(gds.lastWD_t[i], gds.lastWD[i], 0.0, 360.0)) {
+            return true;
+        }
+
+        if (freshValueOutOfBounds(gds.lastYawOffset_t[i], gds.lastYawOffset[i], 0.0, 360.0)) {
+            return true;
+        }
+
+        const bool yawFresh =
+            isRecent(gds.lastYawOffset_t[i], current_ms, static_bounds_measurement_timeout_ms);
+        if (yawFresh &&
+            gds.glob_ws_i >= GlobalData::cutInWindSpeed &&
+            angularDistanceDeg(
+                static_cast<float>(gds.lastYawOffset[i]),
+                static_cast<float>(gds.glob_wd_i)) > static_bounds_orientation_window_deg) {
+            return true;
+        }
+
+        if (freshValueOutOfBounds(gds.lastRPM_t[i], gds.lastRPM[i], 0.0, static_bounds_rpm_max)) {
+            return true;
+        }
+
+        if (freshValueOutOfBounds(
+                gds.lastPower_t[i],
+                gds.lastPower[i],
+                static_bounds_power_min_w,
+                static_bounds_power_max_w)) {
+            return true;
+        }
+
+        if (freshValueOutOfBounds(
+                gds.lastGenTorque_t[i],
+                gds.lastGenTorque[i],
+                static_bounds_torque_min_nm,
+                static_bounds_torque_max_nm)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool MonitoringTask::checkConsistencyFleetPeerOutlier() {
+    auto& gds = GlobalDataStructure::instance().data();
+    const uint64_t current_ms = getCurrentTimeMs();
+    bool alarm = false;
+
+    int operatingTurbines = 0;
+    for (auto i = 0; i < N_TURBINES; i++) {
+        if (!isTurbineCommandedOff(gds, static_cast<int>(i))) {
+            ++operatingTurbines;
+        }
+    }
+
+    if (operatingTurbines < N_TURBINES || gds.connectedTurbines < N_TURBINES) {
+        std::fill(fleet_peer_outlier_start_time.begin(), fleet_peer_outlier_start_time.end(), 0);
+        return false;
+    }
+
+    std::vector<int> turbineIndices;
+    std::vector<double> powerRatios;
+    std::vector<double> rpmRatios;
+    turbineIndices.reserve(N_TURBINES);
+    powerRatios.reserve(N_TURBINES);
+    rpmRatios.reserve(N_TURBINES);
+
+    for (auto i = 0; i < N_TURBINES; i++) {
+        if (!isRecent(gds.lastPower_t[i], current_ms, power_measurement_timeout_ms) ||
+            !isRecent(gds.lastRPM_t[i], current_ms, power_measurement_timeout_ms)) {
+            continue;
+        }
+
+        double expectedPower = 0.0;
+        double yawAdjustedPower = 0.0;
+        if (!expectedPowerForController(gds, static_cast<int>(i), current_ms, expectedPower, yawAdjustedPower) ||
+            expectedPower < fleet_peer_min_expected_power_w) {
+            continue;
+        }
+
+        const double expectedRpm = expectedRotorSpeedRpm(gds, static_cast<int>(i), current_ms);
+        if (expectedRpm <= 0.0) {
+            continue;
+        }
+
+        turbineIndices.push_back(static_cast<int>(i));
+        powerRatios.push_back(gds.lastPower[i] / expectedPower);
+        rpmRatios.push_back(gds.lastRPM[i] / expectedRpm);
+    }
+
+    if (turbineIndices.size() < static_cast<std::size_t>(N_TURBINES - 2)) {
+        std::fill(fleet_peer_outlier_start_time.begin(), fleet_peer_outlier_start_time.end(), 0);
+        return false;
+    }
+
+    const double medianPowerRatio = median(powerRatios);
+    const double medianRpmRatio = median(rpmRatios);
+    const double powerMad = medianAbsoluteDeviation(powerRatios, medianPowerRatio);
+    const double rpmMad = medianAbsoluteDeviation(rpmRatios, medianRpmRatio);
+    const double powerThreshold = std::max(fleet_peer_power_ratio_threshold, 4.0 * powerMad);
+    const double rpmThreshold = std::max(fleet_peer_rpm_ratio_threshold, 4.0 * rpmMad);
+
+    std::vector<bool> hasMetric(N_TURBINES, false);
+    for (std::size_t k = 0; k < turbineIndices.size(); ++k) {
+        const int turbineIndex = turbineIndices[k];
+        hasMetric[turbineIndex] = true;
+
+        const bool powerOutlier =
+            std::abs(powerRatios[k] - medianPowerRatio) > powerThreshold;
+        const bool rpmOutlier =
+            std::abs(rpmRatios[k] - medianRpmRatio) > rpmThreshold;
+        const bool suspiciousOutlier = powerOutlier || rpmOutlier;
+
+        if (!suspiciousOutlier) {
+            fleet_peer_outlier_start_time[turbineIndex] = 0;
+            continue;
+        }
+
+        if (fleet_peer_outlier_start_time[turbineIndex] == 0) {
+            fleet_peer_outlier_start_time[turbineIndex] = current_ms;
+            continue;
+        }
+
+        if (current_ms - fleet_peer_outlier_start_time[turbineIndex] >= fleet_peer_outlier_grace_period_ms) {
+            alarm = true;
+        }
+    }
+
+    for (auto i = 0; i < N_TURBINES; i++) {
+        if (!hasMetric[i]) {
+            fleet_peer_outlier_start_time[i] = 0;
         }
     }
 

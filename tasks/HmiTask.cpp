@@ -325,6 +325,9 @@ void HmiTask::execute()
     bool alarmHorWdDirChg = false;
     bool alarmHorWdSpdChg = false;
     bool alarmTelemetryFreezeReplay = false;
+    bool alarmDrivetrainUnderResponse = false;
+    bool alarmStaticBounds = false;
+    bool alarmFleetPeerOutlier = false;
     int connectedTurbines = 0;
     bool yawSteeringEnabled = false;
     std::string yawSteeringCommandName;
@@ -349,6 +352,9 @@ void HmiTask::execute()
 		alarmHorWdDirChg = d.alarmHorWdDirChg;
         alarmHorWdSpdChg = d.alarmHorWdSpdChg;
         alarmTelemetryFreezeReplay = d.alarmTelemetryFreezeReplay;
+        alarmDrivetrainUnderResponse = d.alarmDrivetrainUnderResponse;
+        alarmStaticBounds = d.alarmStaticBounds;
+        alarmFleetPeerOutlier = d.alarmFleetPeerOutlier;
         connectedTurbines = d.connectedTurbines;
         yawSteeringEnabled = d.yawSteeringEnabled;
         yawSteeringCommandName = d.yawSteeringCommandName;
@@ -402,16 +408,19 @@ void HmiTask::execute()
         systemRunningColor = "amber";
     }
 
-    pk.pack_array(9);
+    pk.pack_array(12);
     pk.pack_array(3); pk.pack("System Running");    pk.pack(true);      pk.pack(systemRunningColor);
-    pk.pack_array(3); pk.pack("Power: Received vs Measured");    pk.pack(alarmWRecMeas); pk.pack("red");
-    pk.pack_array(3); pk.pack("Power: Measured vs Expected");    pk.pack(alarmPowerExpected); pk.pack("red");
-    pk.pack_array(3); pk.pack("Orientation Misalignment");  pk.pack(alarmOrientationMisalign); pk.pack("red");
-    pk.pack_array(3); pk.pack("Power vs Torque*RotorSpeed");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Direction Consistency");    pk.pack(alarmHorWdDir);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Direction Change");    pk.pack(alarmHorWdDirChg);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Wind Speed Change");    pk.pack(alarmHorWdSpdChg);  pk.pack("red");
-    pk.pack_array(3); pk.pack("Telemetry Freeze/Replay");    pk.pack(alarmTelemetryFreezeReplay);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Prec != Pmeas");    pk.pack(alarmWRecMeas); pk.pack("red");
+    pk.pack_array(3); pk.pack("Pmeas != Pexpected");    pk.pack(alarmPowerExpected); pk.pack("red");
+    pk.pack_array(3); pk.pack("Orientation");  pk.pack(alarmOrientationMisalign); pk.pack("red");
+    pk.pack_array(3); pk.pack("P != ω * Tgen");     pk.pack(alarmWTorqueRotSpd);  pk.pack("red");
+    pk.pack_array(3); pk.pack("WD Consistency");    pk.pack(alarmHorWdDir);  pk.pack("red");
+    pk.pack_array(3); pk.pack("WD Change");    pk.pack(alarmHorWdDirChg);  pk.pack("red");
+    pk.pack_array(3); pk.pack("WS Change");    pk.pack(alarmHorWdSpdChg);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Telemetry Freeze");    pk.pack(alarmTelemetryFreezeReplay);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Small ω/Tgen");    pk.pack(alarmDrivetrainUnderResponse);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Static Bounds");    pk.pack(alarmStaticBounds);  pk.pack("red");
+    pk.pack_array(3); pk.pack("Outliers");    pk.pack(alarmFleetPeerOutlier);  pk.pack("red");
 
     pk.pack_array(2);
     pk.pack(operationMode - 1);
