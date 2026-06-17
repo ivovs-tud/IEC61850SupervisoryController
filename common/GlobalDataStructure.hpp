@@ -57,7 +57,7 @@ struct GlobalData
     std::vector<uint64_t> lastGenTorque_t = std::vector<uint64_t>(N_TURBINES, 0); // timestamp of the last received gentorque measurement (UNIX time in seconds)
     // ── Measurement history buffers (last N_hist readings per turbine) ────────
     // Written by CommunicationTask, read by SignalProcessingTask, ControlTask
-    static constexpr int N_hist = 10;
+    static constexpr int N_hist = 20;
 
     TurbineHistory<double> wsHistory  = makeTurbineHistory<double>(N_TURBINES, N_hist);
     TurbineHistory<double> wdHistory  = makeTurbineHistory<double>(N_TURBINES, N_hist);
@@ -142,7 +142,7 @@ struct GlobalData
     static constexpr double rotorInertia = 4e6; // kg m^2
     static constexpr double gearboxRatio = 97.0;
     static constexpr double generatorEfficiency = 0.944;
-    static constexpr double ratedPower = 6e6; // W
+    static constexpr double ratedPower = 5.8e6; // W
     static constexpr double cutInWindSpeed = 3.0; // m/s
     static constexpr double ratedWindSpeed = 11.4; // m/s
     static constexpr double cutOutWindSpeed = 25.0; // m/s

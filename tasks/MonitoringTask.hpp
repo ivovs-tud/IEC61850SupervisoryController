@@ -32,8 +32,8 @@ protected:
     // Power tracking detector.
     const uint64_t power_tracking_grace_period_ms = 5000;
     const uint64_t power_measurement_timeout_ms = 2000;
-    const double power_tracking_absolute_tolerance_w = 5e5;
-    const double power_tracking_relative_tolerance = 0.05;
+    const double power_tracking_absolute_tolerance_w = 2e6;
+    const double power_tracking_relative_tolerance = 0.1;
     std::vector<uint64_t> power_tracking_mismatch_start_time;
     std::vector<double> last_expected_power;
     TurbineHistory<double> expected_power_history;

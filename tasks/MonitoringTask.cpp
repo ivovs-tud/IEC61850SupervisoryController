@@ -499,7 +499,7 @@ bool MonitoringTask::checkConsistencyWindDirection() {
     // Implementation for checking wind direction consistency
     auto& gds = GlobalDataStructure::instance().data();
     for (auto i = 0; i < N_TURBINES; i++) {
-        if (abs(gds.lastWD[i] - gds.glob_wd_i) > 90.0f) { // Placeholder threshold of 90 degrees
+        if (abs(gds.lastWD[i] - gds.glob_wd_i) > 25.0f) { // Placeholder threshold of 90 degrees
             return true;
         }
     }
