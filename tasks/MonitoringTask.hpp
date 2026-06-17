@@ -51,12 +51,12 @@ protected:
     const std::size_t telemetry_freeze_window_samples = 8;
     const uint64_t telemetry_freeze_persistence_ms = 1500;
     const uint64_t telemetry_freeze_measurement_timeout_ms = 3000;
-    const double telemetry_freeze_ws_range_ms = 0.03;
-    const double telemetry_freeze_wd_range_deg = 0.10;
-    const double telemetry_freeze_yaw_range_deg = 0.10;
-    const double telemetry_freeze_rpm_range = 0.02;
-    const double telemetry_freeze_power_range_w = 1000.0;
-    const double telemetry_freeze_torque_range_nm = 50.0;
+    const double telemetry_freeze_ws_range_ms = 0;
+    const double telemetry_freeze_wd_range_deg = 0;
+    const double telemetry_freeze_yaw_range_deg = 0;
+    const double telemetry_freeze_rpm_range = 0;
+    const double telemetry_freeze_power_range_w = 0.0;
+    const double telemetry_freeze_torque_range_nm = 0.0;
     std::vector<std::array<uint64_t, 6>> telemetry_freeze_suspicion_start_time;
 
     // Expected drivetrain response detector.

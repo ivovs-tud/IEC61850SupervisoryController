@@ -601,7 +601,7 @@ bool MonitoringTask::checkConsistencyTelemetryFreezeReplay() {
             gds.wsHistory[i],
             gds.lastWS_t[i],
             gds.lastWS[i],
-            0.0,
+            1.0,
             telemetry_freeze_ws_range_ms,
             false);
 
@@ -615,15 +615,15 @@ bool MonitoringTask::checkConsistencyTelemetryFreezeReplay() {
             telemetry_freeze_wd_range_deg,
             true);
 
-        alarm |= updateFreezeTimer(
-            static_cast<int>(i),
-            FreezeYaw,
-            gds.yawOffsetHistory[i],
-            gds.lastYawOffset_t[i],
-            gds.lastYawOffset[i],
-            0.0,
-            telemetry_freeze_yaw_range_deg,
-            true);
+        //alar/*m |= updateFreezeTimer(
+        //    static_cast<int>(i),
+        //    FreezeYaw,
+        //    gds.yawOffsetHistory[i],
+        //    gds.lastYawOffset_t[i],
+        //    gds.lastYawOffset[i],
+        //    0.0,
+        //    telemetry_freeze_yaw_range_deg,
+        //    true);*/
 
         alarm |= updateFreezeTimer(
             static_cast<int>(i),
@@ -631,7 +631,7 @@ bool MonitoringTask::checkConsistencyTelemetryFreezeReplay() {
             gds.rpmHistory[i],
             gds.lastRPM_t[i],
             gds.lastRPM[i],
-            0.0,
+            0.5,
             telemetry_freeze_rpm_range,
             false);
 
@@ -641,7 +641,7 @@ bool MonitoringTask::checkConsistencyTelemetryFreezeReplay() {
             gds.powerHistory[i],
             gds.lastPower_t[i],
             gds.lastPower[i],
-            0.0,
+            1000.0,
             telemetry_freeze_power_range_w,
             false);
 
@@ -651,7 +651,7 @@ bool MonitoringTask::checkConsistencyTelemetryFreezeReplay() {
             gds.genTorqueHistory[i],
             gds.lastGenTorque_t[i],
             gds.lastGenTorque[i],
-            0.0,
+            50.0,
             telemetry_freeze_torque_range_nm,
             false);
     }
