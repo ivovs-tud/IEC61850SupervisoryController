@@ -94,13 +94,29 @@ int main(int argc, char* argv[])
 
         std::cout << "Server running. Press Enter to stop.\n";
 
-        std::cin.get();
+        std::string ignoredLine;
+        std::getline(std::cin, ignoredLine);
+        std::cout << "Stop requested. Shutting down...\n";
 
-        hmiTask.stop();
-        controlTask.stop();
-        signalTask.stop();
-        // monitoringTask.stop();
-        commTask.stop();
+        auto stopStep = [](const char* name, auto&& stopFn) {
+            std::cout << "  stopping " << name << "..." << std::flush;
+            stopFn();
+            std::cout << " done\n";
+        };
+
+        hmiTask.requestStop();
+        controlTask.requestStop();
+        signalTask.requestStop();
+        monitoringTask.requestStop();
+
+        stopStep("HMI", [&]() { hmiTask.waitStopped(); });
+        stopStep("control", [&]() { controlTask.waitStopped(); });
+        stopStep("signal processing", [&]() { signalTask.waitStopped(); });
+        stopStep("monitoring", [&]() { monitoringTask.waitStopped(); });
+        stopStep("communication", [&]() { commTask.stop(); });
+        stopStep("data historian", [&]() { DataHistorian::instance().stopRun(); });
+
+        std::cout << "Shutdown complete.\n";
 
         return 0;
     } catch (const std::exception& ex) {

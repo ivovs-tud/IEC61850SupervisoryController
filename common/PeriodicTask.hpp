@@ -48,12 +48,24 @@ public:
     The running_ atomic boolean is used to signal the loop to stop when needed.
     */
 
+    // Signals the loop to stop without waiting for the worker thread.
+    void requestStop()
+    {
+        running_.store(false);
+    }
+
+    // Blocks until the worker thread exits after a stop request.
+    void waitStopped()
+    {
+        if (thread_.joinable())
+            thread_.join();
+    }
+
     // Signals the loop to stop and blocks until the worker thread exits.
     void stop()
     {
-        running_.store(false);
-        if (thread_.joinable())
-            thread_.join();
+        requestStop();
+        waitStopped();
     }
 
 protected:
