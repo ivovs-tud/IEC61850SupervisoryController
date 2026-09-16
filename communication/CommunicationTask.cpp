@@ -5,7 +5,9 @@
 #include "common/config.hpp"
 #include "common/util.hpp"
 
+#include <algorithm>
 #include <cstring>
+#include <utility>
 
 CommunicationOrchestrator::CommunicationOrchestrator(const CommConfig& config)
     : config_(config),
@@ -19,14 +21,25 @@ CommunicationOrchestrator::CommunicationOrchestrator(const CommConfig& config)
 {
     socketStatus_.store(COMM_DISCONNECTED);
     iecStatus_.store(COMM_DISCONNECTED);
+    socketWrapper_.setFailureHandler([this](const std::string& message) {
+        handleRuntimeFailure(message);
+    });
 }
 
-CommunicationOrchestrator::~CommunicationOrchestrator() = default;
-
-void CommunicationOrchestrator::init()
+CommunicationOrchestrator::~CommunicationOrchestrator()
 {
+    stop();
+}
+
+CommunicationOrchestrator::StartupResult CommunicationOrchestrator::init()
+{
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
+    if (initialized_) {
+        return {true, StartupStage::None, {}};
+    }
     if (iecWrapper_.init(config_.mms.turbines, config_.goose.networkInterface) != IEC_OK) {
         COMMTASK_ERR("IEC61850 init failed - check CommConfig::mms.turbines");
+        return {false, StartupStage::Initialization, "failed to initialize IEC 61850 wrapper"};
     }
 
     socketWrapper_.AttachOpServerCallback([this](const uint8_t* data, size_t length) {
@@ -112,6 +125,8 @@ void CommunicationOrchestrator::init()
     });
 
     createCommunicators();
+    initialized_ = true;
+    return {true, StartupStage::None, {}};
 }
 
 void CommunicationOrchestrator::createCommunicators()
@@ -121,51 +136,129 @@ void CommunicationOrchestrator::createCommunicators()
 
     for (size_t idx = 0; idx < config_.mms.turbines.size(); ++idx) {
         const int turbineId = static_cast<int>(idx) + 1;
-        communicators_.push_back(std::make_unique<IECCommunicator>(config_, turbineId, iecWrapper_, attackInterface_, attackInterfaceMutex_));
+        auto communicator = std::make_unique<IECCommunicator>(
+            config_, turbineId, iecWrapper_, attackInterface_, attackInterfaceMutex_);
+        communicator->setFailureHandler([this](const std::string& message) {
+            handleRuntimeFailure(message);
+        });
+        communicators_.push_back(std::move(communicator));
     }
 }
 
-bool CommunicationOrchestrator::start()
+CommunicationOrchestrator::StartupResult CommunicationOrchestrator::start()
 {
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
+    if (!initialized_) {
+        return {false, StartupStage::Initialization, "communication is not initialized"};
+    }
+    if (started_) {
+        return {false, StartupStage::AlreadyRunning, "communication is already running"};
+    }
+
     socketStatus_.store(COMM_CONNECTING);
     if (socketWrapper_.StartOperatorServer(config_.operatorServer.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start operator server on port " << config_.operatorServer.port);
-        return false;
+        rollbackStart(0);
+        return {false, StartupStage::OperatorServer, "failed to start operator server"};
     }
+    operatorStarted_ = true;
     if (socketWrapper_.StartAttackInterfaceServer(config_.attackInterface.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start attack interface server on port " << config_.attackInterface.port);
-        return false;
+        rollbackStart(0);
+        return {false, StartupStage::AttackInterface, "failed to start attack interface server"};
     }
+    attackStarted_ = true;
     if (socketWrapper_.StartDataHistorianServer(config_.dataHistorian.port) < tcpSOCKET_CONNECTED) {
         COMMTASK_ERR("Failed to start data historian server on port " << config_.dataHistorian.port);
-        return false;
+        rollbackStart(0);
+        return {false, StartupStage::DataHistorian, "failed to start data historian server"};
     }
+    dataHistorianStarted_ = true;
     socketStatus_.store(COMM_CONNECTED);
 
     iecStatus_.store(COMM_CONNECTING);
-    iecWrapper_.start();
-    iecStatus_.store(COMM_CONNECTED);
+    if (iecWrapper_.start() != IEC_OK) {
+        rollbackStart(0);
+        return {false, StartupStage::Iec, "failed to start IEC 61850 wrapper"};
+    }
+    iecStarted_ = true;
+    iecStatus_.store(
+        iecWrapper_.connectionStatus() == IEC_LINK_CONNECTED
+            ? COMM_CONNECTED
+            : COMM_CONNECTING);
 
-    for (auto& communicator : communicators_) {
-        communicator->start();
+    for (std::size_t index = 0; index < communicators_.size(); ++index) {
+        if (!communicators_[index]->start()) {
+            rollbackStart(index);
+            return {false, StartupStage::TurbineCommunicator,
+                    "failed to start IEC communicator for turbine " +
+                        std::to_string(index + 1)};
+        }
+        communicatorStartCount_ = index + 1;
     }
 
-    return true;
+    started_ = true;
+    return {true, StartupStage::None, {}};
 }
 
 void CommunicationOrchestrator::stop()
 {
-    for (auto& communicator : communicators_) {
-        communicator->stop();
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
+    rollbackStart(communicatorStartCount_);
+}
+
+void CommunicationOrchestrator::rollbackStart(std::size_t communicatorCount)
+{
+    const std::size_t count = std::min(communicatorCount, communicators_.size());
+    for (std::size_t index = count; index > 0; --index) {
+        communicators_[index - 1]->stop();
     }
+    communicatorStartCount_ = 0;
 
-    socketWrapper_.StopOperatorServer();
-    socketWrapper_.StopAttackInterfaceServer();
-    socketWrapper_.StopDataHistorianServer();
-    socketStatus_.store(COMM_DISCONNECTED);
-
-    iecWrapper_.stop();
+    if (iecStarted_ || initialized_) {
+        iecWrapper_.stop();
+        iecStarted_ = false;
+        initialized_ = false;
+    }
     iecStatus_.store(COMM_DISCONNECTED);
+
+    if (dataHistorianStarted_) {
+        socketWrapper_.StopDataHistorianServer();
+        dataHistorianStarted_ = false;
+    }
+    if (attackStarted_) {
+        socketWrapper_.StopAttackInterfaceServer();
+        attackStarted_ = false;
+    }
+    if (operatorStarted_) {
+        socketWrapper_.StopOperatorServer();
+        operatorStarted_ = false;
+    }
+    socketStatus_.store(COMM_DISCONNECTED);
+    started_ = false;
+}
+
+void CommunicationOrchestrator::setFailureHandler(FailureHandler handler)
+{
+    std::lock_guard<std::mutex> lock(failureHandlerMutex_);
+    failureHandler_ = std::move(handler);
+}
+
+void CommunicationOrchestrator::handleRuntimeFailure(const std::string& message)
+{
+    if (message.rfind("IEC ", 0) == 0) {
+        iecStatus_.store(COMM_DISCONNECTED);
+    } else {
+        socketStatus_.store(COMM_DISCONNECTED);
+    }
+    FailureHandler handler;
+    {
+        std::lock_guard<std::mutex> lock(failureHandlerMutex_);
+        handler = failureHandler_;
+    }
+    if (handler) {
+        handler(message);
+    }
 }
 
 std::vector<CommunicationOrchestrator::CommunicatorState> CommunicationOrchestrator::communicatorStates() const
@@ -185,5 +278,15 @@ CommStatus CommunicationOrchestrator::socketStatus() const
 
 CommStatus CommunicationOrchestrator::iecStatus() const
 {
-    return iecStatus_.load();
+    if (iecStatus_.load() == COMM_DISCONNECTED) {
+        return COMM_DISCONNECTED;
+    }
+    const IecConnectionStatus status = iecWrapper_.connectionStatus();
+    if (status == IEC_LINK_CONNECTED) {
+        return COMM_CONNECTED;
+    }
+    if (status == IEC_LINK_ERROR || status == IEC_LINK_CLOSED) {
+        return COMM_DISCONNECTED;
+    }
+    return COMM_CONNECTING;
 }

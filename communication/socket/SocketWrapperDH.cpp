@@ -1,9 +1,9 @@
 #include "SocketWrapper.hpp"
-#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
 #include <thread>
 #include <chrono>
 
@@ -104,7 +104,7 @@ void SocketWrapper::DataHistorianServer::execute() {
     if (ready < 0) {
         SOCKET_DH_ERR("poll failed: " << socket_strerror());
         status_.store(tcpSOCKET_ERROR);
-        return;
+        throw std::runtime_error("data historian socket poll failed");
     }
 
     // Check for client timeouts based on last packet received.
@@ -144,7 +144,7 @@ void SocketWrapper::DataHistorianServer::acceptNewClients() {
             if (socket_would_block()) break;
             SOCKET_DH_ERR("accept failed: " << socket_strerror());
             status_.store(tcpSOCKET_ERROR);
-            break;
+            throw std::runtime_error("data historian socket accept failed");
         }
 
         if (!socket_set_nonblocking(clientFd)) {

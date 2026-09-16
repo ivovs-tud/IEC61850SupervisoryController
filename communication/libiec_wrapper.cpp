@@ -14,6 +14,11 @@ extern "C" {
 
 IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines, std::string networkInterface)
 {
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
+    if (initialized_) {
+        LIBIEC_ERR("init(): wrapper is already initialized");
+        return IEC_ERROR;
+    }
     if (turbines.empty()) {
         LIBIEC_ERR("init(): turbines vector is empty");
         return IEC_ERROR;
@@ -24,6 +29,10 @@ IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines,
 
     // GOOSE Creation
     gooseReceiver = GooseReceiver_create();
+    if (!gooseReceiver) {
+        LIBIEC_ERR("init(): failed to create GOOSE receiver");
+        return IEC_ERROR;
+    }
     GooseReceiver_setInterfaceId(gooseReceiver, networkInterface.c_str());
 
     // Subscribe to GOOSE messages for each turbine and reference
@@ -34,13 +43,26 @@ IECReturnCode libiec_wrapper::init(const std::vector<TurbineEndpoint>& turbines,
     });
 
     
+    initialized_ = true;
     LIBIEC_ST("registered " << turbines.size() << " turbine(s)");
     return IEC_OK;
 }
 
 // ── start / stop ─────────────────────────────────────────────────────────
 
-void libiec_wrapper::start() { 
+libiec_wrapper::~libiec_wrapper() {
+    stop();
+}
+
+IECReturnCode libiec_wrapper::start() {
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
+    if (!initialized_) {
+        LIBIEC_ERR("start(): wrapper is not initialized");
+        return IEC_ERROR;
+    }
+    if (started_) {
+        return IEC_OK;
+    }
     // Connect every registered turbine so link intent is set for all and
     // IEC61850Manager::ensureConnected can auto-reconnect during operation.
     manager_.connectAll();
@@ -61,12 +83,28 @@ void libiec_wrapper::start() {
     // } else {
     //     std::cout << "[libiec_wrapper] GooseReceiver started successfully\n";
     // }
+    started_ = true;
+    return IEC_OK;
 }
-void libiec_wrapper::stop()  { 
-    GooseReceiver_stop(gooseReceiver);
+void libiec_wrapper::stop()  {
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
+    if (!initialized_) {
+        return;
+    }
+    if (gooseReceiver) {
+        if (GooseReceiver_isRunning(gooseReceiver)) {
+            GooseReceiver_stop(gooseReceiver);
+        }
+        GooseReceiver_destroy(gooseReceiver);
+        gooseReceiver = nullptr;
+    }
+    manager_.disconnectAll();
+    started_ = false;
+    initialized_ = false;
+}
 
-    GooseReceiver_destroy(gooseReceiver);
-    manager_.disconnectAll(); 
+IecConnectionStatus libiec_wrapper::connectionStatus() const {
+    return manager_.status();
 }
 
 IECReturnCode libiec_wrapper::startGooseSubscription(int turbineId, const std::string& daReference, GooseCallback callback) {

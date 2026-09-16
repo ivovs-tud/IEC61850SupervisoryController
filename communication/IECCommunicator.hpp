@@ -29,8 +29,9 @@ public:
                              std::mutex& attackInterfaceMutex);
     ~IECCommunicator();
 
-    void start();
+    bool start();
     void stop();
+    void setFailureHandler(PeriodicTask::FailureHandler handler);
 
     int turbineId() const { return turbineId_; }
     CommStatus status() const { return iecStatus_.load(); }
@@ -114,6 +115,7 @@ private:
     void startReporting();
     void stopReporting();
     void handleReportValues(int turbineId, const std::vector<IecReportValue>& values);
+    void handleWorkerFailure(const char* workerName, const std::string& message);
     std::vector<std::string> reportFallbackReferences() const;
     std::optional<size_t> findRxDescriptorByReference(const std::string& reference) const;
 
@@ -138,6 +140,10 @@ private:
     std::vector<std::optional<BufferedRxMeasurement>> reportRxBuffer_;
     std::mutex reportRxBufferMutex_;
     std::atomic<bool> reportStarted_ {false};
+    bool started_ {false};
+    std::mutex lifecycleMutex_;
+    PeriodicTask::FailureHandler failureHandler_;
+    std::mutex failureHandlerMutex_;
 
     static const RxDescriptor RX_DESCRIPTORS[];
     static const TxDescriptor TX_DESCRIPTORS[];

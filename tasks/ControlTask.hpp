@@ -19,6 +19,7 @@ public:
     };
 
     explicit ControlTask(Config config);
+    ~ControlTask() override { stop(); }
 
 protected:
     void execute() override;

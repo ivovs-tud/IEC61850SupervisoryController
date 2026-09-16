@@ -1,10 +1,13 @@
+#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 using namespace std::chrono_literals;
@@ -22,12 +25,46 @@ using namespace std::chrono_literals;
 #include "tasks/SignalProcessingTask.hpp"
 
 #ifdef PLATFORM_WINDOWS
+#include <conio.h>
 #include <windows.h>
 #include <mmsystem.h>
 #pragma comment(lib, "winmm")
+#else
+#include <poll.h>
+#include <unistd.h>
 #endif
 
 namespace {
+
+volatile std::sig_atomic_t signalShutdownRequested = 0;
+
+void handleShutdownSignal(int) {
+    signalShutdownRequested = 1;
+}
+
+bool consoleStopRequested() {
+#ifdef PLATFORM_WINDOWS
+    if (_kbhit() == 0) {
+        return false;
+    }
+    const int character = _getch();
+    return character == '\r' || character == '\n';
+#else
+    pollfd descriptor{};
+    descriptor.fd = STDIN_FILENO;
+    descriptor.events = POLLIN;
+    const int result = ::poll(&descriptor, 1, 0);
+    if (result <= 0) {
+        return false;
+    }
+    if ((descriptor.revents & POLLIN) != 0) {
+        std::string ignoredLine;
+        std::getline(std::cin, ignoredLine);
+        return true;
+    }
+    return (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0;
+#endif
+}
 
 struct CliOptions {
     std::optional<std::filesystem::path> configPath;
@@ -106,6 +143,8 @@ CommConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& runtime) {
 
 int main(int argc, char* argv[]) {
     enableWindowsConsoleColors();
+    std::signal(SIGINT, handleShutdownSignal);
+    std::signal(SIGTERM, handleShutdownSignal);
 
 #ifdef _WIN32
     struct WinTimerResolutionGuard {
@@ -157,25 +196,83 @@ int main(int argc, char* argv[]) {
         SignalProcessingTask signalTask(runtime.tasks.signalProcessingPeriod);
         MonitoringTask monitoringTask(runtime.tasks.monitoringPeriod, numTurbines);
         CommunicationOrchestrator commTask(communicationConfig);
-        commTask.init();
+
+        std::atomic<bool> shutdownRequested{false};
+        std::atomic<bool> criticalFailureOccurred{false};
+        auto criticalFailureHandler = [&](std::string taskName) {
+            return [&, taskName = std::move(taskName)](const std::string& message) {
+                std::cerr << "Critical " << taskName << " failure: " << message << '\n';
+                criticalFailureOccurred.store(true);
+                shutdownRequested.store(true);
+            };
+        };
+        hmiTask.setFailureHandler([](const std::string& message) {
+            std::cerr << "Optional HMI task stopped after failure: " << message << '\n';
+        });
+        controlTask.setFailureHandler(criticalFailureHandler("control task"));
+        signalTask.setFailureHandler(criticalFailureHandler("signal-processing task"));
+        monitoringTask.setFailureHandler(criticalFailureHandler("monitoring task"));
+        commTask.setFailureHandler(criticalFailureHandler("communication subsystem"));
+
+        const auto initResult = commTask.init();
+        if (!initResult) {
+            throw std::runtime_error(initResult.message);
+        }
 
         DataHistorian::instance().configure(
             runtime.historian.experimentName,
             runtime.historian.outputDirectory,
             runtime.historian.flushEvery,
             runtime.historian.flushPeriod);
-        DataHistorian::instance().start();
+        bool historianStarted = false;
+        try {
+            DataHistorian::instance().start();
+            historianStarted = true;
 
-        hmiTask.start();
-        controlTask.start();
-        signalTask.start();
-        monitoringTask.start();
-        commTask.start();
+            if (!hmiTask.start()) {
+                std::cerr << "HMI unavailable; controller will continue without it: "
+                          << hmiTask.failureMessage() << '\n';
+            }
+            if (!controlTask.start()) {
+                throw std::runtime_error(
+                    "control task failed to start: " + controlTask.failureMessage());
+            }
+            if (!signalTask.start()) {
+                throw std::runtime_error(
+                    "signal-processing task failed to start: " + signalTask.failureMessage());
+            }
+            if (!monitoringTask.start()) {
+                throw std::runtime_error(
+                    "monitoring task failed to start: " + monitoringTask.failureMessage());
+            }
+            const auto communicationStart = commTask.start();
+            if (!communicationStart) {
+                throw std::runtime_error(communicationStart.message);
+            }
+        } catch (...) {
+            hmiTask.requestStop();
+            controlTask.requestStop();
+            signalTask.requestStop();
+            monitoringTask.requestStop();
+            hmiTask.waitStopped();
+            controlTask.waitStopped();
+            signalTask.waitStopped();
+            monitoringTask.waitStopped();
+            commTask.stop();
+            if (historianStarted) {
+                DataHistorian::instance().stopRun();
+            }
+            throw;
+        }
 
         std::cout << "SCADA system running with " << numTurbines << " turbines. Press Enter to stop.\n";
-
-        std::string ignoredLine;
-        std::getline(std::cin, ignoredLine);
+        while (!shutdownRequested.load() && signalShutdownRequested == 0) {
+            if (consoleStopRequested()) {
+                shutdownRequested.store(true);
+                break;
+            }
+            std::this_thread::sleep_for(50ms);
+        }
         std::cout << "Stop requested. Shutting down...\n";
 
         auto stopStep = [](const char* name, auto&& stopFn) {
@@ -197,7 +294,7 @@ int main(int argc, char* argv[]) {
         stopStep("data historian", [&]() { DataHistorian::instance().stopRun(); });
 
         std::cout << "Shutdown complete.\n";
-        return 0;
+        return criticalFailureOccurred.load() ? 1 : 0;
     } catch (const std::exception& ex) {
         std::cerr << "Failed to start supervisory controller: " << ex.what() << '\n';
         printUsage(argv[0]);

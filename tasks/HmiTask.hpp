@@ -64,6 +64,7 @@ class HmiTask : public PeriodicTask
 public:
     explicit HmiTask(HmiConfig                  config = defaultHmiConfig(),
                      std::chrono::milliseconds  period = std::chrono::milliseconds(100));
+    ~HmiTask() override { stop(); }
 
 protected:
     void onStart() override;

@@ -1,5 +1,4 @@
 #include "SocketWrapper.hpp"
-#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>

@@ -4,6 +4,7 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <mutex>
 #include <variant>
 
 
@@ -99,7 +100,7 @@ class libiec_wrapper
 {
 public:
     libiec_wrapper()  = default;
-    ~libiec_wrapper() = default;
+    ~libiec_wrapper();
 
     IECReturnCode init(const std::vector<TurbineEndpoint>& turbines, std::string networkInterface = "eth0");
     /**
@@ -108,11 +109,13 @@ public:
      * @return IEC_OK on success, IEC_ERROR if the vector is empty.
      */
 
-    void start();
+    IECReturnCode start();
     /** @brief Connect to all registered turbines. */
 
     void stop();
     /** @brief Disconnect from all registered turbines. */
+
+    IecConnectionStatus connectionStatus() const;
 
     IECReturnCode startGooseSubscription(int turbineId, const std::string& daReference, GooseCallback callback);
     /**
@@ -273,4 +276,7 @@ public:
 private:
     IEC61850Manager manager_;
     GooseReceiver gooseReceiver {nullptr};
+    std::mutex lifecycleMutex_;
+    bool initialized_ {false};
+    bool started_ {false};
 };

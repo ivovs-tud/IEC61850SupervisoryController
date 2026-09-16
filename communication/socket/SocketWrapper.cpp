@@ -1,12 +1,8 @@
 #include "SocketWrapper.hpp"
-#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>
 #include <cstring>
-#include <thread>
-#include <chrono>
-
 SocketWrapper::SocketWrapper() : lastActivityTime_(std::chrono::system_clock::now()) {}
 
 tcpSocketStatus SocketWrapper::StartOperatorServer(int port) {
@@ -19,9 +15,17 @@ tcpSocketStatus SocketWrapper::StartOperatorServer(int port) {
         return tcpSOCKET_ERROR;
     }
     opServer_.setPort(port);
-    opServer_.start();
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    return opServer_.status();
+    try {
+        if (!opServer_.start() || opServer_.status() < tcpSOCKET_CONNECTED) {
+            opServer_.stop();
+            return tcpSOCKET_ERROR;
+        }
+    } catch (const std::exception& error) {
+        SOCKET_OP_ERR("Failed to start operator server: " << error.what());
+        opServer_.stop();
+        return tcpSOCKET_ERROR;
+    }
+    return tcpSOCKET_CONNECTED;
 }
 
 tcpSocketStatus SocketWrapper::StopOperatorServer() {
@@ -47,9 +51,17 @@ tcpSocketStatus SocketWrapper::StartAttackInterfaceServer(int port) {
         return tcpSOCKET_ERROR;
     }
     attackServer_.setPort(port);
-    attackServer_.start();
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    return attackServer_.status();
+    try {
+        if (!attackServer_.start() || attackServer_.status() < tcpSOCKET_CONNECTED) {
+            attackServer_.stop();
+            return tcpSOCKET_ERROR;
+        }
+    } catch (const std::exception& error) {
+        SOCKET_AT_ERR("Failed to start attack interface server: " << error.what());
+        attackServer_.stop();
+        return tcpSOCKET_ERROR;
+    }
+    return tcpSOCKET_CONNECTED;
 }
 
 tcpSocketStatus SocketWrapper::StopAttackInterfaceServer() {
@@ -86,6 +98,18 @@ bool SocketWrapper::send(const uint8_t* data, std::size_t size) {
     return attackServer_.txData(data, size);
 }
 
+void SocketWrapper::setFailureHandler(PeriodicTask::FailureHandler handler) {
+    opServer_.setFailureHandler([handler](const std::string& message) {
+        if (handler) handler("operator server: " + message);
+    });
+    attackServer_.setFailureHandler([handler](const std::string& message) {
+        if (handler) handler("attack interface server: " + message);
+    });
+    dataHistorianServer_.setFailureHandler([handler](const std::string& message) {
+        if (handler) handler("data historian server: " + message);
+    });
+}
+
 void SocketWrapper::AttachDataHistorianCallback(DataHistorianCallback callback) {
     dataHistorianServer_.setCallback(std::move(callback));
 }
@@ -101,9 +125,18 @@ tcpSocketStatus SocketWrapper::StartDataHistorianServer(int port) {
     }
 
     dataHistorianServer_.setPort(port);
-    dataHistorianServer_.start();
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    return dataHistorianServer_.status();
+    try {
+        if (!dataHistorianServer_.start() ||
+            dataHistorianServer_.status() < tcpSOCKET_CONNECTED) {
+            dataHistorianServer_.stop();
+            return tcpSOCKET_ERROR;
+        }
+    } catch (const std::exception& error) {
+        SOCKET_DH_ERR("Failed to start data historian server: " << error.what());
+        dataHistorianServer_.stop();
+        return tcpSOCKET_ERROR;
+    }
+    return tcpSOCKET_CONNECTED;
 }
 
 tcpSocketStatus SocketWrapper::StopDataHistorianServer() {

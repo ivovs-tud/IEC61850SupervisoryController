@@ -9,6 +9,7 @@ class SignalProcessingTask : public PeriodicTask
 {
 public:
     explicit SignalProcessingTask(std::chrono::milliseconds period = std::chrono::milliseconds(1));
+    ~SignalProcessingTask() override { stop(); }
 
     void init();
 

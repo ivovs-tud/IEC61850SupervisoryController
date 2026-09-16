@@ -129,7 +129,7 @@ public:
     void disconnectAll();
     /** @brief Disconnect from all registered turbines. */
 
-    IecConnectionStatus status();
+    IecConnectionStatus status() const;
     /** 
      *  @brief Checks the connection status of all turbines. 
      *  Returns the 'least' code found for any turbine.  
@@ -355,5 +355,5 @@ private:
     // turbine entries are protected by their own TurbineConnection::mutex.
     std::map<int, TurbineConnection> turbines_;
     std::map<std::string, std::unique_ptr<ReportSubscription>> reportSubscriptions_;
-    std::mutex                       mapMutex_;
+    mutable std::mutex               mapMutex_;
 };

@@ -95,6 +95,21 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+add_executable(sc_periodic_task_tests
+    unit/PeriodicTaskTests.cpp
+)
+
+target_link_libraries(sc_periodic_task_tests PRIVATE
+    Catch2::Catch2WithMain
+    common
+)
+
+catch_discover_tests(
+    sc_periodic_task_tests
+    TEST_PREFIX "sc.periodic_task."
+    DISCOVERY_MODE PRE_TEST
+)
+
 add_test(
     NAME sc.python_legacy_protocol
     COMMAND ${Python3_EXECUTABLE} -m unittest discover

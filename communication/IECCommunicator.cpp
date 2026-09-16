@@ -5,6 +5,7 @@
 
 #include <cstring>
 #include <algorithm>
+#include <utility>
 
 const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
     { "V",       "m/s", IEC_STRINGS::WS_MEAS,    "WMET1$MX$HorWdSpd", &libiec_wrapper::rxWindSpeed,     AttackInterface::TX_WS,  &GlobalData::lastWS,        &GlobalData::wsHistory,        &GlobalData::lastWS_t,        500 },
@@ -39,6 +40,12 @@ IECCommunicator::IECCommunicator(const CommConfig& config,
       txNextExecutionTimes_(std::size(TX_DESCRIPTORS), 0),
       reportRxBuffer_(std::size(RX_DESCRIPTORS))
 {
+    rxTask_.setFailureHandler([this](const std::string& message) {
+        handleWorkerFailure("RX", message);
+    });
+    txTask_.setFailureHandler([this](const std::string& message) {
+        handleWorkerFailure("TX", message);
+    });
 }
 
 IECCommunicator::~IECCommunicator()
@@ -52,21 +59,65 @@ std::chrono::system_clock::time_point IECCommunicator::lastActivityTime() const
     return lastActivityTime_;
 }
 
-void IECCommunicator::start()
+bool IECCommunicator::start()
 {
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
+    if (started_) {
+        return false;
+    }
     iecStatus_.store(COMM_CONNECTING);
     startReporting();
-    rxTask_.start();
-    txTask_.start();
+    if (!rxTask_.start()) {
+        stopReporting();
+        iecStatus_.store(COMM_DISCONNECTED);
+        return false;
+    }
+    if (!txTask_.start()) {
+        rxTask_.stop();
+        stopReporting();
+        iecStatus_.store(COMM_DISCONNECTED);
+        return false;
+    }
+    if (!rxTask_.isRunning() || !txTask_.isRunning()) {
+        txTask_.stop();
+        rxTask_.stop();
+        stopReporting();
+        iecStatus_.store(COMM_DISCONNECTED);
+        return false;
+    }
+    started_ = true;
     iecStatus_.store(COMM_CONNECTED);
+    return true;
 }
 
 void IECCommunicator::stop()
 {
+    std::lock_guard<std::mutex> lock(lifecycleMutex_);
     stopReporting();
     txTask_.stop();
     rxTask_.stop();
+    started_ = false;
     iecStatus_.store(COMM_DISCONNECTED);
+}
+
+void IECCommunicator::setFailureHandler(PeriodicTask::FailureHandler handler)
+{
+    std::lock_guard<std::mutex> lock(failureHandlerMutex_);
+    failureHandler_ = std::move(handler);
+}
+
+void IECCommunicator::handleWorkerFailure(const char* workerName, const std::string& message)
+{
+    iecStatus_.store(COMM_DISCONNECTED);
+    PeriodicTask::FailureHandler handler;
+    {
+        std::lock_guard<std::mutex> lock(failureHandlerMutex_);
+        handler = failureHandler_;
+    }
+    if (handler) {
+        handler("IEC turbine " + std::to_string(turbineId_) + " " + workerName +
+                " worker: " + message);
+    }
 }
 
 void IECCommunicator::executeTx()

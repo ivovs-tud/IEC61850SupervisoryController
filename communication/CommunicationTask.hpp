@@ -18,12 +18,34 @@ class IECCommunicator;
 class CommunicationOrchestrator
 {
 public:
+    enum class StartupStage {
+        None,
+        Initialization,
+        OperatorServer,
+        AttackInterface,
+        DataHistorian,
+        Iec,
+        TurbineCommunicator,
+        AlreadyRunning,
+    };
+
+    struct StartupResult {
+        bool success{false};
+        StartupStage stage{StartupStage::None};
+        std::string message;
+
+        explicit operator bool() const noexcept { return success; }
+    };
+
+    using FailureHandler = std::function<void(const std::string&)>;
+
     explicit CommunicationOrchestrator(const CommConfig& config = CommConfig{});
     ~CommunicationOrchestrator();
 
-    void init();
-    bool start();
+    StartupResult init();
+    StartupResult start();
     void stop();
+    void setFailureHandler(FailureHandler handler);
 
     struct CommunicatorState {
         int turbineId;
@@ -37,6 +59,8 @@ public:
 
 private:
     void createCommunicators();
+    void handleRuntimeFailure(const std::string& message);
+    void rollbackStart(std::size_t communicatorCount);
 
     CommConfig config_;
     libiec_wrapper iecWrapper_;
@@ -46,4 +70,14 @@ private:
     std::vector<std::unique_ptr<IECCommunicator>> communicators_;
     std::atomic<CommStatus> socketStatus_{COMM_DISCONNECTED};
     std::atomic<CommStatus> iecStatus_{COMM_DISCONNECTED};
+    std::mutex lifecycleMutex_;
+    std::mutex failureHandlerMutex_;
+    FailureHandler failureHandler_;
+    bool initialized_{false};
+    bool started_{false};
+    bool operatorStarted_{false};
+    bool attackStarted_{false};
+    bool dataHistorianStarted_{false};
+    bool iecStarted_{false};
+    std::size_t communicatorStartCount_{0};
 };

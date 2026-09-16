@@ -35,12 +35,13 @@ using DataHistorianCallback = std::function<void(const uint8_t*, size_t)>;
 constexpr int TCP_BUFFER_SIZE = 1024;
 constexpr int TCP_MAX_CONNECTIONS = 1;
 // ---------------------------------------------------------------------------
-// SocketWrapper – owns two PeriodicTask-based socket servers.
+// SocketWrapper – owns three PeriodicTask-based socket servers.
 //
 //   OperatorServer         – PULL socket that receives float-vector commands
 //                            from the operator HMI.
 //   AttackInterfaceServer  – PULL socket that receives attack / injection
 //                            commands from a test harness.
+//   DataHistorianServer    – TCP socket that receives turbine telemetry.
 //
 // Both servers run in their own threads, polling at a configurable rate.
 // Each uses onStart() to bind the socket and onStop() to tear it down.
@@ -55,6 +56,7 @@ private:
     {
     public:
         explicit OperatorServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
+        ~OperatorServer() override { stop(); }
         void setPort(int port);
         void setCallback(OperatorCallback cb);
         tcpSocketStatus status() const;
@@ -79,6 +81,7 @@ private:
     {
     public:
         explicit AttackInterfaceServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
+        ~AttackInterfaceServer() override { stop(); }
         void setPort(int port);
         void setCallback(AttackCallback cb);
         tcpSocketStatus status() const;
@@ -111,6 +114,7 @@ private:
     class DataHistorianServer : public PeriodicTask {
     public:
         explicit DataHistorianServer(std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(10));
+        ~DataHistorianServer() override { stop(); }
         void setPort(int port);
         void setCallback(DataHistorianCallback cb);
         tcpSocketStatus status() const;
@@ -176,6 +180,7 @@ public:
     void         txAttackInterfaceData(const std::shared_ptr<void>& data, size_t dataSize);
     void setReceiveHandler(sc::ports::AttackReceiveHandler handler) override;
     bool send(const uint8_t* data, std::size_t size) override;
+    void setFailureHandler(PeriodicTask::FailureHandler handler);
 
     tcpSocketStatus StartDataHistorianServer(int port);
     tcpSocketStatus StopDataHistorianServer();

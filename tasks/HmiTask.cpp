@@ -231,6 +231,7 @@ void HmiTask::onStart()
         std::cerr << "[HmiTask] Failed to bind publisher: " << e.what() << '\n';
         pubSocket_.reset();
         cmdSocket_.reset();
+        throw;
     }
 }
 

@@ -519,7 +519,7 @@ void IEC61850Manager::disconnectAll()
         disconnectTurbine(id);
 }
 
-IecConnectionStatus IEC61850Manager::status() {
+IecConnectionStatus IEC61850Manager::status() const {
     IecConnectionStatus result = IEC_LINK_CONNECTED;
     std::lock_guard<std::mutex> mapLock(mapMutex_);
     for (const auto& [id, tc] : turbines_) {

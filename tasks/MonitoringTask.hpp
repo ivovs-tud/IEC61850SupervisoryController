@@ -16,6 +16,7 @@ class MonitoringTask : public PeriodicTask
 public:
     explicit MonitoringTask(std::chrono::milliseconds period = std::chrono::milliseconds(50),
                             int numTurbines = static_cast<int>(DEFAULT_TURBINE_COUNT));
+    ~MonitoringTask() override { stop(); }
 
 protected:
 

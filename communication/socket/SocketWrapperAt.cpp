@@ -1,5 +1,4 @@
 #include "SocketWrapper.hpp"
-#include "SocketWrapper.hpp"
 #include "common/config.hpp"
 
 #include <algorithm>
@@ -61,7 +60,7 @@ void SocketWrapper::AttackInterfaceServer::drainOutboundQueue() {
         } catch (const zmq::error_t& error) {
             SOCKET_AT_ERR("Failed to send attack interface message: " << error.what());
             status_.store(tcpSOCKET_ERROR);
-            return;
+            throw;
         }
     }
 }
