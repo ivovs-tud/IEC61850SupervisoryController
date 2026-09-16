@@ -115,6 +115,7 @@ TEST_CASE("yaw LUT preserves and validates turbine column count") {
     SECTION("lookup contains one value per turbine column") {
         TemporaryCsv file(gridWithHeader("ws,wd,WT1,WT2\n"));
         const sc::application::YawLut lut(file.path());
+        REQUIRE(lut.turbineCount() == 2);
         REQUIRE(lut.lookup(5.0F, 10.0F).size() == 2);
     }
 

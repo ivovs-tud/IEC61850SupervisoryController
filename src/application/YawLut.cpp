@@ -250,4 +250,11 @@ YawLut::TurbineYawSetpoints YawLut::lookup(float windSpeed, float windDirection)
     return result;
 }
 
+std::size_t YawLut::turbineCount() const noexcept {
+    if (yawSetpoints_.empty() || yawSetpoints_.front().empty()) {
+        return 0;
+    }
+    return yawSetpoints_.front().front().size();
+}
+
 } // namespace sc::application

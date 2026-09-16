@@ -19,6 +19,7 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
+          - macos-lastest
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_REF: 2026.07.29
@@ -36,7 +37,7 @@ jobs:
           cache: pip
 
       - name: Restore vcpkg binary packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/vcpkg
           key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}
@@ -53,8 +54,8 @@ jobs:
           ref: ${{ env.VCPKG_REF }}
           path: vcpkg
 
-      - name: Bootstrap vcpkg on Linux
-        if: runner.os == 'Linux'
+      - name: Bootstrap vcpkg on Unix
+        if: runner.os != 'Windows'
         shell: bash
         run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 

@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-config.schema.json",
+  "title": "Supervisory controller runtime configuration",
+  "type": "object",
+  "required": ["schema_version"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": 1},
+    "turbines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/turbine"}
+    },
+    "tasks": {
+      "type": "object",
+      "properties": {
+        "control_period_ms": {"type": "integer", "minimum": 1},
+        "signal_processing_period_ms": {"type": "integer", "minimum": 1},
+        "monitoring_period_ms": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": true
+    },
+    "control": {
+      "type": "object",
+      "properties": {
+        "yaw_lut_csv": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "hmi": {
+      "type": "object",
+      "properties": {
+        "period_ms": {"type": "integer", "minimum": 1},
+        "window_size": {"type": "integer", "minimum": 1},
+        "publisher_endpoint": {"type": "string", "minLength": 1},
+        "command_endpoint": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "historian": {
+      "type": "object",
+      "properties": {
+        "experiment_name": {"type": "string", "minLength": 1},
+        "output_directory": {"type": "string", "minLength": 1},
+        "flush_every": {"type": "integer", "minimum": 1},
+        "flush_period_ms": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": true
+    },
+    "communication": {
+      "type": "object",
+      "properties": {
+        "orchestration_period_ms": {"type": "integer", "minimum": 1},
+        "operator": {"$ref": "#/$defs/socketServer"},
+        "attack_interface": {"$ref": "#/$defs/socketServer"},
+        "data_historian": {"$ref": "#/$defs/socketServer"},
+        "mms": {
+          "type": "object",
+          "properties": {
+            "poll_period_ms": {"type": "integer", "minimum": 1},
+            "reports": {
+              "type": "array",
+              "items": {"$ref": "#/$defs/report"}
+            },
+            "extensions": {"$ref": "#/$defs/extensions"}
+          },
+          "additionalProperties": true
+        },
+        "goose": {
+          "type": "object",
+          "properties": {
+            "network_interface": {"type": "string", "minLength": 1},
+            "poll_period_ms": {"type": "integer", "minimum": 1},
+            "subscriptions": {
+              "type": "array",
+              "items": {"type": "object", "additionalProperties": true}
+            },
+            "extensions": {"$ref": "#/$defs/extensions"}
+          },
+          "additionalProperties": true
+        },
+        "extensions": {"$ref": "#/$defs/extensions"}
+      },
+      "additionalProperties": true
+    },
+    "extensions": {"$ref": "#/$defs/extensions"}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "socketServer": {
+      "type": "object",
+      "properties": {
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "poll_period_ms": {"type": "integer", "minimum": 1},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      },
+      "additionalProperties": true
+    },
+    "turbine": {
+      "type": "object",
+      "required": ["id", "mms"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "mms": {
+          "type": "object",
+          "required": ["host", "port"],
+          "properties": {
+            "host": {"type": "string", "minLength": 1},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "ied_name": {"type": "string", "minLength": 1},
+            "logical_device": {"type": "string", "minLength": 1},
+            "extensions": {"$ref": "#/$defs/extensions"}
+          },
+          "additionalProperties": true
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "parameters": {
+              "type": "object",
+              "description": "Reserved for model-specific physical parameters and units.",
+              "additionalProperties": true
+            },
+            "extensions": {"$ref": "#/$defs/extensions"}
+          },
+          "additionalProperties": true
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Operator-facing asset metadata; it does not affect control behavior.",
+          "additionalProperties": true
+        },
+        "extensions": {"$ref": "#/$defs/extensions"}
+      },
+      "additionalProperties": true
+    },
+    "report": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "enabled": {"type": "boolean"},
+        "integrity_period_ms": {"type": "integer", "minimum": 1},
+        "dataset_reference": {"type": "string"},
+        "control_block_reference": {"type": "string"},
+        "data_references": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "trigger_options": {
+          "type": "object",
+          "properties": {
+            "data_change": {"type": "boolean"},
+            "quality_change": {"type": "boolean"},
+            "data_update": {"type": "boolean"},
+            "integrity": {"type": "boolean"},
+            "general_interrogation": {"type": "boolean"}
+          },
+          "additionalProperties": true
+        },
+        "extensions": {"$ref": "#/$defs/extensions"}
+      },
+      "additionalProperties": true
+    }
+  }
+}

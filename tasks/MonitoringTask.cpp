@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cmath>
 #include <numeric>
+#include <stdexcept>
 #include <utility>
 
 #include "MonitoringTask.hpp"
@@ -260,22 +261,26 @@ void resetFreezeTimers(std::array<uint64_t, 6>& timers)
 // Public Interface
 // ---------------------------------------------------------------------------
 
-MonitoringTask::MonitoringTask(std::chrono::milliseconds period) : PeriodicTask(period) {
+MonitoringTask::MonitoringTask(std::chrono::milliseconds period, int numTurbines)
+    : PeriodicTask(period), numTurbines_(numTurbines) {
+    if (numTurbines_ <= 0) {
+        throw std::invalid_argument("MonitoringTask requires at least one turbine");
+    }
     // TODO: set up GOOSE subscriber via libiec_wrapper
-    orientation_state = std::vector<float>(N_TURBINES, 0.0f);
-    last_yaw_measurement_time = std::vector<uint64_t>(N_TURBINES, 0);
-    last_orientation_prediction_time = std::vector<uint64_t>(N_TURBINES, 0);
-    power_tracking_mismatch_start_time = std::vector<uint64_t>(N_TURBINES, 0);
-    last_expected_power = std::vector<double>(N_TURBINES, -1.0);
-    expected_power_history = makeTurbineHistory<double>(N_TURBINES, GlobalData::N_hist);
-    wind_speed_change_strike_count = std::vector<int>(N_TURBINES, 0);
-    wind_direction_change_strike_count = std::vector<int>(N_TURBINES, 0);
-    telemetry_freeze_suspicion_start_time = std::vector<std::array<uint64_t, 6>>(N_TURBINES);
+    orientation_state = std::vector<float>(numTurbines_, 0.0f);
+    last_yaw_measurement_time = std::vector<uint64_t>(numTurbines_, 0);
+    last_orientation_prediction_time = std::vector<uint64_t>(numTurbines_, 0);
+    power_tracking_mismatch_start_time = std::vector<uint64_t>(numTurbines_, 0);
+    last_expected_power = std::vector<double>(numTurbines_, -1.0);
+    expected_power_history = makeTurbineHistory<double>(numTurbines_, GlobalData::N_hist);
+    wind_speed_change_strike_count = std::vector<int>(numTurbines_, 0);
+    wind_direction_change_strike_count = std::vector<int>(numTurbines_, 0);
+    telemetry_freeze_suspicion_start_time = std::vector<std::array<uint64_t, 6>>(numTurbines_);
     for (auto& timers : telemetry_freeze_suspicion_start_time) {
         resetFreezeTimers(timers);
     }
-    drivetrain_under_response_start_time = std::vector<uint64_t>(N_TURBINES, 0);
-    fleet_peer_outlier_start_time = std::vector<uint64_t>(N_TURBINES, 0);
+    drivetrain_under_response_start_time = std::vector<uint64_t>(numTurbines_, 0);
+    fleet_peer_outlier_start_time = std::vector<uint64_t>(numTurbines_, 0);
 }
 
 void MonitoringTask::execute() {
@@ -339,7 +344,7 @@ bool MonitoringTask::checkConsistencyPowerGeneratedVsReceived() {
     const uint64_t current_ms = getCurrentTimeMs();
     double receivedTotalAverage = 0.0;
     bool hasReceivedPowerHistory = false;
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         if (isRecent(gds.lastPower_t[i], current_ms, power_measurement_timeout_ms) &&
             !gds.powerHistory[i].empty()) {
             receivedTotalAverage += averageHistory(gds.powerHistory[i]);
@@ -366,7 +371,7 @@ bool MonitoringTask::checkConsistencyMeasuredPowerVsExpected() {
 
     bool alarm = false;
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         const bool hasRecentPowerMeasurement =
             gds.lastPower_t[i] > 0 &&
             gds.lastPower_t[i] >= current_ms - power_measurement_timeout_ms;
@@ -424,7 +429,7 @@ bool MonitoringTask::checkConsistencyOrientationDynamics() {
 
     bool alarm = false;
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         const bool hasRecentMeasurement =
             gds.lastYawOffset_t[i] > 0 &&
             gds.lastYawOffset_t[i] >= current_ms - yaw_measurement_timeout_ms;
@@ -475,7 +480,7 @@ bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
     // Implementation for checking power, torque, and rotor speed consistency
     auto& gds = GlobalDataStructure::instance().data();
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         // We skip this turbine if the timestamps of the received power torque and rotor speed are too far apart
         if (abs((int64_t)gds.lastPower_t[i] - (int64_t)gds.lastRPM_t[i]) > 1000) { // Placeholder threshold of 1 second
             continue;
@@ -498,7 +503,7 @@ bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
 bool MonitoringTask::checkConsistencyWindDirection() {
     // Implementation for checking wind direction consistency
     auto& gds = GlobalDataStructure::instance().data();
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         if (angularDistanceDeg(
                 static_cast<float>(gds.lastWD[i]),
                 static_cast<float>(gds.glob_wd_i)) > 25.0f) { // Placeholder threshold of 90 degrees
@@ -512,7 +517,7 @@ bool MonitoringTask::checkConsistencyWindDirection() {
 bool MonitoringTask::checkConsistencyWindDirectionChange() {
     auto& gds = GlobalDataStructure::instance().data();
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         const auto& history = gds.wdHistory[i];
         if (history.size() >= 5) {
             const float priorMean = circularMeanDeg(history, history.size() - 1);
@@ -549,7 +554,7 @@ bool MonitoringTask::checkConsistencyWindDirectionChange() {
 bool MonitoringTask::checkConsistencyWindSpeedChange() {
     auto& gds = GlobalDataStructure::instance().data();
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         const auto& history = gds.wsHistory[i];
         if (history.size() >= 5) {
             std::vector<double> priorValues;
@@ -627,7 +632,7 @@ bool MonitoringTask::checkConsistencyTelemetryFreezeReplay() {
             return current_ms - signalStartTime >= telemetry_freeze_persistence_ms;
         };
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         alarm |= updateFreezeTimer(
             static_cast<int>(i),
             FreezeWindSpeed,
@@ -697,7 +702,7 @@ bool MonitoringTask::checkConsistencyDrivetrainUnderResponse() {
     const uint64_t current_ms = getCurrentTimeMs();
     bool alarm = false;
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         if (isTurbineCommandedOff(gds, static_cast<int>(i))) {
             drivetrain_under_response_start_time[i] = 0;
             continue;
@@ -781,7 +786,7 @@ bool MonitoringTask::checkStaticTelemetryBounds() {
                    (value < minValue || value > maxValue);
         };
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         if (freshValueOutOfBounds(
                 gds.lastWS_t[i],
                 gds.lastWS[i],
@@ -837,14 +842,19 @@ bool MonitoringTask::checkConsistencyFleetPeerOutlier() {
     const uint64_t current_ms = getCurrentTimeMs();
     bool alarm = false;
 
+    if (numTurbines_ < 3) {
+        std::fill(fleet_peer_outlier_start_time.begin(), fleet_peer_outlier_start_time.end(), 0);
+        return false;
+    }
+
     int operatingTurbines = 0;
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         if (!isTurbineCommandedOff(gds, static_cast<int>(i))) {
             ++operatingTurbines;
         }
     }
 
-    if (operatingTurbines < N_TURBINES || gds.connectedTurbines < N_TURBINES) {
+    if (operatingTurbines < numTurbines_ || gds.connectedTurbines < numTurbines_) {
         std::fill(fleet_peer_outlier_start_time.begin(), fleet_peer_outlier_start_time.end(), 0);
         return false;
     }
@@ -852,11 +862,11 @@ bool MonitoringTask::checkConsistencyFleetPeerOutlier() {
     std::vector<int> turbineIndices;
     std::vector<double> powerRatios;
     std::vector<double> rpmRatios;
-    turbineIndices.reserve(N_TURBINES);
-    powerRatios.reserve(N_TURBINES);
-    rpmRatios.reserve(N_TURBINES);
+    turbineIndices.reserve(static_cast<std::size_t>(numTurbines_));
+    powerRatios.reserve(static_cast<std::size_t>(numTurbines_));
+    rpmRatios.reserve(static_cast<std::size_t>(numTurbines_));
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         if (!isRecent(gds.lastPower_t[i], current_ms, power_measurement_timeout_ms) ||
             !isRecent(gds.lastRPM_t[i], current_ms, power_measurement_timeout_ms)) {
             continue;
@@ -879,7 +889,7 @@ bool MonitoringTask::checkConsistencyFleetPeerOutlier() {
         rpmRatios.push_back(gds.lastRPM[i] / expectedRpm);
     }
 
-    if (turbineIndices.size() < static_cast<std::size_t>(N_TURBINES - 2)) {
+    if (turbineIndices.size() < static_cast<std::size_t>(numTurbines_ - 2)) {
         std::fill(fleet_peer_outlier_start_time.begin(), fleet_peer_outlier_start_time.end(), 0);
         return false;
     }
@@ -891,7 +901,7 @@ bool MonitoringTask::checkConsistencyFleetPeerOutlier() {
     const double powerThreshold = std::max(fleet_peer_power_ratio_threshold, 4.0 * powerMad);
     const double rpmThreshold = std::max(fleet_peer_rpm_ratio_threshold, 4.0 * rpmMad);
 
-    std::vector<bool> hasMetric(N_TURBINES, false);
+    std::vector<bool> hasMetric(static_cast<std::size_t>(numTurbines_), false);
     for (std::size_t k = 0; k < turbineIndices.size(); ++k) {
         const int turbineIndex = turbineIndices[k];
         hasMetric[turbineIndex] = true;
@@ -917,7 +927,7 @@ bool MonitoringTask::checkConsistencyFleetPeerOutlier() {
         }
     }
 
-    for (auto i = 0; i < N_TURBINES; i++) {
+    for (auto i = 0; i < numTurbines_; i++) {
         if (!hasMetric[i]) {
             fleet_peer_outlier_start_time[i] = 0;
         }

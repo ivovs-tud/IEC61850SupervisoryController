@@ -1,0 +1,14 @@
+{
+  "$schema": "../../docs/runtime-config.schema.json",
+  "schema_version": 1,
+  "control": {
+    "yaw_lut_csv": "../../yaw_lut.csv"
+  },
+  "historian": {
+    "output_directory": "../../data"
+  },
+  "hmi": {
+    "publisher_endpoint": "tcp://*:5555",
+    "command_endpoint": "tcp://*:5556"
+  }
+}

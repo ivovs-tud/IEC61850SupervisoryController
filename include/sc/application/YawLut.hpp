@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@ public:
     explicit YawLut(const std::string& csvFilePath);
 
     TurbineYawSetpoints lookup(float windSpeed, float windDirection) const;
+    std::size_t turbineCount() const noexcept;
 
 private:
     std::vector<float> windSpeedBins_;

@@ -14,7 +14,8 @@
 class MonitoringTask : public PeriodicTask
 {
 public:
-    explicit MonitoringTask(std::chrono::milliseconds period = std::chrono::milliseconds(50));
+    explicit MonitoringTask(std::chrono::milliseconds period = std::chrono::milliseconds(50),
+                            int numTurbines = static_cast<int>(DEFAULT_TURBINE_COUNT));
 
 protected:
 
@@ -184,6 +185,8 @@ protected:
 
 
 private:
+    int numTurbines_;
+
     // GOOSE message callback placeholder.
     // TODO: replace void* params with GooseSubscriber* / GooseMessage* from libiec61850
     //   once libiec_wrapper exposes the subscription API.

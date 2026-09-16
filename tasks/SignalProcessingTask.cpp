@@ -11,7 +11,7 @@
 namespace {
 constexpr uint64_t TURBINE_CONNECTION_TIMEOUT_MS = 2000;
 
-bool hasRecentMeasurement(const GlobalData& gds, int turbineIndex, uint64_t nowMs)
+bool hasRecentMeasurement(const GlobalData& gds, std::size_t turbineIndex, uint64_t nowMs)
 {
     const std::array<uint64_t, 6> timestamps {
         gds.lastWS_t[turbineIndex],
@@ -67,12 +67,14 @@ void SignalProcessingTask::execute()
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         auto& gds = GlobalDataStructure::instance().data();
 		
-		gds.Wtotal_meas.push_back(std::accumulate(gds._W.begin(), gds._W.end(), 0.0));
+        gds.Wtotal_meas.push_back(std::accumulate(gds._W.begin(), gds._W.end(), 0.0));
         gds.TotalPower_recv = 0;
-        for (int i = 0; i < N_TURBINES; ++i) gds.TotalPower_recv += gds.lastPower[i];
+        for (const double power : gds.lastPower) {
+            gds.TotalPower_recv += power;
+        }
 
         int connectedTurbines = 0;
-        for (int i = 0; i < N_TURBINES; ++i) {
+        for (std::size_t i = 0; i < gds.lastPower.size(); ++i) {
             if (hasRecentMeasurement(gds, i, nowMs)) {
                 ++connectedTurbines;
             }
@@ -99,13 +101,15 @@ void SignalProcessingTask::execute()
     {
         std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
         auto& gds = GlobalDataStructure::instance().data();
-        std::vector<float> tmp(3);
+        const std::size_t sampleCount = std::min<std::size_t>(3, gds.lastWS.size());
+        std::vector<float> tmp(sampleCount);
         std::partial_sort_copy(
             std::begin(gds.lastWS), std::end(gds.lastWS), //.begin/.end in C++98/C++03
             std::begin(tmp), std::end(tmp),
             std::greater<float>() //remove "int" in C++14
         );
-        float res = std::accumulate(std::begin(tmp), std::end(tmp), 0.0f) / 3.0f;
+        const float res = std::accumulate(std::begin(tmp), std::end(tmp), 0.0f) /
+                          static_cast<float>(sampleCount);
         gds.glob_ws_i = 0.9 * gds.glob_ws_i + 0.1 * res;
         loggedWs = gds.glob_ws_i;
         loggedWd = gds.glob_wd_i;

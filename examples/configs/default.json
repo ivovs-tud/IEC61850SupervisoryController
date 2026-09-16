@@ -1,0 +1,79 @@
+{
+  "$schema": "../../docs/runtime-config.schema.json",
+  "schema_version": 1,
+  "turbines": [
+    {"id": "WT1", "mms": {"host": "localhost", "port": 102, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
+    {"id": "WT2", "mms": {"host": "localhost", "port": 103, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
+    {"id": "WT3", "mms": {"host": "localhost", "port": 104, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
+    {"id": "WT4", "mms": {"host": "localhost", "port": 105, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
+    {"id": "WT5", "mms": {"host": "localhost", "port": 106, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
+    {"id": "WT6", "mms": {"host": "localhost", "port": 107, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
+    {"id": "WT7", "mms": {"host": "localhost", "port": 108, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
+    {"id": "WT8", "mms": {"host": "localhost", "port": 109, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
+    {"id": "WT9", "mms": {"host": "localhost", "port": 110, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}}
+  ],
+  "tasks": {
+    "control_period_ms": 4000,
+    "signal_processing_period_ms": 500,
+    "monitoring_period_ms": 50
+  },
+  "control": {
+    "yaw_lut_csv": "../../yaw_lut.csv"
+  },
+  "hmi": {
+    "period_ms": 500,
+    "window_size": 300,
+    "publisher_endpoint": "ipc:///tmp/supervisory_controller_hmi.sock",
+    "command_endpoint": "ipc:///tmp/supervisory_controller_hmi_cmd.sock"
+  },
+  "historian": {
+    "experiment_name": "project_datahistorian",
+    "output_directory": "../../data",
+    "flush_every": 512,
+    "flush_period_ms": 5000
+  },
+  "communication": {
+    "orchestration_period_ms": 10,
+    "operator": {"port": 9001, "poll_period_ms": 10},
+    "attack_interface": {"port": 9002, "poll_period_ms": 10},
+    "data_historian": {"port": 9003, "poll_period_ms": 10},
+    "mms": {
+      "poll_period_ms": 10,
+      "reports": [
+        {
+          "name": "operational",
+          "enabled": true,
+          "integrity_period_ms": 500,
+          "dataset_reference": "WPPD1$ds01",
+          "control_block_reference": "WPPD1$RP$urcb01",
+          "data_references": [],
+          "trigger_options": {
+            "data_change": true,
+            "quality_change": true,
+            "data_update": false,
+            "integrity": true,
+            "general_interrogation": true
+          },
+          "extensions": {}
+        },
+        {
+          "name": "diagnostics-future-example",
+          "enabled": false,
+          "integrity_period_ms": 5000,
+          "dataset_reference": "WPPD1$diagnostics",
+          "control_block_reference": "WPPD1$RP$diagnostics",
+          "data_references": [],
+          "trigger_options": {},
+          "extensions": {}
+        }
+      ],
+      "extensions": {}
+    },
+    "goose": {
+      "network_interface": "veth1",
+      "poll_period_ms": 4
+    },
+    "extensions": {}
+  },
+  "extensions": {}
+}

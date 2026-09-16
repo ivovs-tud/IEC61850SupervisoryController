@@ -130,7 +130,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
 					static_cast<double>(d.RequestedReferencePower), measuredTotal, d.TotalPower_recv
                 };
             },
-            std::make_pair(-1000000.0, 9*7e6)
+            std::make_pair(-1000000.0, static_cast<double>(numTurbines) * 7e6)
         },
         // ── Per-turbine wind speed ────────────────────────────────────────────
         {

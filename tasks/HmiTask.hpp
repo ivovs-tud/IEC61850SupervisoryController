@@ -37,7 +37,7 @@ struct HmiSignalDef
 // ---------------------------------------------------------------------------
 struct HmiConfig
 {
-    int numTurbines = 3;                 ///< active turbines to track
+    int numTurbines = static_cast<int>(DEFAULT_TURBINE_COUNT); ///< active turbines to track
     int windowSize  = DEFAULT_HMI_SIGNAL_WINDOW_SIZE; ///< rolling window length forwarded to the plotter
     std::string publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock"; ///< ZMQ PUB endpoint
     std::string commandEndpoint   = "ipc:///tmp/supervisory_controller_hmi_cmd.sock"; ///< ZMQ PULL endpoint (mode commands)
@@ -45,7 +45,7 @@ struct HmiConfig
 };
 
 /// Build the default set of signal groups for @p numTurbines active turbines.
-HmiConfig defaultHmiConfig(int numTurbines = 3);
+HmiConfig defaultHmiConfig(int numTurbines = static_cast<int>(DEFAULT_TURBINE_COUNT));
 
 // ---------------------------------------------------------------------------
 // HmiTask – samples GlobalDataStructure each cycle and publishes a msgpack

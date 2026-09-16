@@ -5,7 +5,8 @@
     "zeromq",
     "cppzmq",
     "msgpack",
-    "boost-circular-buffer"
+    "boost-circular-buffer",
+    "boost-property-tree"
   ],
   "features": {
     "tests": {
