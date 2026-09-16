@@ -2,6 +2,7 @@
 #include <sstream>
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 #include "ControlTask.hpp"
 #include "common/config.hpp"
@@ -9,7 +10,7 @@
 
 
 ControlTask::ControlTask(Config config)
-    : PeriodicTask(config.period), numTurbines_(config.numTurbines), yawLut_(config.yawLutCsvPath)
+    : PeriodicTask(config.period), yawLut_(config.yawLutCsvPath), numTurbines_(config.numTurbines)
 {
     // TODO: initialise control algorithm state
 }

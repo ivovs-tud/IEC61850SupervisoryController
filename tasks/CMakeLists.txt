@@ -15,5 +15,10 @@ target_include_directories(tasks
 
 target_link_libraries(tasks
     PUBLIC  common
+            sc_application
     PRIVATE ${ZMQ_LIBRARIES}
 )
+
+# HMI messages use only standard-library MsgPack adapters. Avoid requiring the
+# optional Boost adapter family merely by including msgpack.hpp.
+target_compile_definitions(tasks PRIVATE MSGPACK_NO_BOOST)

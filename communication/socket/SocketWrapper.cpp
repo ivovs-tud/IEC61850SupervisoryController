@@ -57,14 +57,33 @@ tcpSocketStatus SocketWrapper::StopAttackInterfaceServer() {
     return attackServer_.status();
 }
 
-void SocketWrapper::AttackInterfaceServer::txData(const std::shared_ptr<void>&data, size_t dataSize) {
-    zmq::message_t message(dataSize);
-    std::memcpy(message.data(), data.get(), dataSize);
-    socket_->send(message, zmq::send_flags::dontwait);
+bool SocketWrapper::AttackInterfaceServer::txData(const uint8_t* data, size_t dataSize) {
+    if (status_.load() < tcpSOCKET_CONNECTED || data == nullptr || dataSize == 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(outboundMutex_);
+    if (status_.load() < tcpSOCKET_CONNECTED) {
+        return false;
+    }
+    if (outboundQueue_.size() >= kMaxPendingMessages) {
+        SOCKET_AT_ERR("Attack interface outbound queue is full; dropping message");
+        return false;
+    }
+    outboundQueue_.emplace_back(data, data + dataSize);
+    return true;
 }
 
-void  SocketWrapper::txAttackInterfaceData(const std::shared_ptr<void>&data, size_t dataSize) {
-    attackServer_.txData(data, dataSize);
+void SocketWrapper::txAttackInterfaceData(const std::shared_ptr<void>& data, size_t dataSize) {
+    send(static_cast<const uint8_t*>(data.get()), dataSize);
+}
+
+void SocketWrapper::setReceiveHandler(sc::ports::AttackReceiveHandler handler) {
+    AttachAttackInterfaceCallback(std::move(handler));
+}
+
+bool SocketWrapper::send(const uint8_t* data, std::size_t size) {
+    return attackServer_.txData(data, size);
 }
 
 void SocketWrapper::AttachDataHistorianCallback(DataHistorianCallback callback) {

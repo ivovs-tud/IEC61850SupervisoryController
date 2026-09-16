@@ -181,7 +181,7 @@ void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
         }
     }
 
-    std::string logMsg = "[SC→WT" + std::to_string(turbineId_) + "]" + std::to_string(getCurrentTimeMs()) + ";" + descToString(value, desc);
+    std::string logMsg = "[SC→WT" + std::to_string(turbineId_) + "]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + descToString(value, desc);
     DataHistorian::instance().log(logMsg);
 
     {
@@ -201,7 +201,7 @@ void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
         }
     }
 
-    logMsg = "[SC→WT" + std::to_string(turbineId_) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + descToString(value, desc);
+    logMsg = "[SC→WT" + std::to_string(turbineId_) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + descToString(value, desc);
     DataHistorian::instance().log(logMsg);
 
     if ((iecWrapper_.*desc.iecWrite)(turbineId_, value) != IEC_OK) {

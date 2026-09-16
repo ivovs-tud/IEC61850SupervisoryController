@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <chrono>
+#include <deque>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -10,11 +11,11 @@
 #include <memory>
 
 #include <zmq.hpp>
-#include <msgpack.hpp>
 
 #include "socket_platform.h"
 
 #include "common/PeriodicTask.hpp"
+#include "sc/ports/AttackChannel.hpp"
 
 typedef enum rp { R_SOCKET_OK = 0, R_SOCKET_ALREADY_RUNNING = 0x01, R_SOCKET_ERROR = 0xFF } SocketReturnCode;
 
@@ -44,7 +45,7 @@ constexpr int TCP_MAX_CONNECTIONS = 1;
 // Both servers run in their own threads, polling at a configurable rate.
 // Each uses onStart() to bind the socket and onStop() to tear it down.
 // ---------------------------------------------------------------------------
-class SocketWrapper
+class SocketWrapper : public sc::ports::AttackChannel
 {
 private:
     // -----------------------------------------------------------------------
@@ -81,7 +82,7 @@ private:
         void setPort(int port);
         void setCallback(AttackCallback cb);
         tcpSocketStatus status() const;
-        void txData(const std::shared_ptr<void>&data, size_t dataSize);
+        bool txData(const uint8_t* data, size_t dataSize);
 
     protected:
         void onStart()  override;
@@ -89,11 +90,18 @@ private:
         void onStop()   override;
 
     private:
+        static constexpr std::size_t kMaxPendingMessages = 64;
+        static constexpr std::size_t kMaxSendsPerCycle = 8;
+
+        void drainOutboundQueue();
+
         int                          port_{9002};
         zmq::context_t               context_;
         std::optional<zmq::socket_t> socket_;
         AttackCallback               callback_;
-        std::atomic<tcpSocketStatus>    status_{tcpSOCKET_CLOSED};
+        std::atomic<tcpSocketStatus> status_{tcpSOCKET_CLOSED};
+        std::mutex                   outboundMutex_;
+        std::deque<std::vector<uint8_t>> outboundQueue_;
     };
 
     // -----------------------------------------------------------------------
@@ -165,7 +173,9 @@ public:
     tcpSocketStatus StartAttackInterfaceServer(int port);
     tcpSocketStatus StopAttackInterfaceServer();
     void         AttachAttackInterfaceCallback(AttackCallback callback);
-    void         txAttackInterfaceData(const std::shared_ptr<void>&data, size_t dataSize);
+    void         txAttackInterfaceData(const std::shared_ptr<void>& data, size_t dataSize);
+    void setReceiveHandler(sc::ports::AttackReceiveHandler handler) override;
+    bool send(const uint8_t* data, std::size_t size) override;
 
     tcpSocketStatus StartDataHistorianServer(int port);
     tcpSocketStatus StopDataHistorianServer();

@@ -5,6 +5,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(SC_BUILD_TESTS "Build supervisory controller tests" OFF)
+option(SC_BUILD_INTEGRATION_TESTS "Build tests that require optional network dependencies" OFF)
+option(SC_BUILD_CONTROLLER "Build the IEC 61850 supervisory controller executable" ON)
+
+if(SC_BUILD_INTEGRATION_TESTS AND NOT SC_BUILD_TESTS)
+    message(FATAL_ERROR "SC_BUILD_INTEGRATION_TESTS requires SC_BUILD_TESTS=ON")
+endif()
+
 # Default to Debug if no build type is specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
@@ -42,55 +50,66 @@ endif()
 find_package(Boost 1.70 REQUIRED)
 message(STATUS "Boost ${Boost_VERSION} found at ${Boost_INCLUDE_DIRS}")
 
-# ZeroMQ + cppzmq + msgpack
-if(WIN32)
+# ZeroMQ and cppzmq are needed by the controller and network integration test.
+# MsgPack is needed only by the controller's HMI target.
+if((SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS) AND WIN32)
     # Windows with vcpkg: use CONFIG mode for all packages
     find_package(ZeroMQ CONFIG REQUIRED)
     find_package(cppzmq CONFIG REQUIRED)
-    # msgpack is header-only, just find the include directory
-    find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp REQUIRED)
+    find_path(ZMQ_INCLUDE_DIR NAMES zmq.h REQUIRED)
+    find_path(CPPZMQ_INCLUDE_DIR NAMES zmq.hpp REQUIRED)
+    if(SC_BUILD_CONTROLLER)
+        find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp REQUIRED)
+    endif()
     
     # Set variables for compatibility with subdirectories
-    set(ZMQ_INCLUDE_DIRS ${ZeroMQ_INCLUDE_DIR})
+    set(ZMQ_INCLUDE_DIRS ${ZMQ_INCLUDE_DIR})
     set(ZMQ_LIBRARIES libzmq)
-    set(CPPZMQ_INCLUDE_DIR ${cppzmq_INCLUDE_DIR})
-else()
+elseif(SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS)
     # Linux: Use pkg-config (or vcpkg if CMAKE_TOOLCHAIN_FILE is set)
     if(DEFINED CMAKE_TOOLCHAIN_FILE)
         # Using vcpkg on Linux
         find_package(ZeroMQ CONFIG REQUIRED)
         find_package(cppzmq CONFIG REQUIRED)
-        find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp REQUIRED)
+        find_path(ZMQ_INCLUDE_DIR NAMES zmq.h REQUIRED)
+        find_path(CPPZMQ_INCLUDE_DIR NAMES zmq.hpp REQUIRED)
+        if(SC_BUILD_CONTROLLER)
+            find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp REQUIRED)
+        endif()
         
-        set(ZMQ_INCLUDE_DIRS ${ZeroMQ_INCLUDE_DIR})
+        set(ZMQ_INCLUDE_DIRS ${ZMQ_INCLUDE_DIR})
         set(ZMQ_LIBRARIES libzmq)
-        set(CPPZMQ_INCLUDE_DIR ${cppzmq_INCLUDE_DIR})
     else()
         # Traditional Linux package manager installation
         find_package(PkgConfig REQUIRED)
         pkg_check_modules(ZMQ REQUIRED libzmq)
         find_path(CPPZMQ_INCLUDE_DIR NAMES zmq.hpp
             PATHS /usr/local/include /usr/include REQUIRED)
-        find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp
-            PATHS /usr/local/include /usr/include REQUIRED)
+        if(SC_BUILD_CONTROLLER)
+            find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp
+                PATHS /usr/local/include /usr/include REQUIRED)
+        endif()
     endif()
 endif()
 
 add_subdirectory(common)
-add_subdirectory(tasks)
-add_subdirectory(communication)
+add_subdirectory(src/application)
+if(SC_BUILD_CONTROLLER)
+    add_subdirectory(tasks)
+    add_subdirectory(communication)
 
-add_executable(supervisory_controller main.cpp)
+    add_executable(supervisory_controller main.cpp)
 
-target_link_libraries(supervisory_controller PRIVATE
-    tasks
-    communication
-    Threads::Threads
-    Boost::headers
-)
+    target_link_libraries(supervisory_controller PRIVATE
+        tasks
+        communication
+        Threads::Threads
+        Boost::headers
+    )
+endif()
 
 # Windows: Copy required DLLs to executable directory for runtime
-if(WIN32)
+if(WIN32 AND SC_BUILD_CONTROLLER)
     # Copy libiec61850 DLL
     set(LIBIEC61850_DIR "H:/libiec61850" CACHE PATH "Path to libiec61850 source")
     add_custom_command(TARGET supervisory_controller POST_BUILD
@@ -135,4 +154,11 @@ if(WIN32)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Running supervisory_controller with arguments"
     )
+endif()
+
+if(SC_BUILD_TESTS)
+    enable_testing()
+    find_package(Catch2 3 REQUIRED)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_subdirectory(tests)
 endif()

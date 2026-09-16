@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supervisory-controller-client"
+version = "0.1.0"
+description = "Python protocol helpers and clients for the supervisory controller"
+readme = "python/README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+attack = ["pyzmq>=25"]
+integration = ["pyzmq>=25"]
+
+[tool.setuptools]
+license-files = ["LICENSES/HackAWindFarm-Apache-2.0.txt"]
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.setuptools.package-data]
+supervisory_controller = ["THIRD_PARTY_NOTICES.md"]

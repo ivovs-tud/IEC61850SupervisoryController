@@ -31,21 +31,47 @@ void SocketWrapper::AttackInterfaceServer::execute() {
 
     zmq::message_t message;
     const auto result = socket_->recv(message, zmq::recv_flags::dontwait);
-    if (!result) return;
+    if (result) {
+        SOCKET_AT_LOG_V2("Received a message of size " << message.size() << " bytes");
 
-    SOCKET_AT_LOG_V2("Received a message of size " << message.size() << " bytes");
+        if (callback_) {
+            try {
+                SOCKET_AT_LOG_V2("Passing payload of size " << message.size() << " to callback");
+                callback_(static_cast<const uint8_t*>(message.data()), message.size());
+            } catch (const std::exception& e) {
+                SOCKET_AT_ERR("Failed to unpack message: " << e.what());
+            }
+        }
+    }
 
-    if (callback_) {
+    drainOutboundQueue();
+}
+
+void SocketWrapper::AttackInterfaceServer::drainOutboundQueue() {
+    for (std::size_t sent = 0; sent < kMaxSendsPerCycle; ++sent) {
+        std::lock_guard<std::mutex> lock(outboundMutex_);
+        if (outboundQueue_.empty()) return;
+
+        const auto& pending = outboundQueue_.front();
+        zmq::message_t message(pending.size());
+        std::memcpy(message.data(), pending.data(), pending.size());
         try {
-            SOCKET_AT_LOG_V2("Passing payload of size " << message.size() << " to callback");
-            callback_(static_cast<const uint8_t*>(message.data()), message.size());
-        } catch (const std::exception& e) {
-            SOCKET_AT_ERR("Failed to unpack message: " << e.what());
+            if (!socket_->send(message, zmq::send_flags::dontwait)) return;
+            outboundQueue_.pop_front();
+        } catch (const zmq::error_t& error) {
+            SOCKET_AT_ERR("Failed to send attack interface message: " << error.what());
+            status_.store(tcpSOCKET_ERROR);
+            return;
         }
     }
 }
 
 void SocketWrapper::AttackInterfaceServer::onStop() {
+    status_.store(tcpSOCKET_DISCONNECTING);
+    {
+        std::lock_guard<std::mutex> lock(outboundMutex_);
+        outboundQueue_.clear();
+    }
     socket_.reset();
     status_.store(tcpSOCKET_CLOSED);
     SOCKET_AT_ST("Attack interface server stopped on port " << port_);

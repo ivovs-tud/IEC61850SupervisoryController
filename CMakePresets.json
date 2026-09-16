@@ -2,49 +2,82 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 19,
+    "minor": 21,
     "patch": 0
   },
   "configurePresets": [
     {
-      "name": "default",
-      "displayName": "Default - Visual Studio 17 2022 with vcpkg",
-      "description": "Configure using Visual Studio 17 2022 generator and vcpkg toolchain",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
+      "name": "hardware-free-tests",
+      "displayName": "Hardware-free unit and protocol tests",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        //"CMAKE_TOOLCHAIN_FILE": "C:\\Users\\ivovanstraalen\\Projects\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake",
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_PREFIX_PATH": "C:\\Users\\ivovanstraalen\\Projects\\vcpkg\\installed\\x64-windows",
-        "Boost_DEBUG": "ON"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SC_BUILD_CONTROLLER": "OFF",
+        "SC_BUILD_TESTS": "ON",
+        "SC_BUILD_INTEGRATION_TESTS": "OFF"
       }
     },
     {
-      "name": "debug",
-      "displayName": "Debug - Visual Studio 17 2022 with vcpkg",
-      "description": "Configure Debug build using vcpkg",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
+      "name": "hardware-free-integration",
+      "displayName": "Hardware-free C++/Python integration tests",
+      "inherits": "hardware-free-tests",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        //"CMAKE_TOOLCHAIN_FILE": "C:\\Users\\ivovanstraalen\\Projects\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake",
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_PREFIX_PATH": "C:\\Users\\ivovanstraalen\\Projects\\vcpkg\\installed\\x64-windows",
-        "Boost_DEBUG": "ON"
+        "SC_BUILD_INTEGRATION_TESTS": "ON"
+      }
+    },
+    {
+      "name": "vcpkg-hardware-free-integration",
+      "displayName": "Hardware-free integration tests with vcpkg",
+      "inherits": "hardware-free-integration",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_MANIFEST_FEATURES": "tests"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "default",
-      "configurePreset": "default",
-      "configureBeforeBuild": true
+      "name": "hardware-free-tests",
+      "configurePreset": "hardware-free-tests",
+      "configuration": "Debug"
     },
     {
-      "name": "debug",
-      "configurePreset": "debug",
-      "configureBeforeBuild": true
+      "name": "hardware-free-integration",
+      "configurePreset": "hardware-free-integration",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vcpkg-hardware-free-integration",
+      "configurePreset": "vcpkg-hardware-free-integration",
+      "configuration": "Debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "hardware-free-tests",
+      "configurePreset": "hardware-free-tests",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "hardware-free-integration",
+      "configurePreset": "hardware-free-integration",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "vcpkg-hardware-free-integration",
+      "configurePreset": "vcpkg-hardware-free-integration",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }

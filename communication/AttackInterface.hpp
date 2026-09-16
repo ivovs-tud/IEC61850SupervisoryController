@@ -1,6 +1,8 @@
 #pragma once
 
-#include <iomanip>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <map>
 #include <string>
@@ -9,12 +11,12 @@
 #include <set>
 #include <mutex>
 #include <cstddef>
+#include <vector>
 
 #include "common/config.hpp"
 #include "common/GlobalDataStructure.hpp"
-#include "common/util.hpp"
-#include "libiec_wrapper.hpp"
-#include "socket/SocketWrapper.hpp"
+#include "sc/ports/AttackChannel.hpp"
+#include "sc/ports/Clock.hpp"
 
 namespace AttackInterface
 {
@@ -46,17 +48,6 @@ namespace AttackInterface
         TX_ARRAY = 0xFF,    // Here for extensibility, not currently used
     } TxDataType;
 
-    const std::map<std::string, TxDataType> iecAImap {
-        {IEC_STRINGS::WS_MEAS, TX_WS},
-        {IEC_STRINGS::WD_MEAS, TX_WD},
-        {IEC_STRINGS::WTUR_TurSt, TX_ST},
-        {IEC_STRINGS::POWER_MEAS, TX_PW},
-        {IEC_STRINGS::YAW_MEAS, TX_YAW},
-        {IEC_STRINGS::RPM_MEAS, TX_RPM},
-        {IEC_STRINGS::PITCH_VAL, TX_PTCH},
-    };
-
-
     typedef enum eControlSignal
     {
         CTRL_NONE = 0x00,           // Nothing
@@ -67,6 +58,12 @@ namespace AttackInterface
 
     
     typedef uint64_t TimeStamp; // Unix timestamp in milliseconds
+
+    struct AttackTiming {
+        std::chrono::milliseconds requestLifetime{250};
+        std::chrono::milliseconds responseTimeout{500};
+        std::chrono::milliseconds responsePollPeriod{10};
+    };
 
     // Message Structure Definitions
     typedef struct sTxDataMessage {
@@ -160,7 +157,9 @@ namespace AttackInterface
             } state;
 
             
-            SocketWrapper& socket;
+            sc::ports::AttackChannel& channel_;
+            sc::ports::Clock& clock_;
+            AttackTiming timing_;
             CfgCommandCallback cfgCommandCallback_;
             SimCtrlCommandCallback simCtrlCommandCallback_;
             int tx_fails = 0;
@@ -364,7 +363,7 @@ namespace AttackInterface
                     simCtrlCommandCallback_(parsed);
                 }
 
-                socket.txAttackInterfaceData(std::make_shared<SimCtrlMessage>(parsed), sizeof(SimCtrlMessage));                
+                channel_.send(reinterpret_cast<const uint8_t*>(&parsed), sizeof(parsed));
                 ATTACK_ST("Started.");
             }
 
@@ -393,8 +392,11 @@ namespace AttackInterface
             }
 
         public:
-            AttackInterface(int numTurbines, SocketWrapper& socketRef) : 
-            numTurbines(numTurbines), socket(socketRef) {
+            AttackInterface(int numTurbines,
+                            sc::ports::AttackChannel& channel,
+                            sc::ports::Clock& clock = sc::ports::systemClock(),
+                            AttackTiming timing = {}) :
+                numTurbines(numTurbines), channel_(channel), clock_(clock), timing_(timing) {
                 for (int i = 0; i < numTurbines; ++i) {
                     LinkState ls;
                     ls.tapEnabled = std::map<TxDataType, bool> {
@@ -409,7 +411,7 @@ namespace AttackInterface
                 }
                 publishResourceUsage();
 
-                socket.AttachAttackInterfaceCallback([this](const uint8_t* data, size_t length) {
+                channel_.setReceiveHandler([this](const uint8_t* data, size_t length) {
                     this->AttackHandler(data, length);
                 });
             }
@@ -433,7 +435,7 @@ namespace AttackInterface
             void signalReady() {
                 SimCtrlMessage msg;
                 msg.simStart = true;
-                socket.txAttackInterfaceData(std::make_shared<SimCtrlMessage>(msg), sizeof(SimCtrlMessage));
+                channel_.send(reinterpret_cast<const uint8_t*>(&msg), sizeof(msg));
                 ATTACK_LOG_V1("Signaled readiness to start simulation to the attack interface client.");
             }
 
@@ -452,12 +454,11 @@ namespace AttackInterface
                 ATTACK_LOG_V2("txData called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType)
                               << ", value " << value);
 
-                // First, we create a TxDataMessage, and pass a shared_ptr to the socket wrapper's tx function
                 TxDataMessage msg;
                 msg.turbineId = turbineId;
                 msg.dataType = dataType;
                 msg.value = *static_cast<float *>(value);
-                socket.txAttackInterfaceData(std::make_shared<TxDataMessage>(msg), sizeof(TxDataMessage));
+                channel_.send(reinterpret_cast<const uint8_t*>(&msg), sizeof(msg));
             }
 
 
@@ -490,8 +491,8 @@ namespace AttackInterface
                 RqDataMessage rqMsg;
                 rqMsg.turbineId = turbineId;
                 rqMsg.dataType = dataType;
-                rqMsg.rq_time = static_cast<TimeStamp>(getCurrentTimeMs());
-                rqMsg.exp_time = rqMsg.rq_time + 250; // Request expires after 100 milliseconds. TODO: Make this configurable
+                rqMsg.rq_time = clock_.unixTimeMilliseconds();
+                rqMsg.exp_time = rqMsg.rq_time + static_cast<TimeStamp>(timing_.requestLifetime.count());
 
                 {
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
@@ -505,12 +506,11 @@ namespace AttackInterface
                     state.rq_TurbineId = turbineId;
                 }
 
-                socket.txAttackInterfaceData(std::make_shared<RqDataMessage>(rqMsg), sizeof(RqDataMessage));
+                channel_.send(reinterpret_cast<const uint8_t*>(&rqMsg), sizeof(rqMsg));
 
                 // 2. Wait for AT_DATA response with a timeout
-                const auto startTime = std::chrono::steady_clock::now();
-                const auto timeout = std::chrono::milliseconds(500);
-                while(std::chrono::steady_clock::now() - startTime < timeout) {
+                const auto startTime = clock_.steadyNow();
+                while(clock_.steadyNow() - startTime < timing_.responseTimeout) {
                     {
                         std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                         if (state.at_response_received) {
@@ -524,11 +524,11 @@ namespace AttackInterface
                             return AI_OK;
                         }
                     }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    clock_.sleepFor(timing_.responsePollPeriod);
                 }
 
                 // If we timed out, return an error
-                ATTACK_LOG_V1("Overwrite request timed out after " << timeout.count() << " ms without receiving a response. (startime = " << startTime.time_since_epoch().count() << ", now = " << std::chrono::steady_clock::now().time_since_epoch().count() << ")");
+                ATTACK_LOG_V1("Overwrite request timed out after " << timing_.responseTimeout.count() << " ms without receiving a response. (startime = " << startTime.time_since_epoch().count() << ", now = " << clock_.steadyNow().time_since_epoch().count() << ")");
                 {
                     std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
                     state.awaiting_at_response = false;
