@@ -21,7 +21,9 @@ jobs:
           - windows-latest
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_REF: 2026.07.29
       VCPKG_DISABLE_METRICS: 1
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.cache/vcpkg,readwrite
 
     steps:
       - name: Check out supervisory controller
@@ -33,11 +35,22 @@ jobs:
           python-version: "3.13"
           cache: pip
 
+      - name: Restore vcpkg binary packages
+        uses: actions/cache@v4
+        with:
+          path: .cache/vcpkg
+          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-
+
+      - name: Prepare vcpkg binary cache
+        run: cmake -E make_directory "${{ github.workspace }}/.cache/vcpkg"
+
       - name: Check out vcpkg
         uses: actions/checkout@v7
         with:
           repository: microsoft/vcpkg
-          ref: 2026.07.29
+          ref: ${{ env.VCPKG_REF }}
           path: vcpkg
 
       - name: Bootstrap vcpkg on Linux
