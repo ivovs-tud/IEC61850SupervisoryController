@@ -19,7 +19,7 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
-          - macos-lastest
+          - macos-latest
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_REF: 2026.07.29
