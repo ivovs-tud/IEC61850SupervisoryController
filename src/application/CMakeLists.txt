@@ -1,4 +1,5 @@
 add_library(sc_application STATIC
+    ControlCalculation.cpp
     YawLut.cpp
 )
 

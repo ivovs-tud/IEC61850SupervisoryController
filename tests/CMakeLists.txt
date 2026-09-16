@@ -37,6 +37,10 @@ add_executable(sc_yaw_lut_tests
     unit/YawLutTests.cpp
 )
 
+target_include_directories(sc_yaw_lut_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 target_link_libraries(sc_yaw_lut_tests PRIVATE
     Catch2::Catch2WithMain
     sc_application
@@ -45,6 +49,25 @@ target_link_libraries(sc_yaw_lut_tests PRIVATE
 catch_discover_tests(
     sc_yaw_lut_tests
     TEST_PREFIX "sc.yaw_lut."
+    DISCOVERY_MODE PRE_TEST
+)
+
+add_executable(sc_control_calculation_tests
+    unit/ControlCalculationTests.cpp
+)
+
+target_include_directories(sc_control_calculation_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(sc_control_calculation_tests PRIVATE
+    Catch2::Catch2WithMain
+    sc_application
+)
+
+catch_discover_tests(
+    sc_control_calculation_tests
+    TEST_PREFIX "sc.control_calculation."
     DISCOVERY_MODE PRE_TEST
 )
 

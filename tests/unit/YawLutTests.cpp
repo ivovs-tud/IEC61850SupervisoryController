@@ -1,51 +1,14 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include <atomic>
-#include <filesystem>
-#include <fstream>
-#include <random>
-#include <stdexcept>
 #include <string>
-#include <system_error>
 
 #include "sc/application/YawLut.hpp"
+#include "support/TemporaryCsv.hpp"
 
 namespace {
 
-class TemporaryCsv {
-public:
-    explicit TemporaryCsv(const std::string& contents) {
-        static std::atomic<unsigned long> nextId{0};
-        path_ = std::filesystem::temp_directory_path() /
-                ("sc-yaw-lut-" + std::to_string(std::random_device{}()) + "-" +
-                 std::to_string(nextId.fetch_add(1)) + ".csv");
-
-        std::ofstream file(path_, std::ios::binary | std::ios::trunc);
-        if (!file.is_open()) {
-            throw std::runtime_error("Failed to create temporary yaw LUT CSV");
-        }
-        file << contents;
-        if (!file) {
-            throw std::runtime_error("Failed to write temporary yaw LUT CSV");
-        }
-    }
-
-    ~TemporaryCsv() {
-        std::error_code error;
-        std::filesystem::remove(path_, error);
-    }
-
-    TemporaryCsv(const TemporaryCsv&) = delete;
-    TemporaryCsv& operator=(const TemporaryCsv&) = delete;
-
-    std::string path() const {
-        return path_.string();
-    }
-
-private:
-    std::filesystem::path path_;
-};
+using sc::test::TemporaryCsv;
 
 std::string gridWithHeader(const std::string& header) {
     return header +
