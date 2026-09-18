@@ -51,8 +51,11 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::init()
 
         if (length == 4) {
             const float value = asFloat(data);
-            std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-            GlobalDataStructure::instance().data().RequestedReferencePower = value;
+            {
+                auto& control = SharedData::instance().control;
+                std::lock_guard<std::mutex> lock(control.mutex);
+                control.requestedPower = value;
+            }
             COMMTASK_LOG_V1("Updated RequestedReferencePower to " << value);
         } else if (length >= 5) {
             uint32_t marker = 0;
@@ -63,12 +66,15 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::init()
             }
             bool simStopped = (*(data + 4) == 0);
             {
-                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-                GlobalDataStructure::instance().data().simStarted = !simStopped;
+                auto& interface = SharedData::instance().interface;
+                std::lock_guard<std::mutex> lock(interface.mutex);
+                interface.simStarted = !simStopped;
                 if (simStopped) {
-                    GlobalDataStructure::instance().data().simConfigured = false;
-                    DataHistorian::instance().stopRun();
+                    interface.simConfigured = false;
                 }
+            }
+            if (simStopped) {
+                DataHistorian::instance().stopRun();
             }
             COMMTASK_LOG_V1("Received simulation control message from operator server: simStarting = " << !simStopped);
         } else {
@@ -99,6 +105,8 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::init()
     });
 
     attackInterface_.setCfgCommandCallback([this](const AttackInterface::CfgDataMessage &cmd) {
+        // Logging may compile out.
+        (void)cmd;
         COMMTASK_LOG_V1("Received AttackInterface config command: TeamName " << cmd.teamName
                         << ", ScenarioId " << cmd.scenarioId
                         << ", TurbineController " << cmd.turbineController);
@@ -112,12 +120,12 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::init()
         int simScenario = 0;
         std::string simTeamName;
         {
-            std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-            auto& gds = GlobalDataStructure::instance().data();
-            simScenario = gds.simScenario;
-            simTeamName = gds.simTeamName;
-            if (gds.simConfigured && cmd.simStart) {
-                gds.simStarted = true;
+            auto& interface = SharedData::instance().interface;
+            std::lock_guard<std::mutex> lock(interface.mutex);
+            simScenario = interface.simScenario;
+            simTeamName = interface.simTeamName;
+            if (interface.simConfigured && cmd.simStart) {
+                interface.simStarted = true;
             }
         }
         DataHistorian::instance().log("Simulation started with scenario " + std::to_string(simScenario)

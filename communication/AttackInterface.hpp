@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "common/config.hpp"
-#include "common/GlobalDataStructure.hpp"
+#include "common/SharedData.hpp"
 #include "sc/ports/AttackChannel.hpp"
 #include "sc/ports/Clock.hpp"
 
@@ -210,13 +210,13 @@ namespace AttackInterface
                     }
                 }
 
-                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-                auto& data = GlobalDataStructure::instance().data();
-                data.attackTapEnabled = tapEnabled;
-                data.attackTapAvailable = tapAvailable;
-                data.attackFdiEnabled = fdiEnabled;
-                data.attackFdiAvailable = fdiAvailable;
-                data.attackFdiSignals.assign(fdiSignals.begin(), fdiSignals.end());
+                auto& interface = SharedData::instance().interface;
+                std::lock_guard<std::mutex> lock(interface.mutex);
+                interface.attackTapEnabled = tapEnabled;
+                interface.attackTapAvailable = tapAvailable;
+                interface.attackFdiEnabled = fdiEnabled;
+                interface.attackFdiAvailable = fdiAvailable;
+                interface.attackFdiSignals.assign(fdiSignals.begin(), fdiSignals.end());
             }
 
             void parseCTCommand(const uint8_t* data, size_t length) {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/GlobalDataStructure.hpp"
+#include "common/SharedData.hpp"
 #include "common/PeriodicTask.hpp"
 
 #include <functional>
@@ -26,7 +26,7 @@ struct HmiSignalDef
     std::string name;   // subplot title
     std::string unit;   // y-axis label (e.g. "W", "m/s", "RPM")
     std::vector<std::string> lineLabels;
-    std::function<std::vector<double>(const GlobalData&)> accessor;
+    std::function<std::vector<double>(const SharedData&)> accessor;
     std::optional<std::pair<double, double>> defaultYRange = std::nullopt;
 };
 
@@ -48,7 +48,7 @@ struct HmiConfig
 HmiConfig defaultHmiConfig(int numTurbines = static_cast<int>(DEFAULT_TURBINE_COUNT));
 
 // ---------------------------------------------------------------------------
-// HmiTask – samples GlobalDataStructure each cycle and publishes a msgpack
+// HmiTask – samples SharedData each cycle and publishes a msgpack
 // snapshot over a ZeroMQ PUB socket consumed by hmi_plot.py.
 //
 // Wire format (msgpack array):

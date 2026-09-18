@@ -1,6 +1,6 @@
 #include "libiec_wrapper.hpp"
 #include "common/config.hpp"
-#include "common/GlobalDataStructure.hpp"
+#include "common/SharedData.hpp"
 #include <iostream>
 
 extern "C" {
@@ -69,9 +69,9 @@ IECReturnCode libiec_wrapper::start() {
 
     // If all connected -> Indicate system is running
     if (manager_.status() == IEC_LINK_CONNECTED) {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        auto& gds = GlobalDataStructure::instance().data();
-		gds.systemRunning = true;
+        auto& interface = SharedData::instance().interface;
+        std::lock_guard<std::mutex> lock(interface.mutex);
+		interface.systemRunning = true;
     }
     printTurbineDataModel(1, 500);
     printTurbineDataSetsAndReportControlBlocks(1);

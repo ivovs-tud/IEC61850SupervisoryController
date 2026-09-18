@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <string>
 
-#include "common/GlobalDataStructure.hpp"
+#include "common/SharedData.hpp"
 #include "sc/application/YawLut.hpp"
 #include "sc/runtime/RuntimeConfig.hpp"
 #include "support/TemporaryCsv.hpp"
@@ -164,20 +164,34 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
     }
 }
 
-TEST_CASE("global per-turbine state can be sized from runtime configuration") {
-    GlobalData data;
-    data.resizeForTurbines(4);
+TEST_CASE("shared task data can be sized from runtime configuration") {
+    SharedData data;
+    data.configureTurbineCount(4);
 
-    REQUIRE(data.lastWS.size() == 4);
-    REQUIRE(data.lastGenTorque_t.size() == 4);
-    REQUIRE(data.wsHistory.size() == 4);
-    REQUIRE(data.genTorqueHistory.size() == 4);
-    REQUIRE(data.AvailablePower.size() == 4);
-    REQUIRE(data.TurbinePowerSetpoints.size() == 4);
-    REQUIRE(data.TurbineYawSetpoints.size() == 4);
-    REQUIRE(data.enableTurbine.size() == 4);
-    REQUIRE(data.TurbineController.size() == 4);
-    REQUIRE(data.orientations.size() == 4);
-    REQUIRE(data.TurbinePowerSetpoints[0] == -1.0F);
-    REQUIRE(data.TurbineController[0] == GlobalData::turbineControllerKomega2);
+    REQUIRE(data.collected.lastWS.size() == 4);
+    REQUIRE(data.collected.lastGenTorque_t.size() == 4);
+    REQUIRE(data.collected.wsHistory.size() == 4);
+    REQUIRE(data.collected.genTorqueHistory.size() == 4);
+    REQUIRE(data.processed.availablePower.size() == 4);
+    REQUIRE(data.processed.measuredTotalPowerHistory.capacity() == CollectedData::historySize);
+    REQUIRE(data.control.powerSetpoints.size() == 4);
+    REQUIRE(data.control.yawSetpoints.size() == 4);
+    REQUIRE(data.control.turbineEnabled.size() == 4);
+    REQUIRE(data.control.turbineController.size() == 4);
+    REQUIRE(data.control.powerSetpoints[0] == -1.0F);
+    REQUIRE(data.control.turbineController[0] == ControlData::controllerKomega2);
+}
+
+TEST_CASE("shared task data sections have independent mutexes") {
+    SharedData data;
+    std::lock_guard<std::mutex> collectedLock(data.collected.mutex);
+    std::unique_lock<std::mutex> processedLock(data.processed.mutex, std::try_to_lock);
+    std::unique_lock<std::mutex> controlLock(data.control.mutex, std::try_to_lock);
+    std::unique_lock<std::mutex> monitoringLock(data.monitoring.mutex, std::try_to_lock);
+    std::unique_lock<std::mutex> interfaceLock(data.interface.mutex, std::try_to_lock);
+
+    REQUIRE(processedLock.owns_lock());
+    REQUIRE(controlLock.owns_lock());
+    REQUIRE(monitoringLock.owns_lock());
+    REQUIRE(interfaceLock.owns_lock());
 }

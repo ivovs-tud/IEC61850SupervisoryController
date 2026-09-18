@@ -5,21 +5,21 @@
 
 #include "SignalProcessingTask.hpp"
 #include "common/DataHistorian.hpp"
-#include "common/GlobalDataStructure.hpp"
+#include "common/SharedData.hpp"
 #include "common/util.hpp"
 
 namespace {
 constexpr uint64_t TURBINE_CONNECTION_TIMEOUT_MS = 2000;
 
-bool hasRecentMeasurement(const GlobalData& gds, std::size_t turbineIndex, uint64_t nowMs)
+bool hasRecentMeasurement(const CollectedData& data, std::size_t turbineIndex, uint64_t nowMs)
 {
     const std::array<uint64_t, 6> timestamps {
-        gds.lastWS_t[turbineIndex],
-        gds.lastWD_t[turbineIndex],
-        gds.lastYawOffset_t[turbineIndex],
-        gds.lastRPM_t[turbineIndex],
-        gds.lastPower_t[turbineIndex],
-        gds.lastGenTorque_t[turbineIndex],
+        data.lastWS_t[turbineIndex],
+        data.lastWD_t[turbineIndex],
+        data.lastYawOffset_t[turbineIndex],
+        data.lastRPM_t[turbineIndex],
+        data.lastPower_t[turbineIndex],
+        data.lastGenTorque_t[turbineIndex],
     };
 
     return std::any_of(timestamps.begin(), timestamps.end(), [nowMs](uint64_t timestamp) {
@@ -29,17 +29,17 @@ bool hasRecentMeasurement(const GlobalData& gds, std::size_t turbineIndex, uint6
 
 double calculateAvailablePower(double windSpeed)
 {
-    if (windSpeed < GlobalData::cutInWindSpeed || windSpeed >= GlobalData::cutOutWindSpeed) {
+    if (windSpeed < TurbineParameters::cutInWindSpeed || windSpeed >= TurbineParameters::cutOutWindSpeed) {
         return 0.0;
     }
 
-    const double rotorRadius = GlobalData::rotorDiameter / 2.0;
+    const double rotorRadius = TurbineParameters::rotorDiameter / 2.0;
     const double sweptArea = kPi * rotorRadius * rotorRadius;
     const double aerodynamicPower =
-        0.5 * GlobalData::airDensity * sweptArea *
-        GlobalData::optimalPowerCoefficient * windSpeed * windSpeed * windSpeed;
+        0.5 * TurbineParameters::airDensity * sweptArea *
+        TurbineParameters::optimalPowerCoefficient * windSpeed * windSpeed * windSpeed;
 
-    return std::min(aerodynamicPower, GlobalData::ratedPower);
+    return std::min(aerodynamicPower, TurbineParameters::ratedPower);
 }
 }
 
@@ -56,63 +56,49 @@ void SignalProcessingTask::init()
 
 void SignalProcessingTask::execute()
 {
-    // TODO: implement signal acquisition and processing
-    // Example:
-    //   std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-    //   GlobalDataStructure::instance().data().measuredVoltage = readAdc();
     const uint64_t nowMs = getCurrentTimeMs();
     float loggedWs = 0.0f;
     float loggedWd = 0.0f;
+    auto& data = SharedData::instance();
     {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        auto& gds = GlobalDataStructure::instance().data();
-		
-        gds.Wtotal_meas.push_back(std::accumulate(gds._W.begin(), gds._W.end(), 0.0));
-        gds.TotalPower_recv = 0;
-        for (const double power : gds.lastPower) {
-            gds.TotalPower_recv += power;
-        }
+        std::scoped_lock lock(data.collected.mutex, data.processed.mutex);
+
+        data.processed.measuredTotalPowerHistory.push_back(
+            std::accumulate(data.collected.measuredPower.begin(), data.collected.measuredPower.end(), 0.0));
+        data.processed.totalReceivedPower = std::accumulate(
+            data.collected.lastPower.begin(), data.collected.lastPower.end(), 0.0);
 
         int connectedTurbines = 0;
-        for (std::size_t i = 0; i < gds.lastPower.size(); ++i) {
-            if (hasRecentMeasurement(gds, i, nowMs)) {
+        for (std::size_t i = 0; i < data.collected.lastPower.size(); ++i) {
+            if (hasRecentMeasurement(data.collected, i, nowMs)) {
                 ++connectedTurbines;
             }
-            gds.AvailablePower[i] = calculateAvailablePower(gds.lastWS[i]);
+            data.processed.availablePower[i] = calculateAvailablePower(data.collected.lastWS[i]);
         }
-        gds.connectedTurbines = connectedTurbines;
-    }
+        data.processed.connectedTurbines = connectedTurbines;
 
-    // The global wind speed and direction is determined based on the average of all latest received data from each turbine
-    float wd_sum = 0.0f;
-    float count = 0;
-    {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        auto& gds = GlobalDataStructure::instance().data();
-        for (std::size_t i = 0; i < gds.lastWD.size(); ++i) {
-            if (gds.lastWS[i] > 0.0f) { // Assuming a valid wind speed is always positive
-                wd_sum += gds.lastWD[i];
+        float wd_sum = 0.0f;
+        float count = 0;
+        for (std::size_t i = 0; i < data.collected.lastWD.size(); ++i) {
+            if (data.collected.lastWS[i] > 0.0f) {
+                wd_sum += data.collected.lastWD[i];
                 count++;
             }
         }
-        if (count > 0) gds.glob_wd_i = 0.05*static_cast<float>(wd_sum / count) + 0.95* gds.glob_wd_i;
-    }
-    // For wind speed, we use the three biggest found items, and take their average
-    {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        auto& gds = GlobalDataStructure::instance().data();
-        const std::size_t sampleCount = std::min<std::size_t>(3, gds.lastWS.size());
-        std::vector<float> tmp(sampleCount);
-        std::partial_sort_copy(
-            std::begin(gds.lastWS), std::end(gds.lastWS), //.begin/.end in C++98/C++03
-            std::begin(tmp), std::end(tmp),
-            std::greater<float>() //remove "int" in C++14
-        );
-        const float res = std::accumulate(std::begin(tmp), std::end(tmp), 0.0f) /
-                          static_cast<float>(sampleCount);
-        gds.glob_ws_i = 0.9 * gds.glob_ws_i + 0.1 * res;
-        loggedWs = gds.glob_ws_i;
-        loggedWd = gds.glob_wd_i;
+        if (count > 0) {
+            data.processed.windDirection =
+                0.05f * (wd_sum / count) + 0.95f * data.processed.windDirection;
+        }
+
+        const std::size_t sampleCount = std::min<std::size_t>(3, data.collected.lastWS.size());
+        std::vector<float> topWindSpeeds(sampleCount);
+        std::partial_sort_copy(data.collected.lastWS.begin(), data.collected.lastWS.end(),
+                               topWindSpeeds.begin(), topWindSpeeds.end(), std::greater<float>());
+        const float windSpeed = std::accumulate(topWindSpeeds.begin(), topWindSpeeds.end(), 0.0f) /
+                                static_cast<float>(sampleCount);
+        data.processed.windSpeed = 0.9f * data.processed.windSpeed + 0.1f * windSpeed;
+        loggedWs = data.processed.windSpeed;
+        loggedWd = data.processed.windDirection;
     }
 
     std::string logMsg = "[SP]" + std::to_string(getCurrentTimeMs()) + ";GV=" + std::to_string(loggedWs) + ";GD=" + std::to_string(loggedWd);

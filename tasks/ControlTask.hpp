@@ -6,12 +6,11 @@
 #include "common/PeriodicTask.hpp"
 #include "sc/application/YawLut.hpp"
 
-// ---------------------------------------------------------------------------
-// ControlTask – closed-loop control algorithm.
-// ---------------------------------------------------------------------------
+/// Periodic adapter for the pure control calculation
 class ControlTask : public PeriodicTask
 {
 public:
+    /// Startup dependencies and schedule
     struct Config {
         int numTurbines;
         std::chrono::milliseconds period{std::chrono::milliseconds(10)};
@@ -19,11 +18,16 @@ public:
     };
 
     explicit ControlTask(Config config);
+
+    /// Worker shutdown before referenced dependencies are destroyed
     ~ControlTask() override { stop(); }
 
 protected:
+    /// Coherent read -> calculation -> complete publication
     void execute() override;
-    void onStop()  override;  // stops socket servers after the loop exits
+
+    /// Stop lifecycle log
+    void onStop() override;
 
 private:
     sc::application::YawLut yawLut_;

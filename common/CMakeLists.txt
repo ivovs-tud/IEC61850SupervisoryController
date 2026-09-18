@@ -5,7 +5,7 @@ add_library(common
 )
 
 target_include_directories(common PUBLIC
-    ${PROJECT_SOURCE_DIR}   # consumers include as "common/GlobalDataStructure.hpp"
+    ${PROJECT_SOURCE_DIR}   # consumers include as "common/SharedData.hpp"
     ${PROJECT_SOURCE_DIR}/include
 )
 

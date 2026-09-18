@@ -16,7 +16,7 @@ struct ControlInputs {
 
 struct ControlSetpoints {
     std::vector<float> turbinePower;
-    std::vector<int> turbineYaw;
+    std::vector<float> turbineYaw;
 };
 
 ControlSetpoints calculateControlSetpoints(const ControlInputs& inputs, const YawLut& yawLut);

@@ -10,7 +10,7 @@
 #include <chrono>
 
 #include "common/PeriodicTask.hpp"
-#include "common/GlobalDataStructure.hpp"
+#include "common/SharedData.hpp"
 #include "common/DataHistorian.hpp"
 #include "communication/libiec_wrapper.hpp"
 #include "communication/AttackInterface.hpp"
@@ -83,16 +83,16 @@ private:
         const char*                              reportReference;
         IECReturnCode (libiec_wrapper::*iecRead)(int, float&);
         AttackInterface::TxDataType              txDataType;
-        std::vector<double> GlobalData::*        lastField;
-        TurbineHistory<double> GlobalData::*     historyField;
-        std::vector<uint64_t> GlobalData::*      lastTimestamp;
+        std::vector<double> CollectedData::*     lastField;
+        TurbineHistory<double> CollectedData::*  historyField;
+        std::vector<uint64_t> CollectedData::*   lastTimestamp;
         uint32_t                                 intervalMs;
     };
 
     struct TxDescriptor {
         const char*                                  name;
         IECValueType                                 type;
-        std::function<void*(GlobalData&, int)>       gdsPtr;
+        std::function<void*(ControlData&, int)>      valuePtr;
         AttackInterface::TxDataType                  txDataType;
         IECReturnCode (libiec_wrapper::*iecWrite)(int, void*);
         uint32_t                                     intervalMs;

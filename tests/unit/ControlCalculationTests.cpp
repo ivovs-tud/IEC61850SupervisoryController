@@ -64,8 +64,8 @@ TEST_CASE("control calculation rounds wind direction when yaw steering is disabl
     const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
 
     REQUIRE(setpoints.turbineYaw.size() == 2);
-    REQUIRE(setpoints.turbineYaw[0] == 13);
-    REQUIRE(setpoints.turbineYaw[1] == 13);
+    REQUIRE(setpoints.turbineYaw[0] == Catch::Approx(13.0F));
+    REQUIRE(setpoints.turbineYaw[1] == Catch::Approx(13.0F));
 }
 
 TEST_CASE("control calculation applies LUT offsets with nearest-integer rounding") {
@@ -76,8 +76,8 @@ TEST_CASE("control calculation applies LUT offsets with nearest-integer rounding
     const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
 
     REQUIRE(setpoints.turbineYaw.size() == 2);
-    REQUIRE(setpoints.turbineYaw[0] == 359);
-    REQUIRE(setpoints.turbineYaw[1] == 1);
+    REQUIRE(setpoints.turbineYaw[0] == Catch::Approx(359.0F));
+    REQUIRE(setpoints.turbineYaw[1] == Catch::Approx(1.0F));
 }
 
 TEST_CASE("control calculation normalizes rounded orientation to one rotation") {
@@ -86,13 +86,13 @@ TEST_CASE("control calculation normalizes rounded orientation to one rotation") 
 
     inputs.windDirection = 359.6F;
     auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
-    REQUIRE(setpoints.turbineYaw[0] == 0);
-    REQUIRE(setpoints.turbineYaw[1] == 0);
+    REQUIRE(setpoints.turbineYaw[0] == Catch::Approx(0.0F));
+    REQUIRE(setpoints.turbineYaw[1] == Catch::Approx(0.0F));
 
     inputs.windDirection = -0.6F;
     setpoints = sc::application::calculateControlSetpoints(inputs, lut);
-    REQUIRE(setpoints.turbineYaw[0] == 359);
-    REQUIRE(setpoints.turbineYaw[1] == 359);
+    REQUIRE(setpoints.turbineYaw[0] == Catch::Approx(359.0F));
+    REQUIRE(setpoints.turbineYaw[1] == Catch::Approx(359.0F));
 }
 
 TEST_CASE("control calculation preserves LUT and turbine count mismatch") {

@@ -8,19 +8,19 @@
 #include <utility>
 
 const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
-    { "V",       "m/s", IEC_STRINGS::WS_MEAS,    "WMET1$MX$HorWdSpd", &libiec_wrapper::rxWindSpeed,     AttackInterface::TX_WS,  &GlobalData::lastWS,        &GlobalData::wsHistory,        &GlobalData::lastWS_t,        500 },
-    { "D",       "deg", IEC_STRINGS::WD_MEAS,    "WMET1$MX$HorWdDir", &libiec_wrapper::rxWindDirection, AttackInterface::TX_WD,  &GlobalData::lastWD,        &GlobalData::wdHistory,        &GlobalData::lastWD_t,        500 },
-    { "YawMeas", "deg", IEC_STRINGS::YAW_MEAS,   "WYAW1$MX$YwAng",    &libiec_wrapper::rxYawOffset,     AttackInterface::TX_YAW, &GlobalData::lastYawOffset, &GlobalData::yawOffsetHistory, &GlobalData::lastYawOffset_t, 500 },
-    { "RSpd",    "RPM", IEC_STRINGS::RPM_MEAS,   "WROT1$MX$RotSpd",   &libiec_wrapper::rxRotorSpeed,    AttackInterface::TX_RPM, &GlobalData::lastRPM,       &GlobalData::rpmHistory,       &GlobalData::lastRPM_t,       500 },
-    { "W",       "W",   IEC_STRINGS::POWER_MEAS, "WTUR1$MX$W",        &libiec_wrapper::rxPowerGen,      AttackInterface::TX_PW,  &GlobalData::lastPower,     &GlobalData::powerHistory,     &GlobalData::lastPower_t,     500 },
-    { "Tor",     "W",   IEC_STRINGS::GEN_TORQ,   "WCNV1$MX$Torq",     &libiec_wrapper::rxGenTorque,     AttackInterface::TX_GENTORQ,  &GlobalData::lastGenTorque,     &GlobalData::genTorqueHistory,     &GlobalData::lastGenTorque_t,     500 },
+    { "V",       "m/s", IEC_STRINGS::WS_MEAS,    "WMET1$MX$HorWdSpd", &libiec_wrapper::rxWindSpeed,     AttackInterface::TX_WS,  &CollectedData::lastWS,        &CollectedData::wsHistory,        &CollectedData::lastWS_t,        500 },
+    { "D",       "deg", IEC_STRINGS::WD_MEAS,    "WMET1$MX$HorWdDir", &libiec_wrapper::rxWindDirection, AttackInterface::TX_WD,  &CollectedData::lastWD,        &CollectedData::wdHistory,        &CollectedData::lastWD_t,        500 },
+    { "YawMeas", "deg", IEC_STRINGS::YAW_MEAS,   "WYAW1$MX$YwAng",    &libiec_wrapper::rxYawOffset,     AttackInterface::TX_YAW, &CollectedData::lastYawOffset, &CollectedData::yawOffsetHistory, &CollectedData::lastYawOffset_t, 500 },
+    { "RSpd",    "RPM", IEC_STRINGS::RPM_MEAS,   "WROT1$MX$RotSpd",   &libiec_wrapper::rxRotorSpeed,    AttackInterface::TX_RPM, &CollectedData::lastRPM,       &CollectedData::rpmHistory,       &CollectedData::lastRPM_t,       500 },
+    { "W",       "W",   IEC_STRINGS::POWER_MEAS, "WTUR1$MX$W",        &libiec_wrapper::rxPowerGen,      AttackInterface::TX_PW,  &CollectedData::lastPower,     &CollectedData::powerHistory,     &CollectedData::lastPower_t,     500 },
+    { "Tor",     "W",   IEC_STRINGS::GEN_TORQ,   "WCNV1$MX$Torq",     &libiec_wrapper::rxGenTorque,     AttackInterface::TX_GENTORQ,  &CollectedData::lastGenTorque,     &CollectedData::genTorqueHistory,     &CollectedData::lastGenTorque_t,     500 },
 };
 
 const IECCommunicator::TxDescriptor IECCommunicator::TX_DESCRIPTORS[] = {
-    { "WSpt",    IEC_FLOAT32, [](GlobalData& d, int i)->void* { return &d.TurbinePowerSetpoints[i]; }, AttackInterface::TX_SPT_PWR,    &libiec_wrapper::txPowerSetpoint,     1000 },
-    { "YawSpt",  IEC_FLOAT32, [](GlobalData& d, int i)->void* { return &d.TurbineYawSetpoints[i]; },   AttackInterface::TX_SPT_YAW,    &libiec_wrapper::txYawSetpoint,       1000 },
-    { "OP_CMD",  IEC_UINT32,  [](GlobalData& d, int i)->void* { return &d.enableTurbine[i]; },          AttackInterface::TX_NONE,       &libiec_wrapper::txOpCommand,        5000 },
-    { "TUR_CTL", IEC_UINT32,  [](GlobalData& d, int i)->void* { return &d.TurbineController[i]; },     AttackInterface::TX_NONE,       &libiec_wrapper::txTurbineController, 5000 },
+    { "WSpt",    IEC_FLOAT32, [](ControlData& d, int i)->void* { return &d.powerSetpoints[i]; }, AttackInterface::TX_SPT_PWR, &libiec_wrapper::txPowerSetpoint, 1000 },
+    { "YawSpt",  IEC_FLOAT32, [](ControlData& d, int i)->void* { return &d.yawSetpoints[i]; }, AttackInterface::TX_SPT_YAW, &libiec_wrapper::txYawSetpoint, 1000 },
+    { "OP_CMD",  IEC_UINT32,  [](ControlData& d, int i)->void* { return &d.turbineEnabled[i]; }, AttackInterface::TX_NONE, &libiec_wrapper::txOpCommand, 5000 },
+    { "TUR_CTL", IEC_UINT32,  [](ControlData& d, int i)->void* { return &d.turbineController[i]; }, AttackInterface::TX_NONE, &libiec_wrapper::txTurbineController, 5000 },
 };
 
 IECCommunicator::IECCommunicator(const CommConfig& config,
@@ -208,8 +208,9 @@ void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
     void* value = nullptr;
     float f;
     {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        void* sharedValue = desc.gdsPtr(GlobalDataStructure::instance().data(), turbineId_ - 1);
+        auto& control = SharedData::instance().control;
+        std::lock_guard<std::mutex> lock(control.mutex);
+        void* sharedValue = desc.valuePtr(control, turbineId_ - 1);
         switch (desc.type) {
             case IEC_FLOAT32:
                 floatValue = *static_cast<float*>(sharedValue);
@@ -281,8 +282,9 @@ void IECCommunicator::processRxMeasurement(const RxDescriptor& desc, float value
     
     
     if (strcmp(desc.name, "W") == 0) { // If we receive power, we also store the actual value in order to keep track of total measured power
-            std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-            GlobalDataStructure::instance().data()._W[turbineId_ - 1] = value;
+            auto& collected = SharedData::instance().collected;
+            std::lock_guard<std::mutex> lock(collected.mutex);
+            collected.measuredPower[turbineId_ - 1] = value;
     }
     {
         std::lock_guard<std::mutex> lock(attackInterfaceMutex_);
@@ -297,20 +299,24 @@ void IECCommunicator::processRxMeasurement(const RxDescriptor& desc, float value
     logMsg = "[WT" + std::to_string(turbineId_) + "→SC(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
 
+    bool unchangedWindDirection = false;
+    double previousWindDirection = 0.0;
     {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        auto& gds = GlobalDataStructure::instance().data();
+        auto& collected = SharedData::instance().collected;
+        std::lock_guard<std::mutex> lock(collected.mutex);
 
-        // For debuggini
-        if(strcmp(desc.name, "D") == 0) {
-            if((gds.*desc.lastField)[turbineId_ - 1] == value) {
-                COMMTASK_ST("Wind direction did not change for turbine " << turbineId_ << ": " << (gds.*desc.lastField)[turbineId_ - 1] << " -> " << value);
-			}
-		}
+        if (strcmp(desc.name, "D") == 0) {
+            previousWindDirection = (collected.*desc.lastField)[turbineId_ - 1];
+            unchangedWindDirection = previousWindDirection == value;
+        }
 
-        (gds.*desc.lastField)[turbineId_ - 1] = value;
-        (gds.*desc.historyField)[turbineId_ - 1].push_back(value);
-        (gds.*desc.lastTimestamp)[turbineId_ - 1] = timestampMs;
+        (collected.*desc.lastField)[turbineId_ - 1] = value;
+        (collected.*desc.historyField)[turbineId_ - 1].push_back(value);
+        (collected.*desc.lastTimestamp)[turbineId_ - 1] = timestampMs;
+    }
+    if (unchangedWindDirection) {
+        COMMTASK_ST("Wind direction did not change for turbine " << turbineId_ << ": "
+                    << previousWindDirection << " -> " << value);
     }
 }
 

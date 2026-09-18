@@ -23,8 +23,11 @@ if(MSVC)
     # MSVC compiler options
     add_compile_options(/W4 /permissive-)
 else()
-    # GCC/Clang compiler options
-    add_compile_options(-Wall -Wextra -Wpedantic -fabi-version=18)
+    # Warning options shared by GCC and Clang. The ABI-version option is GCC-only.
+    add_compile_options(-Wall -Wextra -Wpedantic)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_compile_options(-fabi-version=18)
+    endif()
 endif()
 
 # Threading support (works on both Windows and Linux with std::thread)

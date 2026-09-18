@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "common/GlobalDataStructure.hpp"
+#include "common/SharedData.hpp"
 #include "common/DataHistorian.hpp"
 #include "communication/CommunicationTypes.hpp"
 #include "communication/socket/SocketWrapper.hpp"

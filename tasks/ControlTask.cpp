@@ -1,42 +1,29 @@
 #include <iostream>
 #include <sstream>
-#include <algorithm>
+#include <stdexcept>
 
 #include "ControlTask.hpp"
+#include "common/SharedData.hpp"
 #include "common/config.hpp"
-#include "common/GlobalDataStructure.hpp"
 #include "sc/application/ControlCalculation.hpp"
 
-
 ControlTask::ControlTask(Config config)
-    : PeriodicTask(config.period), yawLut_(config.yawLutCsvPath), numTurbines_(config.numTurbines)
-{
-    // TODO: initialise control algorithm state
-}
+    : PeriodicTask(config.period), yawLut_(config.yawLutCsvPath), numTurbines_(config.numTurbines) {}
 
-void ControlTask::execute()
-{
-    /**
-     * @brief The execution loop is simple: 
-     * The command from the operator is received, and does either power tracking or yaw steering
-     * It is assumed all relevant operational data used for this (e.g. wind speed and direction) has been
-     * pre-processed and/or determined in the SignalProcessingTask and is available in the GlobalDataStructure.
-     * 
-     */
+void ControlTask::execute() {
     sc::application::ControlInputs inputs;
     inputs.turbineCount = numTurbines_;
 
+    auto& data = SharedData::instance();
     {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        const auto& gds = GlobalDataStructure::instance().data();
-        inputs.requestedReferencePower = gds.RequestedReferencePower;
-        inputs.windSpeed = gds.glob_ws_i;
-        inputs.windDirection = gds.glob_wd_i;
+        std::lock_guard<std::mutex> lock(data.control.mutex);
+        inputs.requestedReferencePower = data.control.requestedPower;
+        inputs.yawSteeringEnabled = data.control.yawSteeringEnabled;
     }
-
     {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        inputs.yawSteeringEnabled = GlobalDataStructure::instance().data().yawSteeringEnabled;
+        std::lock_guard<std::mutex> lock(data.processed.mutex);
+        inputs.windSpeed = data.processed.windSpeed;
+        inputs.windDirection = data.processed.windDirection;
     }
 
     CONTROL_LOG_V2("Using Wind Speed: " << inputs.windSpeed << " m/s, Wind Direction: " << inputs.windDirection
@@ -58,24 +45,15 @@ void ControlTask::execute()
     CONTROL_LOG_V1("Computed yaw setpoints: " << yawLine.str());
 #endif
 
-    // Next, we push this to the global data structure, to be send automatically to the turbines by the CommunicationTask.
-    {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        auto& gds = GlobalDataStructure::instance().data();
-        const int n = std::min({numTurbines_,
-                                static_cast<int>(gds.TurbinePowerSetpoints.size()),
-                                static_cast<int>(gds.TurbineYawSetpoints.size()),
-                                static_cast<int>(setpoints.turbinePower.size()),
-                                static_cast<int>(setpoints.turbineYaw.size())});
-        for (int i = 0; i < n; ++i) {
-            gds.TurbinePowerSetpoints[i] = setpoints.turbinePower[i];
-            gds.TurbineYawSetpoints[i] = static_cast<float>(setpoints.turbineYaw[i]);
-        }
+    std::lock_guard<std::mutex> lock(data.control.mutex);
+    if (setpoints.turbinePower.size() != data.control.powerSetpoints.size() ||
+        setpoints.turbineYaw.size() != data.control.yawSetpoints.size()) {
+        throw std::logic_error("control setpoint count does not match configured turbines");
     }
+    data.control.powerSetpoints = setpoints.turbinePower;
+    data.control.yawSetpoints = setpoints.turbineYaw;
 }
 
-
-void ControlTask::onStop()
-{
+void ControlTask::onStop() {
     CONTROL_LOG_V1("Stopped");
 }

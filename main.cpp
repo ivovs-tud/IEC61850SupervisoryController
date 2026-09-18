@@ -14,7 +14,7 @@ using namespace std::chrono_literals;
 
 #include "common/ConsoleColors.hpp"
 #include "common/DataHistorian.hpp"
-#include "common/GlobalDataStructure.hpp"
+#include "common/SharedData.hpp"
 #include "common/config.hpp"
 #include "communication/CommunicationTask.hpp"
 #include "sc/application/YawLut.hpp"
@@ -139,6 +139,7 @@ CommConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& runtime) {
     return config;
 }
 
+// Runtime turbine IDs -> typed controller configuration
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -173,7 +174,7 @@ int main(int argc, char* argv[]) {
         sc::runtime::validateRuntimeConfig(runtime, yawLut.turbineCount());
 
         const int numTurbines = static_cast<int>(runtime.turbines.size());
-        GlobalDataStructure::instance().configureTurbineCount(runtime.turbines.size());
+        SharedData::instance().configureTurbineCount(runtime.turbines.size());
 
         HmiConfig hmiConfig = defaultHmiConfig(numTurbines);
         hmiConfig.windowSize = runtime.hmi.windowSize;

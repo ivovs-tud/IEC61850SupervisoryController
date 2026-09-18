@@ -18,7 +18,7 @@
 //
 // Each HmiSignalDef describes one subplot:
 //   - lineLabels gives a curve per turbine (or a global scalar with one label)
-//   - accessor   reads from GlobalData and returns one value per label entry
+//   - accessor   reads from SharedData and returns one value per label entry
 //
 // Edit this function to add, remove, or reorder signal groups.
 // =============================================================================
@@ -69,19 +69,19 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 }
                 return labels;
             }(),
-            [numTurbines](const GlobalData& d) {
+            [numTurbines](const SharedData& d) {
                 int n = std::min(numTurbines,
-                                 std::min(static_cast<int>(d.lastPower.size()),
-                                          static_cast<int>(d.TurbinePowerSetpoints.size())));
+                                 std::min(static_cast<int>(d.collected.lastPower.size()),
+                                          static_cast<int>(d.control.powerSetpoints.size())));
                 std::vector<double> v;
                 v.reserve(static_cast<std::size_t>(n * 2));
                 for (int i = 0; i < n; ++i) {
-                    v.push_back(d.lastPower[i]);
-                    if (d.TurbinePowerSetpoints[i] < 0.0f) {
+                    v.push_back(d.collected.lastPower[i]);
+                    if (d.control.powerSetpoints[i] < 0.0f) {
 						// This means, maximize power generation -> We push back NaN to indicate this 
 						v.push_back(std::numeric_limits<double>::quiet_NaN());
                     } else {
-                        v.push_back(static_cast<double>(d.TurbinePowerSetpoints[i]));
+                        v.push_back(static_cast<double>(d.control.powerSetpoints[i]));
                     }
                 }
                 return v;
@@ -102,19 +102,18 @@ HmiConfig defaultHmiConfig(int numTurbines)
                 }
                 return labels;
             }(),
-            [numTurbines](const GlobalData& d) {
+            [numTurbines](const SharedData& d) {
                 int n = std::min(numTurbines,
-                                 std::min(static_cast<int>(d.lastYawOffset.size()),
-                                          static_cast<int>(d.TurbineYawSetpoints.size())));
+                                 std::min(static_cast<int>(d.collected.lastYawOffset.size()),
+                                          static_cast<int>(d.control.yawSetpoints.size())));
                 std::vector<double> v;
                 v.reserve(static_cast<std::size_t>(n * 2));
                 for (int i = 0; i < n; ++i) {
-                    v.push_back(d.lastYawOffset[i]);
-                    /*v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));*/
+                    v.push_back(d.collected.lastYawOffset[i]);
+                    /*v.push_back(static_cast<double>(d.control.yawSetpoints[i]));*/
                 }
                 for (int i = 0; i < n; ++i) {
-                    v.push_back(static_cast<double>(d.TurbineYawSetpoints[i]));
-                    //v.push_back(static_cast<double>(d.orientations[i]));
+                    v.push_back(static_cast<double>(d.control.yawSetpoints[i]));
                 }
                 return v;
             },
@@ -124,10 +123,10 @@ HmiConfig defaultHmiConfig(int numTurbines)
         {
             "Farm Reference vs. Total Power", "W",
             {"Reference", "Total (Meas)", "Total (Received)"},
-            [](const GlobalData& d) {
-                const double measuredTotal = d.Wtotal_meas.empty() ? 0.0 : d.Wtotal_meas.back();
+            [](const SharedData& d) {
+                const double measuredTotal = d.processed.measuredTotalPowerHistory.empty() ? 0.0 : d.processed.measuredTotalPowerHistory.back();
                 return std::vector<double>{
-					static_cast<double>(d.RequestedReferencePower), measuredTotal, d.TotalPower_recv
+					static_cast<double>(d.control.requestedPower), measuredTotal, d.processed.totalReceivedPower
                 };
             },
             std::make_pair(-1000000.0, static_cast<double>(numTurbines) * 7e6)
@@ -136,9 +135,9 @@ HmiConfig defaultHmiConfig(int numTurbines)
         {
             "Wind Speed", "m/s",
             turbineLabelsWithGlobal(),
-            [safeSlice](const GlobalData& d) {
-                std::vector<double> v = safeSlice(d.lastWS);
-                v.push_back(static_cast<double>(d.glob_ws_i));
+            [safeSlice](const SharedData& d) {
+                std::vector<double> v = safeSlice(d.collected.lastWS);
+                v.push_back(static_cast<double>(d.processed.windSpeed));
                 return v;
             },
             std::make_pair(-1.0, 22.0)
@@ -147,9 +146,9 @@ HmiConfig defaultHmiConfig(int numTurbines)
         {
             "Wind Direction", "deg",
             turbineLabelsWithGlobal(),
-            [safeSlice](const GlobalData& d) {
-                std::vector<double> v = safeSlice(d.lastWD);
-                v.push_back(static_cast<double>(d.glob_wd_i));
+            [safeSlice](const SharedData& d) {
+                std::vector<double> v = safeSlice(d.collected.lastWD);
+                v.push_back(static_cast<double>(d.processed.windDirection));
                 return v;
             },
             std::make_pair(-10.0, 360.0)
@@ -158,14 +157,14 @@ HmiConfig defaultHmiConfig(int numTurbines)
         {
             "Rotor Speed", "RPM",
             turbineLabels(),
-            [safeSlice](const GlobalData& d) { return safeSlice(d.lastRPM); },
+            [safeSlice](const SharedData& d) { return safeSlice(d.collected.lastRPM); },
             std::make_pair(-1, 20)
         },
         // -- Per-turbine generator torque ------------------------------------
         {
             "Generator Torque", "Nm",
             turbineLabels(),
-            [safeSlice](const GlobalData& d) { return safeSlice(d.lastGenTorque); },
+            [safeSlice](const SharedData& d) { return safeSlice(d.collected.lastGenTorque); },
             std::make_pair(-1000.0, 5e4)
         }
     };
@@ -264,30 +263,30 @@ void HmiTask::handleCommands()
                 int requestedMode = obj.via.array.ptr[1].as<int>();
                 requestedMode = std::max(0, std::min(2, requestedMode));
 
-                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-                GlobalData& d = GlobalDataStructure::instance().data();
-                std::fill(d.TurbineController.begin(), d.TurbineController.end(), requestedMode+1);
+                SharedData& d = SharedData::instance();
+                std::lock_guard<std::mutex> lock(d.control.mutex);
+                std::fill(d.control.turbineController.begin(), d.control.turbineController.end(), requestedMode+1);
 
-                if (requestedMode == 0) d.statusMessage = "Mode: ROSCO";
-                if (requestedMode == 1) d.statusMessage = "Mode: Lio-Downregulation";
-                if (requestedMode == 2) d.statusMessage = "Mode: Safe Shutdown";
+                if (requestedMode == 0) d.control.statusMessage = "Mode: ROSCO";
+                if (requestedMode == 1) d.control.statusMessage = "Mode: Lio-Downregulation";
+                if (requestedMode == 2) d.control.statusMessage = "Mode: Safe Shutdown";
             }
             else if (cmd == "set_button_state") {
                 if (obj.via.array.size < 3) continue;
                 std::string buttonName = obj.via.array.ptr[1].as<std::string>();
                 int buttonState = obj.via.array.ptr[2].as<int>();
 
-                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-                GlobalData& d = GlobalDataStructure::instance().data();
+                SharedData& d = SharedData::instance();
+                std::lock_guard<std::mutex> lock(d.control.mutex);
 
                 if (buttonName == "Yaw Steering") {
-                    d.yawSteeringEnabled = (buttonState != 0);
-                    d.statusMessage = std::string("Yaw Steering: ") + (d.yawSteeringEnabled ? "On" : "Off");
+                    d.control.yawSteeringEnabled = (buttonState != 0);
+                    d.control.statusMessage = std::string("Yaw Steering: ") + (d.control.yawSteeringEnabled ? "On" : "Off");
                 }
                 else if (buttonName == "Enable Turbines") {
                     uint32_t enableValue = (buttonState != 0) ? 1 : 0;
-                    std::fill(d.enableTurbine.begin(), d.enableTurbine.end(), enableValue);
-                    d.statusMessage = std::string("Enable Turbines: ") + (buttonState != 0 ? "On" : "Off");
+                    std::fill(d.control.turbineEnabled.begin(), d.control.turbineEnabled.end(), enableValue);
+                    d.control.statusMessage = std::string("Enable Turbines: ") + (buttonState != 0 ? "On" : "Off");
                 }
             }
             else if (cmd == "set_turbine_enable") {
@@ -295,14 +294,14 @@ void HmiTask::handleCommands()
                 int turbineId = obj.via.array.ptr[1].as<int>();
                 int enabled = obj.via.array.ptr[2].as<int>();
 
-                std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-                GlobalData& d = GlobalDataStructure::instance().data();
-                if (turbineId < 1 || turbineId > static_cast<int>(d.enableTurbine.size())) {
+                SharedData& d = SharedData::instance();
+                std::lock_guard<std::mutex> lock(d.control.mutex);
+                if (turbineId < 1 || turbineId > static_cast<int>(d.control.turbineEnabled.size())) {
                     continue;
                 }
 
-                d.enableTurbine[static_cast<std::size_t>(turbineId - 1)] = (enabled != 0) ? 1U : 0U;
-                d.statusMessage = "T" + std::to_string(turbineId) + std::string(" turbine: ")
+                d.control.turbineEnabled[static_cast<std::size_t>(turbineId - 1)] = (enabled != 0) ? 1U : 0U;
+                d.control.statusMessage = "T" + std::to_string(turbineId) + std::string(" turbine: ")
                     + (enabled != 0 ? "Enabled" : "Disabled");
             }
         } catch (const std::exception&) {
@@ -339,32 +338,33 @@ void HmiTask::execute()
     int attackFdiAvailable = 0;
     std::vector<std::string> attackFdiSignals;
     {
-        std::lock_guard<std::mutex> lock(GlobalDataStructure::instance().mutex());
-        const GlobalData& d = GlobalDataStructure::instance().data();
+        const SharedData& d = SharedData::instance();
+        std::scoped_lock lock(d.collected.mutex, d.processed.mutex, d.control.mutex,
+                              d.monitoring.mutex, d.interface.mutex);
         for (std::size_t i = 0; i < config_.signals.size(); ++i)
             snap[i] = config_.signals[i].accessor(d);
 
-        operationMode = d.TurbineController.empty() ? 0 : static_cast<int>(d.TurbineController[0]);
-        alarmWRecMeas = d.alarmWRecMeas;
-        alarmOrientationMisalign = d.alarmOrientationMisalign;
-        alarmWTorqueRotSpd = d.alarmWTorqueRotSpd;
-        alarmPowerExpected = d.alarmPowerExpected;
-        alarmHorWdDir = d.alarmHorWdDir;
-		alarmHorWdDirChg = d.alarmHorWdDirChg;
-        alarmHorWdSpdChg = d.alarmHorWdSpdChg;
-        alarmTelemetryFreezeReplay = d.alarmTelemetryFreezeReplay;
-        alarmDrivetrainUnderResponse = d.alarmDrivetrainUnderResponse;
-        alarmStaticBounds = d.alarmStaticBounds;
-        alarmFleetPeerOutlier = d.alarmFleetPeerOutlier;
-        connectedTurbines = d.connectedTurbines;
-        yawSteeringEnabled = d.yawSteeringEnabled;
-        yawSteeringCommandName = d.yawSteeringCommandName;
-        enableTurbineStates = d.enableTurbine;
-        attackTapEnabled = d.attackTapEnabled;
-        attackTapAvailable = d.attackTapAvailable;
-        attackFdiEnabled = d.attackFdiEnabled;
-        attackFdiAvailable = d.attackFdiAvailable;
-        attackFdiSignals = d.attackFdiSignals;
+        operationMode = d.control.turbineController.empty() ? 0 : static_cast<int>(d.control.turbineController[0]);
+        alarmWRecMeas = d.monitoring.alarmWRecMeas;
+        alarmOrientationMisalign = d.monitoring.alarmOrientationMisalign;
+        alarmWTorqueRotSpd = d.monitoring.alarmWTorqueRotSpd;
+        alarmPowerExpected = d.monitoring.alarmPowerExpected;
+        alarmHorWdDir = d.monitoring.alarmHorWdDir;
+		alarmHorWdDirChg = d.monitoring.alarmHorWdDirChg;
+        alarmHorWdSpdChg = d.monitoring.alarmHorWdSpdChg;
+        alarmTelemetryFreezeReplay = d.monitoring.alarmTelemetryFreezeReplay;
+        alarmDrivetrainUnderResponse = d.monitoring.alarmDrivetrainUnderResponse;
+        alarmStaticBounds = d.monitoring.alarmStaticBounds;
+        alarmFleetPeerOutlier = d.monitoring.alarmFleetPeerOutlier;
+        connectedTurbines = d.processed.connectedTurbines;
+        yawSteeringEnabled = d.control.yawSteeringEnabled;
+        yawSteeringCommandName = d.control.yawSteeringCommandName;
+        enableTurbineStates = d.control.turbineEnabled;
+        attackTapEnabled = d.interface.attackTapEnabled;
+        attackTapAvailable = d.interface.attackTapAvailable;
+        attackFdiEnabled = d.interface.attackFdiEnabled;
+        attackFdiAvailable = d.interface.attackFdiAvailable;
+        attackFdiSignals = d.interface.attackFdiSignals;
     }
 
     ++tickCount_;
