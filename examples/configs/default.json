@@ -1,5 +1,5 @@
 {
-  "$schema": "../../docs/runtime-config.schema.json",
+  "$schema": "runtime-config.schema.json",
   "schema_version": 1,
   "turbines": [
     {"id": "WT1", "mms": {"host": "localhost", "port": 102, "ied_name": "WTURBINE", "logical_device": "LD0"}, "model": {"name": "NREL5MW", "parameters": {}}, "metadata": {}, "extensions": {}},
@@ -19,6 +19,9 @@
   },
   "control": {
     "yaw_lut_csv": "../../yaw_lut.csv"
+  },
+  "monitoring": {
+    "alarm_acknowledgement_enabled": true
   },
   "hmi": {
     "period_ms": 500,

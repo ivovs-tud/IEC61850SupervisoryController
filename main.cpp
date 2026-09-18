@@ -180,6 +180,7 @@ int main(int argc, char* argv[]) {
         hmiConfig.windowSize = runtime.hmi.windowSize;
         hmiConfig.publisherEndpoint = runtime.hmi.publisherEndpoint;
         hmiConfig.commandEndpoint = runtime.hmi.commandEndpoint;
+        hmiConfig.alarmAcknowledgementEnabled = runtime.monitoring.alarmAcknowledgementEnabled;
         if (hmiConfig.numTurbines != numTurbines) {
             throw std::runtime_error("HMI turbine count does not match runtime turbine endpoints");
         }
@@ -195,7 +196,8 @@ int main(int argc, char* argv[]) {
         HmiTask hmiTask(std::move(hmiConfig), runtime.hmi.period);
         ControlTask controlTask(controlConfig);
         SignalProcessingTask signalTask(runtime.tasks.signalProcessingPeriod);
-        MonitoringTask monitoringTask(runtime.tasks.monitoringPeriod, numTurbines);
+        MonitoringTask monitoringTask(runtime.tasks.monitoringPeriod, numTurbines,
+                                      runtime.monitoring.alarmAcknowledgementEnabled);
         CommunicationOrchestrator commTask(communicationConfig);
 
         std::atomic<bool> shutdownRequested{false};

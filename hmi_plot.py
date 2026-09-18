@@ -149,6 +149,13 @@ def _qt_brush_enum(name: str):
     return getattr(QtCore.Qt, name)
 
 
+def _qt_cursor_enum(name: str):
+    cursor_shape_enum = getattr(QtCore.Qt, "CursorShape", None)
+    if cursor_shape_enum is not None and hasattr(cursor_shape_enum, name):
+        return getattr(cursor_shape_enum, name)
+    return getattr(QtCore.Qt, name)
+
+
 class LedIndicator(QtWidgets.QWidget):
     class _LedFace(QtWidgets.QWidget):
         def __init__(self, color: tuple[int, int, int]):
@@ -410,6 +417,7 @@ button_controls: dict[str, OffOnButton] = {}
 turbine_enable_buttons: dict[int, MiniTurbineButton] = {}
 turbine_enable_box: QtWidgets.QGridLayout | None = None
 attack_resource_widget: AttackResourceWidget | None = None
+alarm_acknowledge_button: QtWidgets.QPushButton | None = None
 cli_command_queue: queue.Queue[int] = queue.Queue()
 
 
@@ -1157,6 +1165,13 @@ def send_turbine_enable_command(turbine_id: int, is_on: bool) -> None:
         pass
 
 
+def send_alarm_acknowledgement() -> None:
+    try:
+        cmd_sock.send(msgpack.packb(["acknowledge_alarms", 1], use_bin_type=True), zmq.NOBLOCK)
+    except zmq.ZMQError:
+        pass
+
+
 def read_cli_commands() -> None:
     print("HMI CLI: type a turbine id and press Enter to show/hide that turbine's plots.")
     for line in sys.stdin:
@@ -1245,6 +1260,20 @@ def update_attack_resources(payload) -> None:
         attack_resource_widget = AttackResourceWidget()
         buttons_box.addWidget(attack_resource_widget)
     attack_resource_widget.update_usage(tap_used, tap_total, fdi_used, fdi_total, signals)
+
+
+def update_alarm_acknowledgement(payload) -> None:
+    global alarm_acknowledge_button
+
+    if not isinstance(payload, list) or len(payload) < 2 or not bool(payload[1]):
+        return
+    if alarm_acknowledge_button is not None:
+        return
+
+    alarm_acknowledge_button = QtWidgets.QPushButton("Acknowledge\nAlarms")
+    alarm_acknowledge_button.setCursor(_qt_cursor_enum("PointingHandCursor"))
+    alarm_acknowledge_button.clicked.connect(send_alarm_acknowledgement)
+    buttons_box.addWidget(alarm_acknowledge_button)
 
 
 def update_sample_period(payload) -> None:
@@ -1372,6 +1401,8 @@ def poll_and_update() -> None:
                     update_turbine_enable_buttons(button_data)
                 elif payload_type == "attack_resources":
                     update_attack_resources(button_data)
+                elif payload_type == "alarm_acknowledgement":
+                    update_alarm_acknowledgement(button_data)
                 elif payload_type == "sample_period_ms":
                     update_sample_period(button_data)
                 else:

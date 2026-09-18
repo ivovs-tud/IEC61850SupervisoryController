@@ -304,6 +304,12 @@ void HmiTask::handleCommands()
                 d.control.statusMessage = "T" + std::to_string(turbineId) + std::string(" turbine: ")
                     + (enabled != 0 ? "Enabled" : "Disabled");
             }
+            else if (cmd == "acknowledge_alarms" && config_.alarmAcknowledgementEnabled) {
+                SharedData& d = SharedData::instance();
+                std::lock_guard<std::mutex> lock(d.control.mutex);
+                d.control.alarmAcknowledgementRequested = true;
+                d.control.statusMessage = "Alarms acknowledged";
+            }
         } catch (const std::exception&) {
             // Ignore malformed commands and continue.
         }
@@ -380,7 +386,7 @@ void HmiTask::execute()
     msgpack::sbuffer buf;
     msgpack::packer<msgpack::sbuffer> pk(buf);
 
-    pk.pack_array(9);
+    pk.pack_array(config_.alarmAcknowledgementEnabled ? 10 : 9);
     pk.pack(tickCount_);
     pk.pack(static_cast<int32_t>(config_.windowSize));
 
@@ -448,6 +454,12 @@ void HmiTask::execute()
     pk.pack(attackFdiEnabled);
     pk.pack(attackFdiAvailable);
     pk.pack(attackFdiSignals);
+
+    if (config_.alarmAcknowledgementEnabled) {
+        pk.pack_array(2);
+        pk.pack("alarm_acknowledgement");
+        pk.pack(true);
+    }
 
     zmq::message_t msg(buf.data(), buf.size());
     pubSocket_->send(msg, zmq::send_flags::dontwait);

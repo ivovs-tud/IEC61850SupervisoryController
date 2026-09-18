@@ -23,6 +23,7 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
         REQUIRE(endpoint.iedName == "WTURBINE");
         REQUIRE(endpoint.logicalDevice == "LD0");
     }
+    REQUIRE_FALSE(config.monitoring.alarmAcknowledgementEnabled);
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, 9));
 }
 
@@ -55,6 +56,7 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
         "  ],\n"
         "  \"tasks\": {\"control_period_ms\": 25},\n"
         "  \"control\": {\"yaw_lut_csv\": \"lut.csv\"},\n"
+        "  \"monitoring\": {\"alarm_acknowledgement_enabled\": true},\n"
         "  \"hmi\": {\"window_size\": 42},\n"
         "  \"historian\": {\"output_directory\": \"logs\"},\n"
         "  \"communication\": {\"mms\": {\"reporting_enabled\": false}}\n"
@@ -69,6 +71,7 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
     REQUIRE(config.turbines[1].iedName == "WTURBINE");
     REQUIRE(config.tasks.controlPeriod == 25ms);
     REQUIRE(config.hmi.windowSize == 42);
+    REQUIRE(config.monitoring.alarmAcknowledgementEnabled);
     REQUIRE(config.control.yawLutCsvPath == parent / "lut.csv");
     REQUIRE(config.historian.outputDirectory == parent / "logs");
     REQUIRE_FALSE(config.communication.mms.reports.front().enabled);

@@ -86,6 +86,21 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+add_executable(sc_monitoring_tests
+    unit/MonitoringTests.cpp
+)
+
+target_link_libraries(sc_monitoring_tests PRIVATE
+    Catch2::Catch2WithMain
+    sc_application
+)
+
+catch_discover_tests(
+    sc_monitoring_tests
+    TEST_PREFIX "sc.monitoring."
+    DISCOVERY_MODE PRE_TEST
+)
+
 add_executable(sc_runtime_config_tests
     unit/RuntimeConfigTests.cpp
 )

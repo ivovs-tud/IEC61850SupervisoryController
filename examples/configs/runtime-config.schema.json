@@ -28,6 +28,13 @@
       },
       "additionalProperties": true
     },
+    "monitoring": {
+      "type": "object",
+      "properties": {
+        "alarm_acknowledgement_enabled": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
     "hmi": {
       "type": "object",
       "properties": {

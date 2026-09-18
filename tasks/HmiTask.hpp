@@ -41,6 +41,7 @@ struct HmiConfig
     int windowSize  = DEFAULT_HMI_SIGNAL_WINDOW_SIZE; ///< rolling window length forwarded to the plotter
     std::string publisherEndpoint = "ipc:///tmp/supervisory_controller_hmi.sock"; ///< ZMQ PUB endpoint
     std::string commandEndpoint   = "ipc:///tmp/supervisory_controller_hmi_cmd.sock"; ///< ZMQ PULL endpoint (mode commands)
+    bool alarmAcknowledgementEnabled = false;
     std::vector<HmiSignalDef> signals;
 };
 

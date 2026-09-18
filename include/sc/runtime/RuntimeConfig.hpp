@@ -52,6 +52,10 @@ struct RuntimeConfig {
         std::filesystem::path yawLutCsvPath{"yaw_lut.csv"};
     } control;
 
+    struct Monitoring {
+        bool alarmAcknowledgementEnabled{false};
+    } monitoring;
+
     struct Hmi {
         std::chrono::milliseconds period{500};
         int windowSize{300};

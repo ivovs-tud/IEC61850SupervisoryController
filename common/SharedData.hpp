@@ -77,6 +77,7 @@ struct ControlData {
     std::vector<float> yawSetpoints = std::vector<float>(DEFAULT_TURBINE_COUNT, 0.0f);
     std::vector<uint32_t> turbineEnabled = std::vector<uint32_t>(DEFAULT_TURBINE_COUNT, 1);
     std::vector<uint32_t> turbineController = std::vector<uint32_t>(DEFAULT_TURBINE_COUNT, controllerKomega2);
+    bool alarmAcknowledgementRequested{false};
     std::string statusMessage;
 };
 
@@ -190,6 +191,7 @@ struct SharedData {
         control.requestedPower = -1.0f;
         control.yawSteeringEnabled = false;
         control.yawSteeringCommandName = "Yaw Steering";
+        control.alarmAcknowledgementRequested = false;
         control.statusMessage.clear();
 
         resetMonitoringData(monitoring);
