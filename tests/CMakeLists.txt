@@ -71,6 +71,21 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+add_executable(sc_signal_processing_tests
+    unit/SignalProcessingTests.cpp
+)
+
+target_link_libraries(sc_signal_processing_tests PRIVATE
+    Catch2::Catch2WithMain
+    sc_application
+)
+
+catch_discover_tests(
+    sc_signal_processing_tests
+    TEST_PREFIX "sc.signal_processing."
+    DISCOVERY_MODE PRE_TEST
+)
+
 add_executable(sc_runtime_config_tests
     unit/RuntimeConfigTests.cpp
 )

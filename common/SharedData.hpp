@@ -22,31 +22,10 @@ inline TurbineHistory<T> makeTurbineHistory(std::size_t turbineCount, std::size_
     return TurbineHistory<T>(turbineCount, History<T>(capacity));
 }
 
-struct TurbineParameters {
-    static constexpr const char* modelName = "NREL5MW";
-    static constexpr double airDensity = 1.225;
-    static constexpr double rotorDiameter = 126.0;
-    static constexpr double optimalPowerCoefficient = 0.482;
-    static constexpr double optimalTipSpeedRatio = 7.55;
-    static constexpr double rotorInertia = 4e6;
-    static constexpr double gearboxRatio = 97.0;
-    static constexpr double generatorEfficiency = 0.944;
-    static constexpr double ratedPower = 5.8e6;
-    static constexpr double cutInWindSpeed = 3.0;
-    static constexpr double ratedWindSpeed = 11.4;
-    static constexpr double cutOutWindSpeed = 25.0;
-    static constexpr double ratedRotorSpeed = 12.1;
-    static constexpr double minimumRotorSpeed = 0.722;
-    static constexpr double pitchRate = 10.0;
-    static constexpr double brakeTorque = 28116.2;
-    static constexpr double yawingRate = 5.0;
-    static constexpr double ratedTorque = 31465000.0;
-    static constexpr double maximumGeneratorTorque = 47402.91;
-};
-
 // Raw values written by turbine communication
 struct CollectedData {
-    static constexpr int historySize = 20;
+    // Wall-clock coverage follows the acquisition cadence.
+    static constexpr int historySampleCapacity = 20;
 
     mutable std::mutex mutex;
     std::vector<double> lastWS = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
@@ -62,12 +41,12 @@ struct CollectedData {
     std::vector<double> lastGenTorque = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
     std::vector<uint64_t> lastGenTorque_t = std::vector<uint64_t>(DEFAULT_TURBINE_COUNT, 0);
 
-    TurbineHistory<double> wsHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySize);
-    TurbineHistory<double> wdHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySize);
-    TurbineHistory<double> yawOffsetHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySize);
-    TurbineHistory<double> rpmHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySize);
-    TurbineHistory<double> powerHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySize);
-    TurbineHistory<double> genTorqueHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySize);
+    TurbineHistory<double> wsHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySampleCapacity);
+    TurbineHistory<double> wdHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySampleCapacity);
+    TurbineHistory<double> yawOffsetHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySampleCapacity);
+    TurbineHistory<double> rpmHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySampleCapacity);
+    TurbineHistory<double> powerHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySampleCapacity);
+    TurbineHistory<double> genTorqueHistory = makeTurbineHistory<double>(DEFAULT_TURBINE_COUNT, historySampleCapacity);
 
     // Power before attack-interface overrides
     std::vector<double> measuredPower = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
@@ -81,7 +60,7 @@ struct ProcessedData {
     double totalReceivedPower{0.0};
     float windSpeed{0.0f};
     float windDirection{270.0f};
-    History<double> measuredTotalPowerHistory = History<double>(CollectedData::historySize);
+    History<double> measuredTotalPowerHistory = History<double>(CollectedData::historySampleCapacity);
 };
 
 // Operator inputs and commands sent to turbines
@@ -162,12 +141,12 @@ struct SharedData {
         collected.lastPower_t.assign(turbineCount, 0);
         collected.lastGenTorque.assign(turbineCount, 0.0);
         collected.lastGenTorque_t.assign(turbineCount, 0);
-        collected.wsHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySize);
-        collected.wdHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySize);
-        collected.yawOffsetHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySize);
-        collected.rpmHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySize);
-        collected.powerHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySize);
-        collected.genTorqueHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySize);
+        collected.wsHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySampleCapacity);
+        collected.wdHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySampleCapacity);
+        collected.yawOffsetHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySampleCapacity);
+        collected.rpmHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySampleCapacity);
+        collected.powerHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySampleCapacity);
+        collected.genTorqueHistory = makeTurbineHistory<double>(turbineCount, CollectedData::historySampleCapacity);
         collected.measuredPower.assign(turbineCount, 0.0);
 
         processed.availablePower.assign(turbineCount, 0.0);

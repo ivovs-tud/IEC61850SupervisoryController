@@ -7,6 +7,7 @@
 
 #include "common/SharedData.hpp"
 #include "common/PeriodicTask.hpp"
+#include "sc/TurbineParameters.hpp"
 
 // ---------------------------------------------------------------------------
 // MonitoringTask – system health monitoring + GOOSE subscriber.
@@ -76,13 +77,13 @@ protected:
 
     // Static telemetry bounds detector for obviously implausible received values.
     const uint64_t static_bounds_measurement_timeout_ms = 3000;
-    const double static_bounds_wind_speed_max_ms = 1.5 * TurbineParameters::cutOutWindSpeed;
+    const double static_bounds_wind_speed_max_ms = 1.5 * sc::TurbineParameters::cutOutWindSpeed;
     const double static_bounds_orientation_window_deg = 60.0;
-    const double static_bounds_rpm_max = 1.5 * TurbineParameters::ratedRotorSpeed;
-    const double static_bounds_power_min_w = -0.10 * TurbineParameters::ratedPower;
-    const double static_bounds_power_max_w = 1.25 * TurbineParameters::ratedPower;
-    const double static_bounds_torque_min_nm = -0.10 * TurbineParameters::maximumGeneratorTorque;
-    const double static_bounds_torque_max_nm = 1.50 * TurbineParameters::maximumGeneratorTorque;
+    const double static_bounds_rpm_max = 1.5 * sc::TurbineParameters::ratedRotorSpeed;
+    const double static_bounds_power_min_w = -0.10 * sc::TurbineParameters::ratedPower;
+    const double static_bounds_power_max_w = 1.25 * sc::TurbineParameters::ratedPower;
+    const double static_bounds_torque_min_nm = -0.10 * sc::TurbineParameters::maximumGeneratorTorque;
+    const double static_bounds_torque_max_nm = 1.50 * sc::TurbineParameters::maximumGeneratorTorque;
 
     // Fleet peer detector for one turbine behaving unlike its peers while all
     // turbines are operating.

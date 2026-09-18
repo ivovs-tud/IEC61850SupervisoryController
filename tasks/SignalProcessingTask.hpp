@@ -2,16 +2,11 @@
 
 #include "common/PeriodicTask.hpp"
 
-// ---------------------------------------------------------------------------
-// SignalProcessingTask – ADC / sensor signal processing.
-// ---------------------------------------------------------------------------
-class SignalProcessingTask : public PeriodicTask
-{
+// Aggregates turbine measurements into farm-level values.
+class SignalProcessingTask : public PeriodicTask {
 public:
     explicit SignalProcessingTask(std::chrono::milliseconds period = std::chrono::milliseconds(1));
     ~SignalProcessingTask() override { stop(); }
-
-    void init();
 
 protected:
     void execute() override;

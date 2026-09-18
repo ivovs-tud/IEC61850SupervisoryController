@@ -173,7 +173,7 @@ TEST_CASE("shared task data can be sized from runtime configuration") {
     REQUIRE(data.collected.wsHistory.size() == 4);
     REQUIRE(data.collected.genTorqueHistory.size() == 4);
     REQUIRE(data.processed.availablePower.size() == 4);
-    REQUIRE(data.processed.measuredTotalPowerHistory.capacity() == CollectedData::historySize);
+    REQUIRE(data.processed.measuredTotalPowerHistory.capacity() == CollectedData::historySampleCapacity);
     REQUIRE(data.control.powerSetpoints.size() == 4);
     REQUIRE(data.control.yawSetpoints.size() == 4);
     REQUIRE(data.control.turbineEnabled.size() == 4);

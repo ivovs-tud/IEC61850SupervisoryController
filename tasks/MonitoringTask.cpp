@@ -97,15 +97,15 @@ double yawAdjustedAvailablePower(const SharedData& data, int turbineIndex, uint6
     const double windDirection = isRecent(data.collected.lastWD_t[turbineIndex], currentMs, 2000)
         ? data.collected.lastWD[turbineIndex]
         : static_cast<double>(data.processed.windDirection);
-    if (windSpeed < TurbineParameters::cutInWindSpeed || windSpeed >= TurbineParameters::cutOutWindSpeed) {
+    if (windSpeed < sc::TurbineParameters::cutInWindSpeed || windSpeed >= sc::TurbineParameters::cutOutWindSpeed) {
         return 0.0;
     }
 
-    const double rotorRadius = TurbineParameters::rotorDiameter / 2.0;
+    const double rotorRadius = sc::TurbineParameters::rotorDiameter / 2.0;
     const double sweptArea = kPi * rotorRadius * rotorRadius;
     const double aerodynamicPower =
-        0.5 * TurbineParameters::generatorEfficiency * TurbineParameters::airDensity * sweptArea *
-        TurbineParameters::optimalPowerCoefficient * windSpeed * windSpeed * windSpeed;
+        0.5 * sc::TurbineParameters::generatorEfficiency * sc::TurbineParameters::airDensity * sweptArea *
+        sc::TurbineParameters::optimalPowerCoefficient * windSpeed * windSpeed * windSpeed;
 
     const bool yawMeasurementRecent =
         data.collected.lastYawOffset_t[turbineIndex] > 0 &&
@@ -119,7 +119,7 @@ double yawAdjustedAvailablePower(const SharedData& data, int turbineIndex, uint6
     const double yawCos = std::max(0.0, std::cos(yawErrorDeg * kPi / 180.0));
     const double yawLoss = yawCos * yawCos * yawCos;
 
-    return std::min(aerodynamicPower * yawLoss, TurbineParameters::ratedPower);
+    return std::min(aerodynamicPower * yawLoss, sc::TurbineParameters::ratedPower);
 }
 
 double linearRange(const History<double>& values) {
@@ -195,17 +195,17 @@ bool expectedPowerForController(const SharedData& data,
 double expectedRotorSpeedRpm(const SharedData& data, int turbineIndex, uint64_t currentMs)
 {
     const double effectiveWindSpeed = effectiveYawAdjustedWindSpeed(data, turbineIndex, currentMs);
-    if (effectiveWindSpeed < TurbineParameters::cutInWindSpeed ||
-        effectiveWindSpeed >= TurbineParameters::cutOutWindSpeed) {
+    if (effectiveWindSpeed < sc::TurbineParameters::cutInWindSpeed ||
+        effectiveWindSpeed >= sc::TurbineParameters::cutOutWindSpeed) {
         return 0.0;
     }
 
-    const double rotorRadius = TurbineParameters::rotorDiameter / 2.0;
+    const double rotorRadius = sc::TurbineParameters::rotorDiameter / 2.0;
     const double rotorSpeedRadPerSec =
-        TurbineParameters::optimalTipSpeedRatio * effectiveWindSpeed / rotorRadius;
+        sc::TurbineParameters::optimalTipSpeedRatio * effectiveWindSpeed / rotorRadius;
     const double rotorSpeedRpm = rotorSpeedRadPerSec * 60.0 / (2.0 * kPi);
-    const double minimumRotorSpeedRpm = TurbineParameters::minimumRotorSpeed * 60.0 / (2.0 * kPi);
-    return std::clamp(rotorSpeedRpm, minimumRotorSpeedRpm, TurbineParameters::ratedRotorSpeed);
+    const double minimumRotorSpeedRpm = sc::TurbineParameters::minimumRotorSpeed * 60.0 / (2.0 * kPi);
+    return std::clamp(rotorSpeedRpm, minimumRotorSpeedRpm, sc::TurbineParameters::ratedRotorSpeed);
 }
 
 double expectedGeneratorTorqueNm(double expectedPower, double expectedRotorSpeedRpm)
@@ -215,8 +215,8 @@ double expectedGeneratorTorqueNm(double expectedPower, double expectedRotorSpeed
         return 0.0;
     }
 
-    const double torque = expectedPower / (TurbineParameters::generatorEfficiency * rotorSpeedRadPerSec * TurbineParameters::gearboxRatio);
-    return std::clamp(torque, 0.0, TurbineParameters::maximumGeneratorTorque);
+    const double torque = expectedPower / (sc::TurbineParameters::generatorEfficiency * rotorSpeedRadPerSec * sc::TurbineParameters::gearboxRatio);
+    return std::clamp(torque, 0.0, sc::TurbineParameters::maximumGeneratorTorque);
 }
 
 double medianAbsoluteDeviation(std::vector<double> values, double center)
@@ -259,7 +259,7 @@ MonitoringTask::MonitoringTask(std::chrono::milliseconds period, int numTurbines
     last_orientation_prediction_time = std::vector<uint64_t>(numTurbines_, 0);
     power_tracking_mismatch_start_time = std::vector<uint64_t>(numTurbines_, 0);
     last_expected_power = std::vector<double>(numTurbines_, -1.0);
-    expected_power_history = makeTurbineHistory<double>(numTurbines_, CollectedData::historySize);
+    expected_power_history = makeTurbineHistory<double>(numTurbines_, CollectedData::historySampleCapacity);
     wind_speed_change_strike_count = std::vector<int>(numTurbines_, 0);
     wind_direction_change_strike_count = std::vector<int>(numTurbines_, 0);
     telemetry_freeze_suspicion_start_time = std::vector<std::array<uint64_t, 6>>(numTurbines_);
@@ -464,7 +464,7 @@ bool MonitoringTask::checkConsistencyOrientationDynamics() {
         const float predictedOrientation = predictYawAtRate(
             orientation_state[i],
             data.control.yawSetpoints[i],
-            static_cast<float>(TurbineParameters::yawingRate),
+            static_cast<float>(sc::TurbineParameters::yawingRate),
             dt_sec);
 
         last_orientation_prediction_time[i] = current_ms;
@@ -503,7 +503,7 @@ bool MonitoringTask::checkConsistencyPowerTorqueRotorSpeed() {
         }
 
 
-        float expectedPower = TurbineParameters::generatorEfficiency * data.collected.lastRPM[i] * 2 * kPi / 60 * data.collected.lastGenTorque[i] * TurbineParameters::gearboxRatio; // Placeholder for actual power-torque-speed relation
+        float expectedPower = sc::TurbineParameters::generatorEfficiency * data.collected.lastRPM[i] * 2 * kPi / 60 * data.collected.lastGenTorque[i] * sc::TurbineParameters::gearboxRatio; // Placeholder for actual power-torque-speed relation
         if (abs(data.collected.lastPower[i] - expectedPower) > 4e5) { // Placeholder threshold
             // alarm |= true;
             return true;
@@ -819,7 +819,7 @@ bool MonitoringTask::checkStaticTelemetryBounds() {
         const bool yawFresh =
             isRecent(data.collected.lastYawOffset_t[i], current_ms, static_bounds_measurement_timeout_ms);
         if (yawFresh &&
-            data.processed.windSpeed >= TurbineParameters::cutInWindSpeed &&
+            data.processed.windSpeed >= sc::TurbineParameters::cutInWindSpeed &&
             angularDistanceDeg(
                 static_cast<float>(data.collected.lastYawOffset[i]),
                 static_cast<float>(data.processed.windDirection)) > static_bounds_orientation_window_deg) {
