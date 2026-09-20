@@ -23,6 +23,10 @@ public:
         unixTimeMilliseconds_ += static_cast<uint64_t>(duration.count());
     }
 
+    void advance(std::chrono::milliseconds duration) {
+        sleepFor(duration);
+    }
+
 private:
     SteadyTimePoint steadyNow_{};
     uint64_t unixTimeMilliseconds_;

@@ -1,16 +1,16 @@
-add_executable(sc_legacy_protocol_tests
-    unit/LegacyProtocolTests.cpp
+add_executable(sc_protocol_layout_tests
+    unit/ProtocolLayoutTests.cpp
 )
 
-target_link_libraries(sc_legacy_protocol_tests PRIVATE
+target_link_libraries(sc_protocol_layout_tests PRIVATE
     Catch2::Catch2WithMain
     common
 )
 
 include(Catch)
 catch_discover_tests(
-    sc_legacy_protocol_tests
-    TEST_PREFIX "sc.legacy_protocol."
+    sc_protocol_layout_tests
+    TEST_PREFIX "sc.protocol_layout."
     DISCOVERY_MODE PRE_TEST
 )
 
@@ -25,11 +25,31 @@ target_include_directories(sc_attack_interface_tests PRIVATE
 target_link_libraries(sc_attack_interface_tests PRIVATE
     Catch2::Catch2WithMain
     common
+    sc_application
 )
 
 catch_discover_tests(
     sc_attack_interface_tests
     TEST_PREFIX "sc.attack_interface."
+    DISCOVERY_MODE PRE_TEST
+)
+
+add_executable(sc_attack_session_manager_tests
+    unit/AttackSessionManagerTests.cpp
+)
+
+target_include_directories(sc_attack_session_manager_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(sc_attack_session_manager_tests PRIVATE
+    Catch2::Catch2WithMain
+    sc_application
+)
+
+catch_discover_tests(
+    sc_attack_session_manager_tests
+    TEST_PREFIX "sc.attack_session_manager."
     DISCOVERY_MODE PRE_TEST
 )
 
@@ -141,13 +161,13 @@ catch_discover_tests(
 )
 
 add_test(
-    NAME sc.python_legacy_protocol
+    NAME sc.python_attack_protocol
     COMMAND ${Python3_EXECUTABLE} -m unittest discover
             -s ${CMAKE_CURRENT_SOURCE_DIR}/protocol
-            -p test_legacy_attack_protocol.py
+            -p test_attack_protocol.py
 )
 
-set_tests_properties(sc.python_legacy_protocol PROPERTIES
+set_tests_properties(sc.python_attack_protocol PROPERTIES
     ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/python;PYTHONDONTWRITEBYTECODE=1"
 )
 
@@ -172,19 +192,19 @@ if(SC_BUILD_INTEGRATION_TESTS)
     if(NOT SC_PYZMQ_IMPORT_RESULT EQUAL 0)
         message(FATAL_ERROR
             "SC_BUILD_INTEGRATION_TESTS requires pyzmq. "
-            "Install the Python integration extra with: "
-            "python -m pip install -e .[integration]")
+            "Install the Python package with: "
+            "python -m pip install -e .")
     endif()
 
-    add_executable(sc_legacy_attack_loopback_server
-        integration/LegacyAttackLoopbackServer.cpp
+    add_executable(sc_attack_loopback_server
+        integration/AttackLoopbackServer.cpp
         ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapper.cpp
         ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperAt.cpp
         ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperDH.cpp
         ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperOp.cpp
     )
 
-    target_include_directories(sc_legacy_attack_loopback_server PRIVATE
+    target_include_directories(sc_attack_loopback_server PRIVATE
         ${PROJECT_SOURCE_DIR}
         ${PROJECT_SOURCE_DIR}/communication
         ${PROJECT_SOURCE_DIR}/communication/socket
@@ -192,30 +212,31 @@ if(SC_BUILD_INTEGRATION_TESTS)
         ${ZMQ_INCLUDE_DIRS}
     )
 
-    target_link_libraries(sc_legacy_attack_loopback_server PRIVATE
+    target_link_libraries(sc_attack_loopback_server PRIVATE
         common
+        sc_application
         Threads::Threads
         ${ZMQ_LIBRARIES}
     )
 
     if(WIN32)
-        target_link_libraries(sc_legacy_attack_loopback_server PRIVATE ws2_32)
+        target_link_libraries(sc_attack_loopback_server PRIVATE ws2_32)
         if(TARGET libzmq)
-            add_custom_command(TARGET sc_legacy_attack_loopback_server POST_BUILD
+            add_custom_command(TARGET sc_attack_loopback_server POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                         $<TARGET_FILE:libzmq>
-                        $<TARGET_FILE_DIR:sc_legacy_attack_loopback_server>
+                        $<TARGET_FILE_DIR:sc_attack_loopback_server>
             )
         endif()
     endif()
 
     add_test(
-        NAME sc.integration.legacy_attack_loopback
+        NAME sc.integration.attack_loopback
         COMMAND ${Python3_EXECUTABLE}
-                ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_legacy_attack_loopback.py
-                $<TARGET_FILE:sc_legacy_attack_loopback_server>
+                ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_attack_loopback.py
+                $<TARGET_FILE:sc_attack_loopback_server>
     )
-    set_tests_properties(sc.integration.legacy_attack_loopback PROPERTIES
+    set_tests_properties(sc.integration.attack_loopback PROPERTIES
         ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
         TIMEOUT 30
     )

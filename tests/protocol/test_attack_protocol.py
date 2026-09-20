@@ -1,12 +1,14 @@
 import unittest
 
-from supervisory_controller.legacy_attack_protocol import (
+from supervisory_controller.attack_protocol import (
+    AttackProtocolError,
     AtDataMessage,
     CfgDataMessage,
     ControlSignal,
     CtDataMessage,
-    LegacyProtocolError,
+    HeartbeatMessage,
     RqDataMessage,
+    ReleaseMessage,
     SimCtrlMessage,
     TxDataMessage,
     TxDataType,
@@ -14,7 +16,7 @@ from supervisory_controller.legacy_attack_protocol import (
 )
 
 
-class LegacyAttackProtocolTests(unittest.TestCase):
+class AttackProtocolTests(unittest.TestCase):
     def assert_round_trip(self, message, expected_hex):
         payload = message.pack()
         self.assertEqual(payload.hex(), expected_hex)
@@ -56,12 +58,16 @@ class LegacyAttackProtocolTests(unittest.TestCase):
     def test_simulation_control_fixture(self):
         self.assert_round_trip(SimCtrlMessage(True), "2001")
 
+    def test_session_control_fixtures(self):
+        self.assert_round_trip(HeartbeatMessage(), "40")
+        self.assert_round_trip(ReleaseMessage(), "80")
+
     def test_rejects_invalid_messages(self):
-        with self.assertRaises(LegacyProtocolError):
+        with self.assertRaises(AttackProtocolError):
             parse_message(b"")
-        with self.assertRaises(LegacyProtocolError):
+        with self.assertRaises(AttackProtocolError):
             parse_message(b"\xff")
-        with self.assertRaises(LegacyProtocolError):
+        with self.assertRaises(AttackProtocolError):
             parse_message(b"\x01")
 
 

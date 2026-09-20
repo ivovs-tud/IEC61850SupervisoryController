@@ -27,23 +27,22 @@ cmake -S . -B build-tests \
 ```
 
 The C++ characterization tests protect current native ABI layouts while those
-interfaces are migrated. The Python protocol tests use only the standard
-library and protect the byte-level legacy attack-interface fixtures.
+interfaces are migrated. The Python attack-codec tests protect the byte-level
+attack-interface fixtures.
 
 The attack-interface unit tests use in-memory channel and clock fakes. They
 exercise the production parser and FDI state machine without opening a socket,
 waiting in real time, or connecting to IEC 61850 equipment.
 
-The Python attack-client tests similarly inject a standard-library fake socket.
-They do not require `pyzmq`; that dependency remains in the optional `attack`
-and `integration` Python extras until real loopback tests are enabled.
+The Python attack-client tests inject a fake socket but import the production
+client, so `pyzmq` is installed as a normal package dependency.
 
 The C++/Python ZeroMQ loopback test is separately gated. It builds a test-only
 server from the production attack socket sources and does not link
 libiec61850:
 
 ```sh
-python -m pip install -e ".[integration]"
+python -m pip install -e .
 cmake -S . -B build-integration \
   -DSC_BUILD_CONTROLLER=OFF \
   -DSC_BUILD_TESTS=ON \

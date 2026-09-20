@@ -27,7 +27,8 @@ void requirePositive(std::chrono::milliseconds value, const std::string& field) 
     }
 }
 
-void validateServer(const RuntimeConfig::SocketServer& server, const std::string& name) {
+template <typename Server>
+void validateServer(const Server& server, const std::string& name) {
     if (server.port < 1024 || server.port > 65535) {
         throw std::runtime_error(name + ".port must be between 1024 and 65535");
     }
@@ -117,6 +118,10 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
             "communication.attack_interface.port", config.communication.attackInterface.port);
         loadMilliseconds(root, "communication.attack_interface.poll_period_ms",
                          config.communication.attackInterface.pollPeriod);
+        loadMilliseconds(root, "communication.attack_interface.heartbeat_interval_ms",
+                         config.communication.attackInterface.heartbeatInterval);
+        loadMilliseconds(root, "communication.attack_interface.lease_timeout_ms",
+                         config.communication.attackInterface.leaseTimeout);
         config.communication.dataHistorian.port = root.get<int>(
             "communication.data_historian.port", config.communication.dataHistorian.port);
         loadMilliseconds(root, "communication.data_historian.poll_period_ms",
@@ -259,6 +264,15 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
 
     validateServer(config.communication.operatorServer, "communication.operator");
     validateServer(config.communication.attackInterface, "communication.attack_interface");
+    requirePositive(config.communication.attackInterface.heartbeatInterval,
+                    "communication.attack_interface.heartbeat_interval_ms");
+    requirePositive(config.communication.attackInterface.leaseTimeout,
+                    "communication.attack_interface.lease_timeout_ms");
+    if (config.communication.attackInterface.leaseTimeout <=
+        config.communication.attackInterface.heartbeatInterval) {
+        throw std::runtime_error(
+            "communication.attack_interface.lease_timeout_ms must exceed heartbeat_interval_ms");
+    }
     validateServer(config.communication.dataHistorian, "communication.data_historian");
     const std::set<int> serverPorts{
         config.communication.operatorServer.port,

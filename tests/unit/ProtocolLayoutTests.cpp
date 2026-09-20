@@ -6,11 +6,11 @@
 #include "common/DataHistorian.hpp"
 #include "communication/AttackInterface.hpp"
 
-TEST_CASE("legacy attack protocol retains the documented native ABI") {
+TEST_CASE("attack protocol retains the documented native ABI") {
     using namespace AttackInterface;
 
     STATIC_REQUIRE(sizeof(DataHeader) == 4);
-    STATIC_REQUIRE(sizeof(TxDataType) == 4);
+    STATIC_REQUIRE(sizeof(SignalType) == 4);
     STATIC_REQUIRE(sizeof(ControlSignal) == 4);
 
     STATIC_REQUIRE(sizeof(TxDataMessage) == 16);
@@ -39,9 +39,11 @@ TEST_CASE("legacy attack protocol retains the documented native ABI") {
 
     STATIC_REQUIRE(sizeof(SimCtrlMessage) == 2);
     STATIC_REQUIRE(offsetof(SimCtrlMessage, simStart) == 1);
+    STATIC_REQUIRE(sizeof(HeartbeatMessage) == 1);
+    STATIC_REQUIRE(sizeof(ReleaseMessage) == 1);
 }
 
-TEST_CASE("legacy historian record retains the documented native ABI") {
+TEST_CASE("historian record retains the documented native ABI") {
     STATIC_REQUIRE(sizeof(DH_TCP_DATA) == 56);
     STATIC_REQUIRE(offsetof(DH_TCP_DATA, nID) == 0);
     STATIC_REQUIRE(offsetof(DH_TCP_DATA, nUnixTime) == 8);

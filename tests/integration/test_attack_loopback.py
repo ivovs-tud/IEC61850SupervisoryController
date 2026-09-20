@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
-from supervisory_controller import AttackInterface, SimCtrlMessage
+from supervisory_controller import AttackInterface
 
 
 def reserve_loopback_port():
@@ -16,8 +16,8 @@ def reserve_loopback_port():
         return probe.getsockname()[1]
 
 
-class LegacyAttackLoopbackTests(unittest.TestCase):
-    def test_cpp_server_and_python_client_exchange_legacy_messages(self):
+class AttackLoopbackTests(unittest.TestCase):
+    def test_cpp_server_and_python_client_exchange_messages(self):
         port = reserve_loopback_port()
         server = subprocess.Popen(
             [sys.argv[1], str(port)],
@@ -30,8 +30,8 @@ class LegacyAttackLoopbackTests(unittest.TestCase):
         errors = ""
         try:
             client.connect("127.0.0.1", port)
-            client.configure("loopback-test", scenario_id=7, turbine_controller=2)
-            client.begin(wait_for_ready=True, ready_timeout=5.0)
+            client.configure("loopback-test")
+            client.begin()
 
             client.tap_communication("Yaw", [1, 0])
             self._poll_until(
@@ -40,7 +40,6 @@ class LegacyAttackLoopbackTests(unittest.TestCase):
                 "tapped yaw observation",
             )
 
-            client._socket.send(b"\xff")
             client.tap_communication("Yaw Setpoint", [1, 0])
             client.fdi_communication("Yaw Setpoint", [1, 0])
             client.fdi_next["Yaw Setpoint"][0] = 123.5
@@ -54,7 +53,7 @@ class LegacyAttackLoopbackTests(unittest.TestCase):
                 "FDI overwrite observation",
             )
 
-            client._socket.send(SimCtrlMessage(False).pack())
+            client.release()
             output, errors = server.communicate(timeout=5.0)
         finally:
             client.stop()

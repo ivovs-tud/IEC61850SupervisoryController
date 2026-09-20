@@ -16,6 +16,10 @@ public:
         receiveHandler_ = std::move(handler);
     }
 
+    void setLeaseCheckHandler(sc::ports::AttackLeaseCheckHandler handler) override {
+        leaseCheckHandler_ = std::move(handler);
+    }
+
     bool send(const uint8_t* data, std::size_t size) override {
         if (data == nullptr || size == 0) {
             return false;
@@ -33,6 +37,13 @@ public:
             throw std::logic_error("no attack receive handler is installed");
         }
         receiveHandler_(message.data(), message.size());
+    }
+
+    void checkLease() const {
+        if (!leaseCheckHandler_) {
+            throw std::logic_error("no attack lease-check handler is installed");
+        }
+        leaseCheckHandler_();
     }
 
     void setSendObserver(SendObserver observer) {
@@ -53,6 +64,7 @@ public:
 
 private:
     sc::ports::AttackReceiveHandler receiveHandler_;
+    sc::ports::AttackLeaseCheckHandler leaseCheckHandler_;
     SendObserver sendObserver_;
     std::vector<std::vector<uint8_t>> sentMessages_;
     bool sendSucceeds_{true};

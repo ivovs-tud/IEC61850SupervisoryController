@@ -1,557 +1,453 @@
 #pragma once
 
-#include <chrono>
-#include <cmath>
-#include <cstdint>
-#include <iostream>
-#include <map>
-#include <string>
-#include <functional>
-#include <cstring>
-#include <set>
-#include <mutex>
-#include <cstddef>
-#include <vector>
-
-#include "common/config.hpp"
 #include "common/SharedData.hpp"
+#include "common/config.hpp"
+#include "sc/application/AttackSessionManager.hpp"
+#include "sc/application/AttackSignalType.hpp"
 #include "sc/ports/AttackChannel.hpp"
 #include "sc/ports/Clock.hpp"
 
-namespace AttackInterface
-{
-    typedef enum eDataHeader
-    {
-        TX_DATA = 0x01,     // Data just for transmission
-        RQ_DATA = 0x02,     // Request for sending specific data
-        AT_DATA = 0x04,     // Data containing overwrite signals (response to RQ_DATA)
-        CT_DATA = 0x08,     // Control data (e.g. containing)
-        CFG_DATA = 0x10,    // Configuration data (e.g. scenario configuration)
-        SIM_CTRL = 0x20,    // Simulation control data (e.g. start/stop signal for the simulator, scenario selection, etc.)
-    } DataHeader;
+#include <chrono>
+#include <atomic>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <mutex>
+#include <set>
+#include <sstream>
+#include <iomanip>
+#include <string>
+#include <utility>
+#include <vector>
 
-    typedef DataHeader MessageType;
+namespace AttackInterface {
 
-    typedef enum eTxDataType {
-        TX_WS = 0x01,       // Wind Speed Data
-        TX_WD = 0x02,       // Wind Direction Data
-        TX_ST = 0x03,       // Turbine Status Data
-        TX_PW = 0x04,       // Power generation Data
-        TX_YAW = 0x05,      // Yaw angle Data
-        TX_RPM = 0x06,      // Rotor speed Data
-        TX_PTCH = 0x07,     // Pitch angle Data        
-        TX_SPT_YAW = 0x08,   // Yaw setpoint Data
-        TX_SPT_PWR = 0x09,   // Power setpoint Data
-        TX_GENTORQ = 0x10,  // Generator Torque
-        TX_OP_CMD = 0x0A,    // Operation command (e.g. for switching on/off the turbine)
-		TX_NONE = 0xFE,     // Used for control messages that should not be visible to the attack interface.
-        TX_ARRAY = 0xFF,    // Here for extensibility, not currently used
-    } TxDataType;
+typedef enum eDataHeader {
+    TX_DATA = 0x01,
+    RQ_DATA = 0x02,
+    AT_DATA = 0x04,
+    CT_DATA = 0x08,
+    CFG_DATA = 0x10,
+    SIM_CTRL = 0x20,
+    HEARTBEAT = 0x40,
+    RELEASE = 0x80,
+} DataHeader;
 
-    typedef enum eControlSignal
-    {
-        CTRL_NONE = 0x00,           // Nothing
-        CTRL_TAP = 0x01,            // Start/stop tapping communication
-        CTRL_FDI = 0x02,            // Start/stop false data injection attack
-        // CTRL_CFG = 0x04,            // Configuration message (contains data for scenario configuration. Should only be used before starting a scenario, and ignored otherwise)
-    } ControlSignal;
+typedef DataHeader MessageType;
 
-    
-    typedef uint64_t TimeStamp; // Unix timestamp in milliseconds
+typedef enum eControlSignal {
+    CTRL_NONE = 0x00,
+    CTRL_TAP = 0x01,
+    CTRL_FDI = 0x02,
+} ControlSignal;
 
-    struct AttackTiming {
-        std::chrono::milliseconds requestLifetime{250};
-        std::chrono::milliseconds responseTimeout{500};
-        std::chrono::milliseconds responsePollPeriod{10};
-    };
+typedef uint64_t TimeStamp;
 
-    // Message Structure Definitions
-    typedef struct sTxDataMessage {
-        const uint8_t header = TX_DATA;
-        uint8_t turbineId;      // 1-based turbine ID
-        TxDataType dataType;    // Type of data being sent
-        const uint8_t payload_length = 0x01;
-        float value;            // Value of the data
-    } TxDataMessage;
+struct AttackTiming {
+    std::chrono::milliseconds requestLifetime{250};
+    std::chrono::milliseconds requestRetryPeriod{500};
+    std::chrono::milliseconds sessionLeaseTimeout{750};
+};
 
-    typedef struct sRqDataMessage {
-        const uint8_t header = RQ_DATA;
-        uint8_t turbineId;      // 1-based turbine ID
-        TxDataType dataType;    // Type of data being requested
-        TimeStamp rq_time;      // Timestamp of the request
-        TimeStamp exp_time;     // Timestamp of when the request will be expired
-    } RqDataMessage;
+typedef struct sTxDataMessage {
+    const uint8_t header = TX_DATA;
+    uint8_t turbineId;
+    SignalType dataType;
+    const uint8_t payload_length = 0x01;
+    float value;
+} TxDataMessage;
 
-    typedef struct sAtDataMessage {
-        const uint8_t header = AT_DATA;
-        uint8_t turbineId;      // 1-based turbine ID
-        TxDataType dataType;    // Type of data being overwritten
-        TimeStamp at_time;      // Timestamp of when the attack should be executed
-        float fake_value;       // The false value to inject
-    } AtDataMessage;
+typedef struct sRqDataMessage {
+    const uint8_t header = RQ_DATA;
+    uint8_t turbineId;
+    SignalType dataType;
+    TimeStamp rq_time;
+    TimeStamp exp_time;
+} RqDataMessage;
 
-    typedef struct sCtDataMessage {
-        const uint8_t header = CT_DATA;
-        ControlSignal signal;       // Control type
-        TxDataType dataType;        // Type of data the control signal is related to (if applicable)
-        uint8_t *enable;            // Enable/disable control of this datatype for each turbine
-    } CtDataMessage; 
+typedef struct sAtDataMessage {
+    const uint8_t header = AT_DATA;
+    uint8_t turbineId;
+    SignalType dataType;
+    TimeStamp at_time;
+    float fake_value;
+} AtDataMessage;
 
-    typedef struct sCfgDataMessage {
-        const uint8_t header = CFG_DATA;
-        // To be defined based on what configuration parameters we want to support
-        char teamName[256];         // Name of the team
-        int scenarioId;             // ID of the scenario to configure
-        int turbineController;      // ID of the turbine controller
-    } CfgDataMessage;
+typedef struct sCtDataMessage {
+    const uint8_t header = CT_DATA;
+    ControlSignal signal;
+    SignalType dataType;
+    uint8_t* enable;
+} CtDataMessage;
 
-    typedef struct sSimCtrlMessage {
-        const uint8_t header = SIM_CTRL;
-        bool simStart;              // Whether if send from here indicates ready. If received, indicates to start simulation.
-        // int scenarioId;             // ID of the scenario to run (if simStart is true)
-    } SimCtrlMessage;
+// Current configuration layout. Only teamName is used as the session label.
+typedef struct sCfgDataMessage {
+    const uint8_t header = CFG_DATA;
+    char teamName[256];
+    int scenarioId;
+    int turbineController;
+} CfgDataMessage;
 
-    using CfgCommandCallback = std::function<void(const CfgDataMessage&)>;
-    using SimCtrlCommandCallback = std::function<void(const SimCtrlMessage&)>;
-    
-    
+// Retained for wire compatibility; simulation control is no longer accepted here.
+typedef struct sSimCtrlMessage {
+    const uint8_t header = SIM_CTRL;
+    bool simStart;
+} SimCtrlMessage;
 
-    typedef enum eAIRC {
-        AI_OK = 1,
-        AI_DISABLED = 0,
-        AI_ERROR = -1,
-        AI_TIMEOUT = -2
-    } AIRC;
+typedef struct sHeartbeatMessage {
+    const uint8_t header = HEARTBEAT;
+} HeartbeatMessage;
 
-    class AttackInterface {
-        /**
-         * @brief This class will serve as a binder that :
-         *  1. Translates data structs to raw payloads and vice versa
-         *  2. Contains the logic for keeping track of controlled data types for each turbine
-         *  3. Handles hooks for attachment points in the communication flow (e.g. when a new setpoint is sent or a new measurement is received)
-         * 
-         */
-        private:
-            int numTurbines; // Number of turbines in the system, used for bounds checking and vector sizing
+typedef struct sReleaseMessage {
+    const uint8_t header = RELEASE;
+} ReleaseMessage;
 
-            typedef struct sLinkState {
-                /**
-                 * @brief Struct to keep track of the state of signals on one communication link (between the SC and one turbine)
-                 * 
-                 */
-                std::map<TxDataType, bool> tapEnabled; // Whether attack interface control is enabled for each data type
-                std::map<TxDataType, bool> fdiEnabled; // Whether false data injection is enabled for each data type
-            } LinkState;
+typedef enum eAIRC {
+    AI_OK = 1,
+    AI_DISABLED = 0,
+    AI_ERROR = -1,
+    AI_TIMEOUT = -2
+} AIRC;
 
-            struct  {
-                std::vector<LinkState> LinkStates; // 1-based index for turbines
+using AuditCallback = std::function<void(const std::string&)>;
 
-                // Variables needed for proper handling or RQ_ and AT_ messages
-                std::mutex rq_at_mutex_;        // mutex to protect the following variables
-                mutable std::mutex state_mutex_; // protects LinkStates
-                bool awaiting_at_response = false; // whether we are currently waiting for an AT_DATA message in response to a RQ_DATA message
-                bool at_response_received = false; // whether we have received the expected AT_DATA message in response to a RQ_DATA message
-                float at_response_val = 0.0f; // the value received in the AT_DATA message in response to a RQ_DATA message
-                TxDataType rq_DataType; // the data type of the last RQ_DATA message, used to validate incoming AT_DATA messages
-                int rq_TurbineId; // the turbine ID of the last RQ_DATA message, used to validate incoming AT_DATA messages
-            } state;
+class AttackInterface {
+public:
+    AttackInterface(int numTurbines,
+                    sc::ports::AttackChannel& channel,
+                    sc::ports::Clock& clock = sc::ports::systemClock(),
+                    AttackTiming timing = {})
+        : numTurbines_(numTurbines),
+          channel_(channel),
+          clock_(clock),
+          timing_(timing),
+          sessionManager_(numTurbines, supportedSignalTypes(), clock, timing.sessionLeaseTimeout) {
+        publishResourceUsage();
+        channel_.setReceiveHandler([this](const uint8_t* data, size_t length) {
+            handleMessage(data, length);
+        });
+        channel_.setLeaseCheckHandler([this]() { checkSessionLease(); });
+    }
 
-            
-            sc::ports::AttackChannel& channel_;
-            sc::ports::Clock& clock_;
-            AttackTiming timing_;
-            CfgCommandCallback cfgCommandCallback_;
-            SimCtrlCommandCallback simCtrlCommandCallback_;
-            int tx_fails = 0;
-            const int max_fails = 10;
+    void setAuditCallback(AuditCallback callback) {
+        std::lock_guard<std::mutex> lock(auditMutex_);
+        auditCallback_ = std::move(callback);
+    }
 
-            static std::string dataTypeName(TxDataType dataType) {
-                switch (dataType) {
-                    case TX_WS: return "Wind speed";
-                    case TX_WD: return "Wind direction";
-                    case TX_ST: return "Turbine status";
-                    case TX_PW: return "Power";
-                    case TX_YAW: return "Yaw angle";
-                    case TX_RPM: return "Rotor speed";
-                    case TX_PTCH: return "Pitch angle";
-                    case TX_SPT_YAW: return "Yaw setpoint";
-                    case TX_SPT_PWR: return "Power setpoint";
-                    case TX_GENTORQ: return "Generator torque";
-                    case TX_OP_CMD: return "Operation command";
-                    case TX_NONE: return "None";
-                    case TX_ARRAY: return "Array";
-                }
-                return "Unknown";
-            }
+    void resetState() { endSession("reset"); }
 
-            void publishResourceUsage() const {
-                int tapEnabled = 0;
-                int tapAvailable = 0;
-                int fdiEnabled = 0;
-                int fdiAvailable = 0;
-                std::set<std::string> fdiSignals;
+    void shutdown(const std::string& reason = "controller shutdown") { endSession(reason); }
 
-                {
-                    std::lock_guard<std::mutex> stateLock(state.state_mutex_);
-                    for (const auto& linkState : state.LinkStates) {
-                        for (const auto& [dataType, enabled] : linkState.tapEnabled) {
-                            ++tapAvailable;
-                            if (enabled) {
-                                ++tapEnabled;
-                            }
-                        }
-                        for (const auto& [dataType, enabled] : linkState.fdiEnabled) {
-                            ++fdiAvailable;
-                            if (enabled) {
-                                ++fdiEnabled;
-                                fdiSignals.insert(dataTypeName(dataType));
-                            }
-                        }
-                    }
-                }
+    void checkSessionLease() {
+        const auto expired = sessionManager_.expireSession();
+        if (!expired) return;
+        cancelPendingOverwrite();
+        attackStarted_.store(false);
+        publishResourceUsage();
+        audit(*expired, "disconnected");
+    }
 
-                auto& interface = SharedData::instance().interface;
-                std::lock_guard<std::mutex> lock(interface.mutex);
-                interface.attackTapEnabled = tapEnabled;
-                interface.attackTapAvailable = tapAvailable;
-                interface.attackFdiEnabled = fdiEnabled;
-                interface.attackFdiAvailable = fdiAvailable;
-                interface.attackFdiSignals.assign(fdiSignals.begin(), fdiSignals.end());
-            }
+    void txData(unsigned int turbineId, SignalType signalType, void* value) {
+        if (signalType == SignalType::NONE) return;
+        if (!validTurbine(turbineId)) {
+            ATTACK_ERR("Invalid turbine ID: " << turbineId);
+            return;
+        }
+        if (!sessionManager_.tapEnabled(static_cast<int>(turbineId), signalType)) return;
 
-            void parseCTCommand(const uint8_t* data, size_t length) {
-                // Native-layout wire format used by the harness:
-                // [CtDataMessage struct bytes][enable_1]...[enable_N]
-                // We can reinterpret_cast for header/signal/dataType, but never dereference
-                // msg->enable because that pointer value is sender-process local.
-                const size_t fullStructLength = sizeof(CtDataMessage) + static_cast<size_t>(numTurbines);
+        TxDataMessage message;
+        message.turbineId = static_cast<uint8_t>(turbineId);
+        message.dataType = signalType;
+        message.value = *static_cast<float*>(value);
+        channel_.send(reinterpret_cast<const uint8_t*>(&message), sizeof(message));
+    }
 
-                // Some senders serialize only up to dataType (with 4-byte alignment)
-                // and then append enable bytes, which yields:
-                // [header+pad(4)][signal(4)][dataType(4)][enable_1..enable_N]
-                constexpr size_t compactPrefixLength = 4 + sizeof(ControlSignal) + sizeof(TxDataType);
-                const size_t compactLength = compactPrefixLength + static_cast<size_t>(numTurbines);
+    AIRC overwrite(unsigned int turbineId, SignalType signalType, float& value) {
+        if (signalType == SignalType::NONE) return AI_DISABLED;
+        if (!validTurbine(turbineId)) return AI_ERROR;
+        if (!sessionManager_.fdiEnabled(static_cast<int>(turbineId), signalType)) return AI_DISABLED;
 
-                const uint8_t* enableBytes = nullptr;
-                if (length >= fullStructLength) {
-                    enableBytes = data + sizeof(CtDataMessage);
-                } else if (length >= compactLength) {
-                    enableBytes = data + compactPrefixLength;
-                } else {
-                    ATTACK_ERR("Invalid CT_DATA length: " << length
-                               << ", expected at least " << compactLength
-                               << " (compact) or " << fullStructLength << " (full struct)");
-                    return;
-                }
+        txData(turbineId, signalType, &value);
+        if (const auto replacement = sessionManager_.fdiValue(
+                static_cast<int>(turbineId), signalType)) {
+            value = *replacement;
+            return AI_OK;
+        }
 
-                ControlSignal signal = CTRL_NONE;
-                TxDataType dataType = TX_NONE;
-                std::memcpy(&signal, data + 4, sizeof(signal));
-                std::memcpy(&dataType, data + 4 + sizeof(signal), sizeof(dataType));
+        requestReplacement(turbineId, signalType);
+        if (const auto replacement = sessionManager_.fdiValue(
+                static_cast<int>(turbineId), signalType)) {
+            value = *replacement;
+            return AI_OK;
+        }
+        return AI_TIMEOUT;
+    }
 
-                ATTACK_LOG_V2("Parsed CT_DATA command with signal: " << static_cast<int>(signal)
-                              << ", dataType: " << static_cast<int>(dataType));
+private:
+    static std::vector<SignalType> supportedSignalTypes() {
+        return {
+            SignalType::WIND_SPEED,
+            SignalType::WIND_DIRECTION,
+            SignalType::TURBINE_STATUS,
+            SignalType::POWER,
+            SignalType::YAW_ANGLE,
+            SignalType::ROTOR_SPEED,
+            SignalType::PITCH_ANGLE,
+            SignalType::YAW_SETPOINT,
+            SignalType::POWER_SETPOINT,
+            SignalType::GENERATOR_TORQUE,
+            SignalType::OPERATION_COMMAND,
+        };
+    }
 
-                if (signal == CTRL_TAP) {
-                    {
-                        std::lock_guard<std::mutex> stateLock(state.state_mutex_);
-                        for (int i = 0; i < numTurbines; ++i) {
-                            const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
-                            state.LinkStates[i].tapEnabled[dataType] = enabled;
-                            ATTACK_LOG_V1("Toggled control for turbine " << (i + 1)
-                                          << ", dataType " << static_cast<int>(dataType)
-                                          << " to " << enabled);
-                        }
-                    }
-                    publishResourceUsage();
-                } else if(signal == CTRL_FDI) {
-                    {
-                        std::lock_guard<std::mutex> stateLock(state.state_mutex_);
-                        for (int i = 0; i < numTurbines; ++i) {
-                            const bool enabled = (enableBytes[static_cast<size_t>(i)] != 0);
-                            state.LinkStates[i].fdiEnabled[dataType] = enabled;
-                            ATTACK_LOG_V1("Toggled false data injection for turbine " << (i + 1)
-                                          << ", dataType " << static_cast<int>(dataType)
-                                          << " to " << enabled);
-                        }
-                    }
-                    publishResourceUsage();
+    static std::string signalTypeName(SignalType signalType) {
+        switch (signalType) {
+            case SignalType::WIND_SPEED: return "Wind speed";
+            case SignalType::WIND_DIRECTION: return "Wind direction";
+            case SignalType::TURBINE_STATUS: return "Turbine status";
+            case SignalType::POWER: return "Power";
+            case SignalType::YAW_ANGLE: return "Yaw angle";
+            case SignalType::ROTOR_SPEED: return "Rotor speed";
+            case SignalType::PITCH_ANGLE: return "Pitch angle";
+            case SignalType::YAW_SETPOINT: return "Yaw setpoint";
+            case SignalType::POWER_SETPOINT: return "Power setpoint";
+            case SignalType::GENERATOR_TORQUE: return "Generator torque";
+            case SignalType::OPERATION_COMMAND: return "Operation command";
+            case SignalType::NONE: return "None";
+            case SignalType::ARRAY: return "Array";
+        }
+        return "Unknown";
+    }
 
-                } else {
-                    ATTACK_ERR("Unsupported control signal received in CT_DATA: " << static_cast<int>(signal));
+    bool validTurbine(unsigned int turbineId) const {
+        return turbineId >= 1 && turbineId <= static_cast<unsigned int>(numTurbines_);
+    }
+
+    void publishResourceUsage() const {
+        int tapEnabled = 0;
+        int fdiEnabled = 0;
+        std::set<std::string> fdiSignals;
+        const auto signalTypes = supportedSignalTypes();
+        for (int turbineId = 1; turbineId <= numTurbines_; ++turbineId) {
+            for (SignalType signalType : signalTypes) {
+                if (sessionManager_.tapEnabled(turbineId, signalType)) ++tapEnabled;
+                if (sessionManager_.fdiEnabled(turbineId, signalType)) {
+                    ++fdiEnabled;
+                    fdiSignals.insert(signalTypeName(signalType));
                 }
             }
+        }
 
-            void parseATCommand(const uint8_t* data, size_t length) {
-                if (length < sizeof(AtDataMessage)) {
-                    ATTACK_ERR("Invalid AT_DATA length: " << length
-                               << ", expected at least " << sizeof(AtDataMessage));
-                    return;
-                }
-                
-                // We return if we are not currently awaiting a response
-                {
-                    std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
-                    if (!state.awaiting_at_response || state.at_response_received) {
-                        ATTACK_LOG_V2("Received unexpected AT_DATA message (not awaiting response or already received). Ignoring.");
-                        return;
-                    }
-                }
+        const int available = numTurbines_ * static_cast<int>(signalTypes.size());
+        auto& interface = SharedData::instance().interface;
+        std::lock_guard<std::mutex> lock(interface.mutex);
+        interface.attackTapEnabled = tapEnabled;
+        interface.attackTapAvailable = available;
+        interface.attackFdiEnabled = fdiEnabled;
+        interface.attackFdiAvailable = available;
+        interface.attackFdiSignals.assign(fdiSignals.begin(), fdiSignals.end());
+    }
 
-                uint8_t turbineId = 0;
-                TxDataType dataType = TX_NONE;
-                float fakeValue = 0.0f;
-                std::memcpy(&turbineId, data + offsetof(AtDataMessage, turbineId), sizeof(turbineId));
-                std::memcpy(&dataType, data + offsetof(AtDataMessage, dataType), sizeof(dataType));
-                std::memcpy(&fakeValue, data + offsetof(AtDataMessage, fake_value), sizeof(fakeValue));
-                ATTACK_LOG_V2("Parsed AT_DATA command for turbine " << static_cast<int>(turbineId)
-                              << ", dataType " << static_cast<int>(dataType)
-                              << ", fakeValue " << fakeValue);
+    void parseControl(const uint8_t* data, size_t length) {
+        const size_t fullLength = sizeof(CtDataMessage) + static_cast<size_t>(numTurbines_);
+        constexpr size_t compactPrefixLength = 4 + sizeof(ControlSignal) + sizeof(SignalType);
+        const size_t compactLength = compactPrefixLength + static_cast<size_t>(numTurbines_);
+        const uint8_t* enabled = nullptr;
+        if (length >= fullLength) enabled = data + sizeof(CtDataMessage);
+        else if (length >= compactLength) enabled = data + compactPrefixLength;
+        else {
+            protocolError("invalid CT_DATA length");
+            return;
+        }
 
-                {
-                    std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
-                    // Check if this is a response to a RQ_DATA message we sent
-                    if (dataType != state.rq_DataType || turbineId != state.rq_TurbineId) {
-                        ATTACK_LOG_V2("Received AT_DATA does not match any pending RQ_DATA request. Ignoring.");
-                        return;
-                    }
-                    // Extra fail-safe in case in between receiving and parsing the rq_thread timed out
-                    state.at_response_received = true & state.awaiting_at_response; 
-                    state.awaiting_at_response = false;
-                    state.at_response_val = fakeValue;
-                }
+        const auto session = sessionManager_.session();
+        if (!session) {
+            ATTACK_ERR("Ignoring CT_DATA without an active configured session");
+            return;
+        }
+
+        ControlSignal control = CTRL_NONE;
+        SignalType signalType = SignalType::NONE;
+        std::memcpy(&control, data + 4, sizeof(control));
+        std::memcpy(&signalType, data + 4 + sizeof(control), sizeof(signalType));
+        if (control != CTRL_TAP && control != CTRL_FDI) {
+            protocolError("unsupported control signal");
+            return;
+        }
+
+        bool anyEnabled = false;
+        for (int turbineId = 1; turbineId <= numTurbines_; ++turbineId) {
+            const bool value = enabled[static_cast<size_t>(turbineId - 1)] != 0;
+            const bool updated = control == CTRL_TAP
+                ? sessionManager_.setTapEnabled(turbineId, signalType, value)
+                : sessionManager_.setFdiEnabled(turbineId, signalType, value);
+            if (!updated) {
+                protocolError("unsupported attack signal type");
+                return;
             }
+            anyEnabled = anyEnabled || value;
+            audit(*session,
+                  std::string(control == CTRL_TAP ? "tap" : "fdi") +
+                      ";signal=" + signalTypeName(signalType) +
+                      ";turbine=" + std::to_string(turbineId) +
+                      ";enabled=" + (value ? "true" : "false"));
+        }
+        publishResourceUsage();
+        if (anyEnabled && !attackStarted_.exchange(true)) {
+            audit(*session, "attack_started");
+        }
+    }
 
-            void parseCFGCommand(const uint8_t* data, size_t length) {
-                if (length < sizeof(CfgDataMessage)) {
-                    ATTACK_ERR("Invalid CFG_DATA length: " << length << ", expected at least " << sizeof(CfgDataMessage));
-                    return;
-                }
+    void parseAttackData(const uint8_t* data, size_t length) {
+        if (length < sizeof(AtDataMessage)) {
+            protocolError("invalid AT_DATA length");
+            return;
+        }
+        uint8_t turbineId = 0;
+        SignalType signalType = SignalType::NONE;
+        float fakeValue = 0.0F;
+        std::memcpy(&turbineId, data + offsetof(AtDataMessage, turbineId), sizeof(turbineId));
+        std::memcpy(&signalType, data + offsetof(AtDataMessage, dataType), sizeof(signalType));
+        std::memcpy(&fakeValue, data + offsetof(AtDataMessage, fake_value), sizeof(fakeValue));
 
-                CfgDataMessage parsed{};
-                std::memcpy(parsed.teamName, data + offsetof(CfgDataMessage, teamName), sizeof(parsed.teamName));
-                parsed.teamName[sizeof(parsed.teamName) - 1] = '\0';
-                std::memcpy(&parsed.scenarioId, data + offsetof(CfgDataMessage, scenarioId), sizeof(parsed.scenarioId));
-                std::memcpy(&parsed.turbineController, data + offsetof(CfgDataMessage, turbineController), sizeof(parsed.turbineController));
-                
-                resetState();
+        if (std::isnan(fakeValue) ||
+            !sessionManager_.setFdiValue(static_cast<int>(turbineId), signalType, fakeValue)) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(requestMutex_);
+        if (signalType == requestedSignalType_ && turbineId == requestedTurbineId_) {
+            awaitingResponse_ = false;
+        }
+    }
 
-                ATTACK_LOG_V1("Parsed CFG_DATA command: teamName='" << parsed.teamName
-                              << "', scenarioId=" << parsed.scenarioId
-                              << ", turbineController=" << parsed.turbineController);
+    void parseConfiguration(const uint8_t* data, size_t length) {
+        if (length < sizeof(CfgDataMessage)) {
+            protocolError("invalid CFG_DATA length");
+            return;
+        }
+        CfgDataMessage configuration{};
+        std::memcpy(configuration.teamName,
+                    data + offsetof(CfgDataMessage, teamName),
+                    sizeof(configuration.teamName));
+        configuration.teamName[sizeof(configuration.teamName) - 1] = '\0';
 
-                if (cfgCommandCallback_) {
-                    cfgCommandCallback_(parsed);
-                }
+        endSession("reconfigured");
+        const auto started = sessionManager_.startSession(configuration.teamName);
+        if (!started) {
+            ATTACK_ERR("Rejected attack session: " << started.error);
+            return;
+        }
+        attackStarted_.store(false);
+        const auto session = sessionManager_.session();
+        if (session) audit(*session, "connected");
+        publishResourceUsage();
+    }
 
-                ATTACK_ST("Client connected by team " << parsed.teamName);
-            }
+    void handleMessage(const uint8_t* data, size_t length) {
+        if (data == nullptr || length == 0) return;
+        switch (static_cast<MessageType>(data[0])) {
+            case CT_DATA: parseControl(data, length); break;
+            case AT_DATA: parseAttackData(data, length); break;
+            case CFG_DATA: parseConfiguration(data, length); break;
+            case HEARTBEAT:
+                if (length == sizeof(HeartbeatMessage)) sessionManager_.heartbeat();
+                else protocolError("invalid HEARTBEAT length");
+                break;
+            case RELEASE:
+                if (length == sizeof(ReleaseMessage)) endSession("client release");
+                else protocolError("invalid RELEASE length");
+                break;
+            case SIM_CTRL:
+                ATTACK_LOG_V1("Ignoring unused SIM_CTRL command");
+                break;
+            default:
+                protocolError("unknown message type");
+        }
+    }
 
-            void parseSimCtrlCommand(const uint8_t* data, size_t length) {
-                if (length < sizeof(SimCtrlMessage)) {
-                    ATTACK_ERR("Invalid SIM_CTRL length: " << length
-                               << ", expected at least " << sizeof(SimCtrlMessage));
-                    return;
-                }
+    void protocolError(const std::string& message) {
+        ATTACK_ERR(message);
+        endSession("protocol error");
+    }
 
-                SimCtrlMessage parsed{};
-                std::memcpy(&parsed.simStart, data + offsetof(SimCtrlMessage, simStart), sizeof(parsed.simStart));
+    void cancelPendingOverwrite() {
+        std::lock_guard<std::mutex> lock(requestMutex_);
+        awaitingResponse_ = false;
+    }
 
-                ATTACK_LOG_V1("Parsed SIM_CTRL command: simStart=" << parsed.simStart);
+    void requestReplacement(unsigned int turbineId, SignalType signalType) {
+        {
+            std::lock_guard<std::mutex> lock(requestMutex_);
+            const auto now = clock_.steadyNow();
+            if (awaitingResponse_ && now < requestExpiresAt_) return;
+            awaitingResponse_ = true;
+            requestedSignalType_ = signalType;
+            requestedTurbineId_ = static_cast<int>(turbineId);
+            requestExpiresAt_ = now + timing_.requestRetryPeriod;
+        }
 
-                if (simCtrlCommandCallback_) {
-                    simCtrlCommandCallback_(parsed);
-                }
+        RqDataMessage request;
+        request.turbineId = static_cast<uint8_t>(turbineId);
+        request.dataType = signalType;
+        request.rq_time = clock_.unixTimeMilliseconds();
+        request.exp_time = request.rq_time + static_cast<TimeStamp>(timing_.requestLifetime.count());
+        if (!channel_.send(reinterpret_cast<const uint8_t*>(&request), sizeof(request))) {
+            cancelPendingOverwrite();
+        }
+    }
 
-                channel_.send(reinterpret_cast<const uint8_t*>(&parsed), sizeof(parsed));
-                ATTACK_ST("Started.");
-            }
+    void endSession(const std::string& reason) {
+        const auto closed = sessionManager_.endSession(reason);
+        if (!closed) return;
+        cancelPendingOverwrite();
+        attackStarted_.store(false);
+        publishResourceUsage();
+        audit(*closed, "disconnected");
+    }
 
-            void AttackHandler(const uint8_t* data, size_t length) {
-                if (length == 0) return;
+    void audit(const sc::application::AttackSessionInfo& session, const std::string& event) const {
+        emitAudit(session.id, session.label, event);
+    }
 
-                MessageType msgType = static_cast<MessageType>(data[0]);
-                ATTACK_LOG_V1("Received message with header: " << static_cast<int>(msgType));
+    void audit(const sc::application::ClosedAttackSession& session, const std::string& event) const {
+        emitAudit(session.id, session.label, event + ";reason=" + session.reason);
+    }
 
-                switch(msgType) {
-                    case CT_DATA:
-                        parseCTCommand(data, length);
-                        break;
-                    case AT_DATA:
-                        parseATCommand(data, length);
-                        break;
-                    case CFG_DATA:
-                        parseCFGCommand(data, length);
-                        break;
-                    case SIM_CTRL:
-                        parseSimCtrlCommand(data, length);
-                        break;
-                    default:
-                        ATTACK_ERR("Unknown message type received: " << static_cast<int>(msgType));
-                }
-            }
+    void emitAudit(sc::application::AttackSessionId id,
+                   const std::string& label,
+                   const std::string& event) const {
+        std::ostringstream output;
+        output << "timestamp_ms=" << clock_.unixTimeMilliseconds()
+               << ";session=" << id
+               << ";label=" << std::quoted(label)
+               << ";event=" << event;
+        const std::string message = output.str();
+        ATTACK_ST(message);
+        AuditCallback callback;
+        {
+            std::lock_guard<std::mutex> lock(auditMutex_);
+            callback = auditCallback_;
+        }
+        if (callback) callback(message);
+    }
 
-        public:
-            AttackInterface(int numTurbines,
-                            sc::ports::AttackChannel& channel,
-                            sc::ports::Clock& clock = sc::ports::systemClock(),
-                            AttackTiming timing = {}) :
-                numTurbines(numTurbines), channel_(channel), clock_(clock), timing_(timing) {
-                for (int i = 0; i < numTurbines; ++i) {
-                    LinkState ls;
-                    ls.tapEnabled = std::map<TxDataType, bool> {
-                        {TX_WS, false}, {TX_WD, false}, {TX_ST, false}, {TX_PW, false}, 
-                        {TX_YAW, false}, {TX_RPM, false}, {TX_PTCH, false}, {TX_SPT_YAW, false}, {TX_SPT_PWR, false},
-                    };
-                    ls.fdiEnabled = std::map<TxDataType, bool> {
-                        {TX_WS, false}, {TX_WD, false}, {TX_ST, false}, {TX_PW, false}, 
-                        {TX_YAW, false}, {TX_RPM, false}, {TX_PTCH, false}, {TX_SPT_YAW, false}, {TX_SPT_PWR, false},
-                    };
-                    state.LinkStates.push_back(ls);
-                }
-                publishResourceUsage();
+    int numTurbines_;
+    sc::ports::AttackChannel& channel_;
+    sc::ports::Clock& clock_;
+    AttackTiming timing_;
+    sc::application::AttackSessionManager sessionManager_;
 
-                channel_.setReceiveHandler([this](const uint8_t* data, size_t length) {
-                    this->AttackHandler(data, length);
-                });
-            }
+    mutable std::mutex auditMutex_;
+    AuditCallback auditCallback_;
+    std::atomic<bool> attackStarted_{false};
 
-            void resetState() {
-                {
-                    std::lock_guard<std::mutex> stateLock(state.state_mutex_);
-                    for (auto& linkState : state.LinkStates) {
-                        for (auto& [dataType, _] : linkState.tapEnabled) {
-                            linkState.tapEnabled[dataType] = false;
-                        }
-                        for (auto& [dataType, _] : linkState.fdiEnabled) {
-                            linkState.fdiEnabled[dataType] = false;
-                        }
-                    }
-                }
-                tx_fails = 0;
-                publishResourceUsage();
-            }
+    std::mutex requestMutex_;
+    bool awaitingResponse_{false};
+    SignalType requestedSignalType_{SignalType::NONE};
+    int requestedTurbineId_{0};
+    sc::ports::Clock::SteadyTimePoint requestExpiresAt_{};
+};
 
-            void signalReady() {
-                SimCtrlMessage msg;
-                msg.simStart = true;
-                channel_.send(reinterpret_cast<const uint8_t*>(&msg), sizeof(msg));
-                ATTACK_LOG_V1("Signaled readiness to start simulation to the attack interface client.");
-            }
-
-            void txData(unsigned int turbineId, TxDataType dataType, void* value) {
-                if (dataType == TX_NONE) return;
-                if (turbineId < 1 || turbineId > state.LinkStates.size()) {
-                    ATTACK_ERR("Invalid turbine ID: " << turbineId);
-                    return;
-                }
-
-                {
-                    std::lock_guard<std::mutex> stateLock(state.state_mutex_);
-                    if (!state.LinkStates[turbineId - 1].tapEnabled[dataType]) return;
-                }
-
-                ATTACK_LOG_V2("txData called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType)
-                              << ", value " << value);
-
-                TxDataMessage msg;
-                msg.turbineId = turbineId;
-                msg.dataType = dataType;
-                msg.value = *static_cast<float *>(value);
-                channel_.send(reinterpret_cast<const uint8_t*>(&msg), sizeof(msg));
-            }
-
-
-            AIRC overwrite(unsigned int turbineId, TxDataType dataType, float &val) {
-                /**
-                 * @brief If the control for the given dataType is enabled, then the value is overwritten by the attack interface
-                 * 
-                 * How this works: If enabled, a RQ_Message is send to the client to provide a new value to overwrite with. 
-                 * The attack interface then waits for a response from the client with the new value, and returns it. If no response is received within a timeout, or if an error occurs, an error code is returned.
-                 */
-				if (dataType == TX_NONE) return AI_DISABLED; 
-
-                if (turbineId < 1 || turbineId > state.LinkStates.size()) {
-                          ATTACK_ERR("Invalid turbine ID: " << turbineId);
-                    return AI_ERROR;
-                }
-
-                {
-                    std::lock_guard<std::mutex> stateLock(state.state_mutex_);
-                    if (!state.LinkStates[turbineId - 1].fdiEnabled[dataType]) return AI_DISABLED;
-                }
-
-                ATTACK_LOG_V1("overwrite called for turbine " << turbineId << ", dataType " << static_cast<int>(dataType)
-                              << ", original value " << val);
-
-				// 0. Send TX_DATA message with the original value to make sure it has the most up to date value
-				txData(turbineId, dataType, &val);
-
-                // 1. Send RQ_DATA message to client
-                RqDataMessage rqMsg;
-                rqMsg.turbineId = turbineId;
-                rqMsg.dataType = dataType;
-                rqMsg.rq_time = clock_.unixTimeMilliseconds();
-                rqMsg.exp_time = rqMsg.rq_time + static_cast<TimeStamp>(timing_.requestLifetime.count());
-
-                {
-                    std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
-                    if (state.awaiting_at_response) {
-                        ATTACK_ERR("Already awaiting AT_DATA response for previous RQ_DATA. Cannot send new RQ_DATA yet.");
-                        return AI_ERROR;
-                    }
-                    state.awaiting_at_response = true;
-                    state.at_response_received = false;
-                    state.rq_DataType = dataType;
-                    state.rq_TurbineId = turbineId;
-                }
-
-                channel_.send(reinterpret_cast<const uint8_t*>(&rqMsg), sizeof(rqMsg));
-
-                // 2. Wait for AT_DATA response with a timeout
-                const auto startTime = clock_.steadyNow();
-                while(clock_.steadyNow() - startTime < timing_.responseTimeout) {
-                    {
-                        std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
-                        if (state.at_response_received) {
-                            if (!std::isnan(state.at_response_val)) {
-                                val = state.at_response_val;
-                            }
-                            state.awaiting_at_response = false;
-                            state.at_response_received = false;
-                            ATTACK_LOG_V1("Received overwrite " << val);
-							tx_fails = 0;
-                            return AI_OK;
-                        }
-                    }
-                    clock_.sleepFor(timing_.responsePollPeriod);
-                }
-
-                // If we timed out, return an error
-                ATTACK_LOG_V1("Overwrite request timed out after " << timing_.responseTimeout.count() << " ms without receiving a response. (startime = " << startTime.time_since_epoch().count() << ", now = " << clock_.steadyNow().time_since_epoch().count() << ")");
-                {
-                    std::lock_guard<std::mutex> lock(state.rq_at_mutex_);
-                    state.awaiting_at_response = false;
-                    state.at_response_received = false;
-                    tx_fails += 1;
-                    if (tx_fails >= max_fails) {
-                        ATTACK_ST("Attack Interface Disconnected");
-                        resetState();
-					}
-                }
-
-                return AI_TIMEOUT;
-            }
-
-            void setCfgCommandCallback(CfgCommandCallback callback)
-            {
-                cfgCommandCallback_ = std::move(callback);
-            }
-
-            void setSimCtrlCommandCallback(SimCtrlCommandCallback callback)
-            {
-                simCtrlCommandCallback_ = std::move(callback);
-            }
-            
-    };
-}
+} // namespace AttackInterface

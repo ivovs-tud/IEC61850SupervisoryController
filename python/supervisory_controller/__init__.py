@@ -1,17 +1,20 @@
 """Python clients and protocol helpers for supervisory_controller."""
 
 from .attack_client import (
-    AttackClientDependencyError,
+    AttackClient,
     AttackInterface,
     AttackInterfaceError,
-    LegacyAttackClient,
 )
-from .legacy_attack_protocol import (
+from .attack_protocol import (
     AtDataMessage,
+    AttackMessage,
+    AttackProtocolError,
     CfgDataMessage,
     ControlSignal,
     CtDataMessage,
     DataHeader,
+    HeartbeatMessage,
+    ReleaseMessage,
     RqDataMessage,
     SimCtrlMessage,
     TxDataMessage,
@@ -21,14 +24,17 @@ from .legacy_attack_protocol import (
 
 __all__ = [
     "AtDataMessage",
-    "AttackClientDependencyError",
+    "AttackClient",
     "AttackInterface",
     "AttackInterfaceError",
+    "AttackMessage",
+    "AttackProtocolError",
     "CfgDataMessage",
     "ControlSignal",
     "CtDataMessage",
     "DataHeader",
-    "LegacyAttackClient",
+    "HeartbeatMessage",
+    "ReleaseMessage",
     "RqDataMessage",
     "SimCtrlMessage",
     "TxDataMessage",

@@ -60,7 +60,7 @@
       "properties": {
         "orchestration_period_ms": {"type": "integer", "minimum": 1},
         "operator": {"$ref": "#/$defs/socketServer"},
-        "attack_interface": {"$ref": "#/$defs/socketServer"},
+        "attack_interface": {"$ref": "#/$defs/attackInterfaceServer"},
         "data_historian": {"$ref": "#/$defs/socketServer"},
         "mms": {
           "type": "object",
@@ -104,6 +104,17 @@
       "properties": {
         "port": {"type": "integer", "minimum": 1, "maximum": 65535},
         "poll_period_ms": {"type": "integer", "minimum": 1},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      },
+      "additionalProperties": true
+    },
+    "attackInterfaceServer": {
+      "type": "object",
+      "properties": {
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "poll_period_ms": {"type": "integer", "minimum": 1},
+        "heartbeat_interval_ms": {"type": "integer", "minimum": 1},
+        "lease_timeout_ms": {"type": "integer", "minimum": 1},
         "extensions": {"$ref": "#/$defs/extensions"}
       },
       "additionalProperties": true

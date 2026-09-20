@@ -1,8 +1,7 @@
-"""Legacy ZeroMQ attack-interface wire messages.
+"""Attack-interface wire messages.
 
 This module captures the x86-64 GCC-compatible native C++ layouts used by the
-existing controller and HackAWindFarm client. It is a compatibility layer, not
-the protocol intended for the future framed stream transport.
+current controller and Python client.
 """
 
 from __future__ import annotations
@@ -12,8 +11,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 
-class LegacyProtocolError(ValueError):
-    """Raised when a legacy attack-interface message is invalid."""
+class AttackProtocolError(ValueError):
+    """Raised when an attack-interface message is invalid."""
 
 
 class DataHeader(IntEnum):
@@ -23,6 +22,8 @@ class DataHeader(IntEnum):
     CT_DATA = 0x08
     CFG_DATA = 0x10
     SIM_CTRL = 0x20
+    HEARTBEAT = 0x40
+    RELEASE = 0x80
 
 
 class TxDataType(IntEnum):
@@ -54,11 +55,12 @@ _AT = struct.Struct("<BB2xIQf4x")
 _CT_HEADER = struct.Struct("<B3xII")
 _CFG = struct.Struct("<B256s3xii")
 _SIM_CONTROL = struct.Struct("<BB")
+_SESSION_CONTROL = struct.Struct("<B")
 
 
 def _require_size(data: bytes, expected: int, message_name: str) -> None:
     if len(data) != expected:
-        raise LegacyProtocolError(
+        raise AttackProtocolError(
             f"{message_name} requires {expected} bytes, received {len(data)}"
         )
 
@@ -84,7 +86,7 @@ class TxDataMessage:
         _require_size(data, _TX.size, cls.__name__)
         header, turbine_id, data_type, payload_length, value = _TX.unpack(data)
         if header != DataHeader.TX_DATA:
-            raise LegacyProtocolError("invalid TX_DATA header")
+            raise AttackProtocolError("invalid TX_DATA header")
         return cls(turbine_id, TxDataType(data_type), value, payload_length)
 
 
@@ -109,7 +111,7 @@ class RqDataMessage:
         _require_size(data, _RQ.size, cls.__name__)
         header, turbine_id, data_type, request_time, expiry_time = _RQ.unpack(data)
         if header != DataHeader.RQ_DATA:
-            raise LegacyProtocolError("invalid RQ_DATA header")
+            raise AttackProtocolError("invalid RQ_DATA header")
         return cls(turbine_id, TxDataType(data_type), request_time, expiry_time)
 
 
@@ -134,7 +136,7 @@ class AtDataMessage:
         _require_size(data, _AT.size, cls.__name__)
         header, turbine_id, data_type, attack_time, fake_value = _AT.unpack(data)
         if header != DataHeader.AT_DATA:
-            raise LegacyProtocolError("invalid AT_DATA header")
+            raise AttackProtocolError("invalid AT_DATA header")
         return cls(turbine_id, TxDataType(data_type), attack_time, fake_value)
 
 
@@ -155,12 +157,12 @@ class CtDataMessage:
     @classmethod
     def unpack(cls, data: bytes) -> "CtDataMessage":
         if len(data) < _CT_HEADER.size:
-            raise LegacyProtocolError(
+            raise AttackProtocolError(
                 f"{cls.__name__} requires at least {_CT_HEADER.size} bytes"
             )
         header, signal, data_type = _CT_HEADER.unpack_from(data)
         if header != DataHeader.CT_DATA:
-            raise LegacyProtocolError("invalid CT_DATA header")
+            raise AttackProtocolError("invalid CT_DATA header")
         enable = tuple(bool(value) for value in data[_CT_HEADER.size :])
         return cls(ControlSignal(signal), TxDataType(data_type), enable)
 
@@ -186,7 +188,7 @@ class CfgDataMessage:
         _require_size(data, _CFG.size, cls.__name__)
         header, team_name, scenario_id, turbine_controller = _CFG.unpack(data)
         if header != DataHeader.CFG_DATA:
-            raise LegacyProtocolError("invalid CFG_DATA header")
+            raise AttackProtocolError("invalid CFG_DATA header")
         decoded_name = team_name.split(b"\0", 1)[0].decode("utf-8", errors="replace")
         return cls(decoded_name, scenario_id, turbine_controller)
 
@@ -203,28 +205,56 @@ class SimCtrlMessage:
         _require_size(data, _SIM_CONTROL.size, cls.__name__)
         header, sim_start = _SIM_CONTROL.unpack(data)
         if header != DataHeader.SIM_CTRL:
-            raise LegacyProtocolError("invalid SIM_CTRL header")
+            raise AttackProtocolError("invalid SIM_CTRL header")
         return cls(bool(sim_start))
 
 
-LegacyMessage = (
+@dataclass(frozen=True)
+class HeartbeatMessage:
+    def pack(self) -> bytes:
+        return _SESSION_CONTROL.pack(DataHeader.HEARTBEAT)
+
+    @classmethod
+    def unpack(cls, data: bytes) -> "HeartbeatMessage":
+        _require_size(data, _SESSION_CONTROL.size, cls.__name__)
+        if _SESSION_CONTROL.unpack(data)[0] != DataHeader.HEARTBEAT:
+            raise AttackProtocolError("invalid HEARTBEAT header")
+        return cls()
+
+
+@dataclass(frozen=True)
+class ReleaseMessage:
+    def pack(self) -> bytes:
+        return _SESSION_CONTROL.pack(DataHeader.RELEASE)
+
+    @classmethod
+    def unpack(cls, data: bytes) -> "ReleaseMessage":
+        _require_size(data, _SESSION_CONTROL.size, cls.__name__)
+        if _SESSION_CONTROL.unpack(data)[0] != DataHeader.RELEASE:
+            raise AttackProtocolError("invalid RELEASE header")
+        return cls()
+
+
+AttackMessage = (
     TxDataMessage
     | RqDataMessage
     | AtDataMessage
     | CtDataMessage
     | CfgDataMessage
     | SimCtrlMessage
+    | HeartbeatMessage
+    | ReleaseMessage
 )
 
 
-def parse_message(data: bytes) -> LegacyMessage:
+def parse_message(data: bytes) -> AttackMessage:
     if not data:
-        raise LegacyProtocolError("empty legacy attack-interface message")
+        raise AttackProtocolError("empty attack-interface message")
 
     try:
         header = DataHeader(data[0])
     except ValueError as error:
-        raise LegacyProtocolError(f"unknown message header 0x{data[0]:02x}") from error
+        raise AttackProtocolError(f"unknown message header 0x{data[0]:02x}") from error
 
     message_types = {
         DataHeader.TX_DATA: TxDataMessage,
@@ -233,5 +263,7 @@ def parse_message(data: bytes) -> LegacyMessage:
         DataHeader.CT_DATA: CtDataMessage,
         DataHeader.CFG_DATA: CfgDataMessage,
         DataHeader.SIM_CTRL: SimCtrlMessage,
+        DataHeader.HEARTBEAT: HeartbeatMessage,
+        DataHeader.RELEASE: ReleaseMessage,
     }
     return message_types[header].unpack(data)

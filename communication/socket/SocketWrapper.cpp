@@ -94,6 +94,10 @@ void SocketWrapper::setReceiveHandler(sc::ports::AttackReceiveHandler handler) {
     AttachAttackInterfaceCallback(std::move(handler));
 }
 
+void SocketWrapper::setLeaseCheckHandler(sc::ports::AttackLeaseCheckHandler handler) {
+    attackServer_.setLeaseCheckCallback(std::move(handler));
+}
+
 bool SocketWrapper::send(const uint8_t* data, std::size_t size) {
     return attackServer_.txData(data, size);
 }

@@ -50,6 +50,7 @@ endif()
 if(WIN32)
     target_link_libraries(communication
         PUBLIC  common
+                sc_application
         PRIVATE ${ZMQ_LIBRARIES}
                 iec61850
                 # Windows uses Threads::Threads from find_package(Threads) instead of pthread
@@ -57,6 +58,7 @@ if(WIN32)
 else()
     target_link_libraries(communication
         PUBLIC  common
+                sc_application
         PRIVATE ${ZMQ_LIBRARIES}
                 iec61850
                 pthread

@@ -38,7 +38,12 @@
   "communication": {
     "orchestration_period_ms": 10,
     "operator": {"port": 9001, "poll_period_ms": 10},
-    "attack_interface": {"port": 9002, "poll_period_ms": 10},
+    "attack_interface": {
+      "port": 9002,
+      "poll_period_ms": 10,
+      "heartbeat_interval_ms": 200,
+      "lease_timeout_ms": 750
+    },
     "data_historian": {"port": 9003, "poll_period_ms": 10},
     "mms": {
       "poll_period_ms": 10,

@@ -24,6 +24,8 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
         REQUIRE(endpoint.logicalDevice == "LD0");
     }
     REQUIRE_FALSE(config.monitoring.alarmAcknowledgementEnabled);
+    REQUIRE(config.communication.attackInterface.heartbeatInterval == 200ms);
+    REQUIRE(config.communication.attackInterface.leaseTimeout == 750ms);
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, 9));
 }
 
@@ -145,6 +147,12 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
     SECTION("non-positive period") {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.tasks.monitoringPeriod = 0ms;
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("attack lease must exceed its heartbeat interval") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.communication.attackInterface.leaseTimeout = config.communication.attackInterface.heartbeatInterval;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 

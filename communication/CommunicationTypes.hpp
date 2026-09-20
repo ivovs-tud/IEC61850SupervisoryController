@@ -27,6 +27,8 @@ struct CommConfig
     struct AttackInterface {
         int                       port        {9002};
         std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
+        std::chrono::milliseconds heartbeatInterval {std::chrono::milliseconds(200)};
+        std::chrono::milliseconds leaseTimeout {std::chrono::milliseconds(750)};
     } attackInterface;
 
     struct DataHistorian {

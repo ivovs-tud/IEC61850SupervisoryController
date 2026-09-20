@@ -5,20 +5,19 @@ from collections import deque
 
 from supervisory_controller import (
     AtDataMessage,
-    AttackClientDependencyError,
+    AttackClient,
     AttackInterface,
     AttackInterfaceError,
     CfgDataMessage,
     ControlSignal,
     CtDataMessage,
-    LegacyAttackClient,
+    HeartbeatMessage,
     RqDataMessage,
-    SimCtrlMessage,
+    ReleaseMessage,
     TxDataMessage,
     TxDataType,
     parse_message,
 )
-from supervisory_controller import attack_client
 
 
 class FakeSocket:
@@ -46,12 +45,13 @@ class FakeSocket:
 
 
 class AttackClientTests(unittest.TestCase):
-    def make_client(self, num_turbines=2, wall_time_ms=None):
+    def make_client(self, num_turbines=2, wall_time_ms=None, monotonic=None):
         socket = FakeSocket()
-        client = LegacyAttackClient(
+        client = AttackClient(
             num_turbines,
             socket=socket,
             wall_time_ms=wall_time_ms or (lambda: 1_000),
+            monotonic=monotonic,
         )
         return client, socket
 
@@ -65,14 +65,14 @@ class AttackClientTests(unittest.TestCase):
     def test_connect_configure_and_control_use_shared_codec(self):
         client, socket = self.make_client()
         client.connect("127.0.0.1", 9002)
-        client.configure("integration-team", scenario_id=7, turbine_controller=2)
+        client.configure("integration-team")
         client.tap_communication(["Yaw", "Power"], [1, 0])
         client.fdi_communication("Yaw Setpoint", [0, 1])
 
         self.assertEqual(socket.endpoint, "tcp://127.0.0.1:9002")
         self.assertEqual(
             parse_message(socket.sent[0]),
-            CfgDataMessage("integration-team", 7, 2),
+            CfgDataMessage("integration-team", 0, 0),
         )
         self.assertEqual(
             parse_message(socket.sent[1]),
@@ -93,6 +93,7 @@ class AttackClientTests(unittest.TestCase):
 
     def test_rejects_invalid_control_arguments(self):
         client, _ = self.make_client()
+        client.configure("test attack")
 
         with self.assertRaises(AttackInterfaceError):
             client.tap_communication("Yaw", [1])
@@ -142,18 +143,60 @@ class AttackClientTests(unittest.TestCase):
             invoked.set()
 
         client.ATTACK_INTERVAL_SECONDS = 0.001
-        socket.incoming.append(SimCtrlMessage(True).pack())
-        client.begin(attack_function, ready_timeout=0.1)
+        client.configure("lifecycle test")
+        socket.sent.clear()
+        client.begin(attack_function)
 
         self.assertTrue(client.running)
         self.assertTrue(invoked.wait(0.5))
-        self.assertEqual(parse_message(socket.sent[0]), SimCtrlMessage(True))
+        self.assertEqual(socket.sent, [])
 
         client.stop()
         client.stop()
         self.assertFalse(client.running)
         self.assertTrue(client.closed)
         self.assertEqual(socket.close_count, 1)
+        self.assertEqual(parse_message(socket.sent[-1]), ReleaseMessage())
+
+    def test_poll_sends_heartbeat_at_configured_interval(self):
+        now = [0.0]
+        client, socket = self.make_client(monotonic=lambda: now[0])
+        client.configure("heartbeat test")
+        socket.sent.clear()
+
+        client.poll_once()
+        self.assertEqual(socket.sent, [])
+        now[0] = 0.2
+        client.poll_once()
+        self.assertEqual(parse_message(socket.sent[-1]), HeartbeatMessage())
+        now[0] = 0.3
+        client.poll_once()
+        self.assertEqual(len(socket.sent), 1)
+
+    def test_heartbeat_publishes_enabled_fdi_values(self):
+        now = [0.0]
+        client, socket = self.make_client(monotonic=lambda: now[0])
+        client.configure("proactive FDI test")
+        client.fdi_communication("Yaw Setpoint", [1, 0])
+        client.fdi_next["Yaw Setpoint"][0] = 37.5
+        socket.sent.clear()
+
+        now[0] = 0.2
+        client.poll_once()
+
+        self.assertEqual(parse_message(socket.sent[0]), HeartbeatMessage())
+        self.assertEqual(
+            parse_message(socket.sent[1]),
+            AtDataMessage(1, TxDataType.TX_SPT_YAW, 1_000, 37.5),
+        )
+
+    def test_configuration_requires_a_printable_label(self):
+        client, _ = self.make_client()
+
+        for label in ("", "   ", "bad\nlabel", "x" * 256):
+            with self.subTest(label=label):
+                with self.assertRaises(AttackInterfaceError):
+                    client.configure(label)
 
     def test_malformed_message_is_ignored(self):
         client, socket = self.make_client()
@@ -162,22 +205,10 @@ class AttackClientTests(unittest.TestCase):
         self.assertIsNone(client.poll_once())
         self.assertIsNone(client.poll_once())
 
-    def test_legacy_class_name_remains_available(self):
+    def test_participant_facing_class_name_remains_available(self):
         client = AttackInterface(1, socket=FakeSocket())
-        self.assertIsInstance(client, LegacyAttackClient)
+        self.assertIsInstance(client, AttackClient)
         self.assertIs(client._AttackInterfaceExcept, AttackInterfaceError)
-
-    def test_missing_pyzmq_only_fails_when_a_real_socket_is_requested(self):
-        saved_zmq = attack_client._zmq
-        attack_client._zmq = None
-        try:
-            injected = LegacyAttackClient(1, socket=FakeSocket())
-            self.assertFalse(injected.closed)
-            with self.assertRaises(AttackClientDependencyError):
-                LegacyAttackClient(1)
-        finally:
-            attack_client._zmq = saved_zmq
-
 
 if __name__ == "__main__":
     unittest.main()

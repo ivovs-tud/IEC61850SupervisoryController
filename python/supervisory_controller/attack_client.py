@@ -2,64 +2,56 @@
 # Adapted from ivovs-tud/HackAWindFarm; substantially modified for packaging,
 # shared protocol types, dependency injection, and deterministic lifecycle.
 
-"""Legacy ZeroMQ attack client with a finite, testable lifecycle.
+"""Attack client with a finite, testable lifecycle.
 
 This module adapts the participant-facing API from the separately distributed
 HackAWindFarm AttackInterface.py. Protocol encoding is provided by
-legacy_attack_protocol rather than duplicated here. The ZeroMQ dependency is
-optional until a real socket is requested.
+attack_protocol rather than duplicated here.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from collections.abc import Callable, Sequence
 from types import TracebackType
 from typing import Any
 
-from .legacy_attack_protocol import (
+import zmq
+
+from .attack_protocol import (
     AtDataMessage,
     CfgDataMessage,
     ControlSignal,
     CtDataMessage,
-    LegacyMessage,
-    LegacyProtocolError,
+    HeartbeatMessage,
+    AttackMessage,
+    AttackProtocolError,
     RqDataMessage,
-    SimCtrlMessage,
+    ReleaseMessage,
     TxDataMessage,
     TxDataType,
     parse_message,
 )
 
-try:
-    import zmq as _zmq
-except ModuleNotFoundError as error:
-    if error.name != "zmq":
-        raise
-    _zmq = None
-
-
 AttackFunction = Callable[[dict[str, list[float]], dict[str, list[float]], int], None]
 
 
 class AttackInterfaceError(RuntimeError):
-    """Base error raised by the integrated legacy attack client."""
+    """Base error raised by the attack client."""
 
 
-class AttackClientDependencyError(AttackInterfaceError):
-    """Raised when a real ZeroMQ client is requested without pyzmq."""
-
-
-class LegacyAttackClient:
-    """Client for the controller's legacy ZeroMQ attack interface."""
+class AttackClient:
+    """Client for the controller's attack interface."""
 
     INTERVAL_SECONDS = 0.01
     ATTACK_INTERVAL_SECONDS = 0.1
     ZEROMQ_MAX_MESSAGES = 10
     RECV_TIMEOUT_MS = 500
     SEND_TIMEOUT_MS = 500
+    HEARTBEAT_INTERVAL_SECONDS = 0.2
 
     SIGNAL_TYPES = {
         "Wind Speed": TxDataType.TX_WS,
@@ -91,9 +83,7 @@ class LegacyAttackClient:
         self.num_turbines = num_turbines
         self.server_ip: str | None = None
         self.port: int | None = None
-        self.team_name = ""
-        self.scenario_id = 0
-        self.turbine_controller = 0
+        self.session_label = ""
 
         self._context = context
         self._owns_context = False
@@ -108,6 +98,8 @@ class LegacyAttackClient:
         self._attack_func: AttackFunction | None = None
         self._running = False
         self._closed = False
+        self._configured = False
+        self._next_heartbeat_at = float("inf")
 
         self._tap_cfg = self._empty_control_map()
         self._fdi_cfg = self._empty_control_map()
@@ -115,19 +107,14 @@ class LegacyAttackClient:
         self.fdi_next = self._empty_value_map()
 
     def _create_zmq_socket(self, context: Any | None) -> Any:
-        if _zmq is None:
-            raise AttackClientDependencyError(
-                "pyzmq is required for network use; install supervisory-controller-client[attack]"
-            )
-
         if context is None:
-            context = _zmq.Context()
+            context = zmq.Context()
             self._owns_context = True
         self._context = context
-        socket = context.socket(_zmq.PAIR)
-        socket.setsockopt(_zmq.SNDHWM, self.ZEROMQ_MAX_MESSAGES)
-        socket.setsockopt(_zmq.RCVTIMEO, self.RECV_TIMEOUT_MS)
-        socket.setsockopt(_zmq.SNDTIMEO, self.SEND_TIMEOUT_MS)
+        socket = context.socket(zmq.PAIR)
+        socket.setsockopt(zmq.SNDHWM, self.ZEROMQ_MAX_MESSAGES)
+        socket.setsockopt(zmq.RCVTIMEO, self.RECV_TIMEOUT_MS)
+        socket.setsockopt(zmq.SNDTIMEO, self.SEND_TIMEOUT_MS)
         return socket
 
     def _empty_control_map(self) -> dict[str, list[bool]]:
@@ -164,17 +151,23 @@ class LegacyAttackClient:
 
     def configure(
         self,
-        team_name: str,
-        scenario_id: int = 0,
-        turbine_controller: int = 0,
+        label: str,
     ) -> None:
         self._require_open()
-        self.team_name = team_name
-        self.scenario_id = scenario_id
-        self.turbine_controller = turbine_controller
-        self._send(
-            CfgDataMessage(team_name, scenario_id, turbine_controller)
-        )
+        encoded_label = label.encode("utf-8")
+        if (
+            not label.strip()
+            or len(encoded_label) > 255
+            or any(ord(character) < 0x20 or ord(character) == 0x7F for character in label)
+        ):
+            raise AttackInterfaceError(
+                "label must contain 1-255 bytes of printable text"
+            )
+        self.session_label = label
+        self._send(CfgDataMessage(label, 0, 0))
+        self._configured = True
+        self._next_heartbeat_at = self._monotonic() + self.HEARTBEAT_INTERVAL_SECONDS
+        logging.info("Configured attack session '%s'", label)
 
     def tap_communication(
         self,
@@ -197,6 +190,7 @@ class LegacyAttackClient:
         turbine_ids: Sequence[int | bool],
     ) -> None:
         self._require_open()
+        self._require_configured()
         names = [channels] if isinstance(channels, str) else list(channels)
         enabled = self._validate_turbine_flags(turbine_ids)
         target = self._tap_cfg if signal == ControlSignal.CTRL_TAP else self._fdi_cfg
@@ -208,6 +202,12 @@ class LegacyAttackClient:
                 raise AttackInterfaceError(f"unknown attack channel: {name}") from error
             target[name] = enabled.copy()
             self._send(CtDataMessage(signal, data_type, tuple(enabled)))
+            logging.info(
+                "Updated %s for %s: %s",
+                "tap" if signal == ControlSignal.CTRL_TAP else "FDI",
+                name,
+                enabled,
+            )
 
     def _validate_turbine_flags(
         self, turbine_ids: Sequence[int | bool]
@@ -224,31 +224,26 @@ class LegacyAttackClient:
     def begin(
         self,
         attack_func: AttackFunction | None = None,
-        *,
-        wait_for_ready: bool = True,
-        ready_timeout: float | None = None,
     ) -> None:
         self._require_open()
+        self._require_configured()
         if self.running:
             raise AttackInterfaceError("attack interface is already running")
 
         self._stop_event.clear()
         self._attack_func = attack_func
-        self._send(SimCtrlMessage(True))
-        if wait_for_ready:
-            self.wait_for_ready(ready_timeout)
-
         self._running = True
+        logging.info("Attack client started for session '%s'", self.session_label)
         if attack_func is not None:
             self._attack_thread = threading.Thread(
                 target=self._attack_loop,
-                name="legacy-attack-function",
+                name="attack-function",
                 daemon=True,
             )
             self._attack_thread.start()
 
     def start(self, attack_func: AttackFunction) -> None:
-        """Run the legacy blocking workflow until stopped or interrupted."""
+        """Run the blocking attack workflow until stopped or interrupted."""
         self.begin(attack_func)
         try:
             self.run_forever()
@@ -263,18 +258,17 @@ class LegacyAttackClient:
             self.poll_once()
             self._stop_event.wait(self.INTERVAL_SECONDS)
 
-    def poll_once(self) -> LegacyMessage | None:
+    def poll_once(self) -> AttackMessage | None:
         self._require_open()
+        self._send_heartbeat_if_due()
         try:
-            raw = self._socket.recv(flags=self._nonblocking_flag())
-        except Exception as error:
-            if self._is_would_block(error):
-                return None
-            raise
+            raw = self._socket.recv(flags=zmq.NOBLOCK)
+        except (BlockingIOError, zmq.Again):
+            return None
 
         try:
             message = parse_message(raw)
-        except (LegacyProtocolError, ValueError) as error:
+        except (AttackProtocolError, ValueError) as error:
             logging.warning("Ignoring malformed attack-interface message: %s", error)
             return None
 
@@ -283,24 +277,32 @@ class LegacyAttackClient:
 
     _execute = poll_once
 
-    def wait_for_ready(self, timeout: float | None = None) -> SimCtrlMessage:
-        deadline = None if timeout is None else self._monotonic() + timeout
-        while not self._stop_event.is_set():
-            message = self.poll_once()
-            if isinstance(message, SimCtrlMessage) and message.sim_start:
-                return message
-            if deadline is not None and self._monotonic() >= deadline:
-                raise TimeoutError("timed out waiting for supervisory controller readiness")
-            self._stop_event.wait(self.INTERVAL_SECONDS)
-        raise AttackInterfaceError("attack interface stopped while waiting for readiness")
-
     def _handle_message(self, message: object) -> None:
         if isinstance(message, TxDataMessage):
             self._handle_tx_data(message)
         elif isinstance(message, RqDataMessage):
             self._handle_rq_data(message)
-        elif isinstance(message, (SimCtrlMessage, CfgDataMessage)):
+        elif isinstance(message, (CfgDataMessage, HeartbeatMessage, ReleaseMessage)):
             return
+
+    def _send_heartbeat_if_due(self) -> None:
+        if not self._configured:
+            return
+        now = self._monotonic()
+        if now < self._next_heartbeat_at:
+            return
+        self._send(HeartbeatMessage())
+        self._publish_fdi_values()
+        self._next_heartbeat_at = now + self.HEARTBEAT_INTERVAL_SECONDS
+
+    def _publish_fdi_values(self) -> None:
+        timestamp = self._wall_time_ms()
+        for signal_name, enabled_turbines in self._fdi_cfg.items():
+            signal_type = self.SIGNAL_TYPES[signal_name]
+            for turbine_index, enabled in enumerate(enabled_turbines):
+                value = self.fdi_next[signal_name][turbine_index]
+                if enabled and not math.isnan(value):
+                    self._send(AtDataMessage(turbine_index + 1, signal_type, timestamp, value))
 
     def _handle_tx_data(self, message: TxDataMessage) -> None:
         signal_name = self._TYPE2TEXT.get(message.data_type)
@@ -327,16 +329,18 @@ class LegacyAttackClient:
 
     def _attack_loop(self) -> None:
         started_at = self._monotonic()
-        while not self._stop_event.is_set():
-            try:
+        logging.info("Attack callback started for session '%s'", self.session_label)
+        try:
+            while not self._stop_event.is_set():
                 if self._attack_func is not None:
                     elapsed_ms = int((self._monotonic() - started_at) * 1_000)
                     self._attack_func(self.last_received, self.fdi_next, elapsed_ms)
-            except Exception:
-                logging.exception("Attack function failed; stopping attack client")
-                self._stop_event.set()
-                return
-            self._stop_event.wait(self.ATTACK_INTERVAL_SECONDS)
+                self._stop_event.wait(self.ATTACK_INTERVAL_SECONDS)
+        except Exception:
+            logging.exception("Attack function failed; stopping attack client")
+            self._stop_event.set()
+        finally:
+            logging.info("Attack callback stopped for session '%s'", self.session_label)
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -349,6 +353,10 @@ class LegacyAttackClient:
 
         if self._closed:
             return
+        try:
+            self.release()
+        except Exception:
+            logging.warning("Could not release attack session cleanly", exc_info=True)
         self._closed = True
         try:
             try:
@@ -358,6 +366,14 @@ class LegacyAttackClient:
         finally:
             if self._owns_context and self._context is not None:
                 self._context.term()
+
+    def release(self) -> None:
+        """Release the configured attack session without closing the client."""
+        if self._configured:
+            self._send(ReleaseMessage())
+            self._configured = False
+            self._next_heartbeat_at = float("inf")
+            logging.info("Released attack session '%s'", self.session_label)
 
     close = stop
 
@@ -375,17 +391,11 @@ class LegacyAttackClient:
         if self._closed:
             raise AttackInterfaceError("attack interface is closed")
 
-    @staticmethod
-    def _nonblocking_flag() -> int:
-        return 1 if _zmq is None else int(_zmq.NOBLOCK)
+    def _require_configured(self) -> None:
+        if not self._configured:
+            raise AttackInterfaceError("call configure() before changing or starting an attack")
 
-    @staticmethod
-    def _is_would_block(error: Exception) -> bool:
-        if isinstance(error, BlockingIOError):
-            return True
-        return _zmq is not None and isinstance(error, _zmq.Again)
-
-    def __enter__(self) -> "LegacyAttackClient":
+    def __enter__(self) -> "AttackClient":
         return self
 
     def __exit__(
@@ -397,5 +407,5 @@ class LegacyAttackClient:
         self.stop()
 
 
-class AttackInterface(LegacyAttackClient):
-    """Backward-compatible participant-facing class name."""
+class AttackInterface(AttackClient):
+    """Participant-facing attack-interface class."""

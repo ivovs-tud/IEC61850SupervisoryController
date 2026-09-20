@@ -64,8 +64,8 @@ jobs:
         shell: pwsh
         run: ./vcpkg/bootstrap-vcpkg.bat -disableMetrics
 
-      - name: Install Python integration dependencies
-        run: python -m pip install ".[integration]"
+      - name: Install Python package
+        run: python -m pip install .
 
       - name: Configure
         run: cmake --preset vcpkg-hardware-free-integration

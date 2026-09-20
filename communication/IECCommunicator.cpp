@@ -8,19 +8,19 @@
 #include <utility>
 
 const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
-    { "V",       "m/s", IEC_STRINGS::WS_MEAS,    "WMET1$MX$HorWdSpd", &libiec_wrapper::rxWindSpeed,     AttackInterface::TX_WS,  &CollectedData::lastWS,        &CollectedData::wsHistory,        &CollectedData::lastWS_t,        500 },
-    { "D",       "deg", IEC_STRINGS::WD_MEAS,    "WMET1$MX$HorWdDir", &libiec_wrapper::rxWindDirection, AttackInterface::TX_WD,  &CollectedData::lastWD,        &CollectedData::wdHistory,        &CollectedData::lastWD_t,        500 },
-    { "YawMeas", "deg", IEC_STRINGS::YAW_MEAS,   "WYAW1$MX$YwAng",    &libiec_wrapper::rxYawOffset,     AttackInterface::TX_YAW, &CollectedData::lastYawOffset, &CollectedData::yawOffsetHistory, &CollectedData::lastYawOffset_t, 500 },
-    { "RSpd",    "RPM", IEC_STRINGS::RPM_MEAS,   "WROT1$MX$RotSpd",   &libiec_wrapper::rxRotorSpeed,    AttackInterface::TX_RPM, &CollectedData::lastRPM,       &CollectedData::rpmHistory,       &CollectedData::lastRPM_t,       500 },
-    { "W",       "W",   IEC_STRINGS::POWER_MEAS, "WTUR1$MX$W",        &libiec_wrapper::rxPowerGen,      AttackInterface::TX_PW,  &CollectedData::lastPower,     &CollectedData::powerHistory,     &CollectedData::lastPower_t,     500 },
-    { "Tor",     "W",   IEC_STRINGS::GEN_TORQ,   "WCNV1$MX$Torq",     &libiec_wrapper::rxGenTorque,     AttackInterface::TX_GENTORQ,  &CollectedData::lastGenTorque,     &CollectedData::genTorqueHistory,     &CollectedData::lastGenTorque_t,     500 },
+    { "V",       "m/s", IEC_STRINGS::WS_MEAS,    "WMET1$MX$HorWdSpd", &libiec_wrapper::rxWindSpeed,     AttackInterface::SignalType::WIND_SPEED,  &CollectedData::lastWS,        &CollectedData::wsHistory,        &CollectedData::lastWS_t,        500 },
+    { "D",       "deg", IEC_STRINGS::WD_MEAS,    "WMET1$MX$HorWdDir", &libiec_wrapper::rxWindDirection, AttackInterface::SignalType::WIND_DIRECTION,  &CollectedData::lastWD,        &CollectedData::wdHistory,        &CollectedData::lastWD_t,        500 },
+    { "YawMeas", "deg", IEC_STRINGS::YAW_MEAS,   "WYAW1$MX$YwAng",    &libiec_wrapper::rxYawOffset,     AttackInterface::SignalType::YAW_ANGLE, &CollectedData::lastYawOffset, &CollectedData::yawOffsetHistory, &CollectedData::lastYawOffset_t, 500 },
+    { "RSpd",    "RPM", IEC_STRINGS::RPM_MEAS,   "WROT1$MX$RotSpd",   &libiec_wrapper::rxRotorSpeed,    AttackInterface::SignalType::ROTOR_SPEED, &CollectedData::lastRPM,       &CollectedData::rpmHistory,       &CollectedData::lastRPM_t,       500 },
+    { "W",       "W",   IEC_STRINGS::POWER_MEAS, "WTUR1$MX$W",        &libiec_wrapper::rxPowerGen,      AttackInterface::SignalType::POWER,  &CollectedData::lastPower,     &CollectedData::powerHistory,     &CollectedData::lastPower_t,     500 },
+    { "Tor",     "W",   IEC_STRINGS::GEN_TORQ,   "WCNV1$MX$Torq",     &libiec_wrapper::rxGenTorque,     AttackInterface::SignalType::GENERATOR_TORQUE,  &CollectedData::lastGenTorque,     &CollectedData::genTorqueHistory,     &CollectedData::lastGenTorque_t,     500 },
 };
 
 const IECCommunicator::TxDescriptor IECCommunicator::TX_DESCRIPTORS[] = {
-    { "WSpt",    IEC_FLOAT32, [](ControlData& d, int i)->void* { return &d.powerSetpoints[i]; }, AttackInterface::TX_SPT_PWR, &libiec_wrapper::txPowerSetpoint, 1000 },
-    { "YawSpt",  IEC_FLOAT32, [](ControlData& d, int i)->void* { return &d.yawSetpoints[i]; }, AttackInterface::TX_SPT_YAW, &libiec_wrapper::txYawSetpoint, 1000 },
-    { "OP_CMD",  IEC_UINT32,  [](ControlData& d, int i)->void* { return &d.turbineEnabled[i]; }, AttackInterface::TX_NONE, &libiec_wrapper::txOpCommand, 5000 },
-    { "TUR_CTL", IEC_UINT32,  [](ControlData& d, int i)->void* { return &d.turbineController[i]; }, AttackInterface::TX_NONE, &libiec_wrapper::txTurbineController, 5000 },
+    { "WSpt",    IEC_FLOAT32, [](ControlData& d, int i)->void* { return &d.powerSetpoints[i]; }, AttackInterface::SignalType::POWER_SETPOINT, &libiec_wrapper::txPowerSetpoint, 1000 },
+    { "YawSpt",  IEC_FLOAT32, [](ControlData& d, int i)->void* { return &d.yawSetpoints[i]; }, AttackInterface::SignalType::YAW_SETPOINT, &libiec_wrapper::txYawSetpoint, 1000 },
+    { "OP_CMD",  IEC_UINT32,  [](ControlData& d, int i)->void* { return &d.turbineEnabled[i]; }, AttackInterface::SignalType::NONE, &libiec_wrapper::txOpCommand, 5000 },
+    { "TUR_CTL", IEC_UINT32,  [](ControlData& d, int i)->void* { return &d.turbineController[i]; }, AttackInterface::SignalType::NONE, &libiec_wrapper::txTurbineController, 5000 },
 };
 
 IECCommunicator::IECCommunicator(const CommConfig& config,

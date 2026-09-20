@@ -9,6 +9,17 @@
 #include <cstring>
 #include <utility>
 
+namespace {
+
+AttackInterface::AttackTiming makeAttackTiming(const CommConfig& config)
+{
+    AttackInterface::AttackTiming timing;
+    timing.sessionLeaseTimeout = config.attackInterface.leaseTimeout;
+    return timing;
+}
+
+} // namespace
+
 CommunicationOrchestrator::CommunicationOrchestrator(const CommConfig& config)
     : config_(config),
       socketWrapper_(config.operatorServer.port,
@@ -17,11 +28,17 @@ CommunicationOrchestrator::CommunicationOrchestrator(const CommConfig& config)
                      static_cast<int>(config.attackInterface.pollPeriod.count()),
                      config.dataHistorian.port,
                      static_cast<int>(config.dataHistorian.pollPeriod.count())),
-      attackInterface_(static_cast<int>(config.mms.turbines.size()), socketWrapper_)
+      attackInterface_(static_cast<int>(config.mms.turbines.size()),
+                       socketWrapper_,
+                       sc::ports::systemClock(),
+                       makeAttackTiming(config))
 {
     socketStatus_.store(COMM_DISCONNECTED);
     iecStatus_.store(COMM_DISCONNECTED);
     socketWrapper_.setFailureHandler([this](const std::string& message) {
+        if (message.rfind("attack interface server:", 0) == 0) {
+            attackInterface_.shutdown("transport failure");
+        }
         handleRuntimeFailure(message);
     });
 }
@@ -104,32 +121,8 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::init()
         DataHistorian::instance().log(std::string(logMsg));
     });
 
-    attackInterface_.setCfgCommandCallback([this](const AttackInterface::CfgDataMessage &cmd) {
-        // Logging may compile out.
-        (void)cmd;
-        COMMTASK_LOG_V1("Received AttackInterface config command: TeamName " << cmd.teamName
-                        << ", ScenarioId " << cmd.scenarioId
-                        << ", TurbineController " << cmd.turbineController);
-
-        std::lock_guard<std::mutex> lock(attackInterfaceMutex_);
-        attackInterface_.resetState();
-    });
-
-    attackInterface_.setSimCtrlCommandCallback([this](const AttackInterface::SimCtrlMessage& cmd) {
-        COMMTASK_LOG_V1("Received Simulator Control command: simStart " << cmd.simStart);
-        int simScenario = 0;
-        std::string simTeamName;
-        {
-            auto& interface = SharedData::instance().interface;
-            std::lock_guard<std::mutex> lock(interface.mutex);
-            simScenario = interface.simScenario;
-            simTeamName = interface.simTeamName;
-            if (interface.simConfigured && cmd.simStart) {
-                interface.simStarted = true;
-            }
-        }
-        DataHistorian::instance().log("Simulation started with scenario " + std::to_string(simScenario)
-                            + " and team " + simTeamName);
+    attackInterface_.setAuditCallback([](const std::string& event) {
+        DataHistorian::instance().log("[AttackInterface] " + event);
     });
 
     createCommunicators();
@@ -235,6 +228,7 @@ void CommunicationOrchestrator::rollbackStart(std::size_t communicatorCount)
         dataHistorianStarted_ = false;
     }
     if (attackStarted_) {
+        attackInterface_.shutdown("controller shutdown");
         socketWrapper_.StopAttackInterfaceServer();
         attackStarted_ = false;
     }

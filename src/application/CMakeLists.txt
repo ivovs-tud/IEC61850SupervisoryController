@@ -1,4 +1,5 @@
 add_library(sc_application STATIC
+    AttackSessionManager.cpp
     ControlCalculation.cpp
     Monitoring.cpp
     SignalProcessing.cpp

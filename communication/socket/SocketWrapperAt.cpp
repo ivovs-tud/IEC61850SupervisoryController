@@ -11,6 +11,7 @@ SocketWrapper::AttackInterfaceServer::AttackInterfaceServer(std::chrono::millise
 void SocketWrapper::AttackInterfaceServer::setPort(int port) { port_ = port; }
 tcpSocketStatus SocketWrapper::AttackInterfaceServer::status() const { return status_.load(); }
 void SocketWrapper::AttackInterfaceServer::setCallback(AttackCallback cb) {callback_ = std::move(cb); }
+void SocketWrapper::AttackInterfaceServer::setLeaseCheckCallback(sc::ports::AttackLeaseCheckHandler callback) { leaseCheckCallback_ = std::move(callback); }
 
 void SocketWrapper::AttackInterfaceServer::onStart() {
     try {
@@ -27,6 +28,8 @@ void SocketWrapper::AttackInterfaceServer::onStart() {
 
 void SocketWrapper::AttackInterfaceServer::execute() {
     if (!socket_ || status_.load() < tcpSOCKET_CONNECTED) return;
+
+    if (leaseCheckCallback_) leaseCheckCallback_();
 
     zmq::message_t message;
     const auto result = socket_->recv(message, zmq::recv_flags::dontwait);

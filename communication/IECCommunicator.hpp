@@ -82,7 +82,7 @@ private:
         const char*                              daReference;
         const char*                              reportReference;
         IECReturnCode (libiec_wrapper::*iecRead)(int, float&);
-        AttackInterface::TxDataType              txDataType;
+        AttackInterface::SignalType              txDataType;
         std::vector<double> CollectedData::*     lastField;
         TurbineHistory<double> CollectedData::*  historyField;
         std::vector<uint64_t> CollectedData::*   lastTimestamp;
@@ -93,7 +93,7 @@ private:
         const char*                                  name;
         IECValueType                                 type;
         std::function<void*(ControlData&, int)>      valuePtr;
-        AttackInterface::TxDataType                  txDataType;
+        AttackInterface::SignalType                  txDataType;
         IECReturnCode (libiec_wrapper::*iecWrite)(int, void*);
         uint32_t                                     intervalMs;
     };

@@ -84,6 +84,7 @@ private:
         ~AttackInterfaceServer() override { stop(); }
         void setPort(int port);
         void setCallback(AttackCallback cb);
+        void setLeaseCheckCallback(sc::ports::AttackLeaseCheckHandler callback);
         tcpSocketStatus status() const;
         bool txData(const uint8_t* data, size_t dataSize);
 
@@ -102,6 +103,7 @@ private:
         zmq::context_t               context_;
         std::optional<zmq::socket_t> socket_;
         AttackCallback               callback_;
+        sc::ports::AttackLeaseCheckHandler leaseCheckCallback_;
         std::atomic<tcpSocketStatus> status_{tcpSOCKET_CLOSED};
         std::mutex                   outboundMutex_;
         std::deque<std::vector<uint8_t>> outboundQueue_;
@@ -179,6 +181,7 @@ public:
     void         AttachAttackInterfaceCallback(AttackCallback callback);
     void         txAttackInterfaceData(const std::shared_ptr<void>& data, size_t dataSize);
     void setReceiveHandler(sc::ports::AttackReceiveHandler handler) override;
+    void setLeaseCheckHandler(sc::ports::AttackLeaseCheckHandler handler) override;
     bool send(const uint8_t* data, std::size_t size) override;
     void setFailureHandler(PeriodicTask::FailureHandler handler);
 

@@ -82,7 +82,12 @@ struct RuntimeConfig {
 
     struct Communication {
         SocketServer operatorServer{9001};
-        SocketServer attackInterface{9002};
+        struct AttackInterfaceServer {
+            int port{9002};
+            std::chrono::milliseconds pollPeriod{10};
+            std::chrono::milliseconds heartbeatInterval{200};
+            std::chrono::milliseconds leaseTimeout{750};
+        } attackInterface;
         SocketServer dataHistorian{9003};
 
         struct Mms {
