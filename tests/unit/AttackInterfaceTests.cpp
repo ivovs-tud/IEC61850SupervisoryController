@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -255,6 +256,89 @@ TEST_CASE("transport disconnect revokes controls through the same cleanup path")
     REQUIRE(channel.sentMessages().empty());
     REQUIRE(auditEvents.back().find(
         "event=disconnected;reason=peer closed connection") != std::string::npos);
+}
+
+TEST_CASE("cleanup reveals the latest authoritative value and runs only once") {
+    FakeAttackChannel channel;
+    FakeClock clock;
+    AttackInterface::AttackInterface attack(1, channel, clock);
+    std::vector<std::string> auditEvents;
+    attack.setAuditCallback([&](const std::string& event) { auditEvents.push_back(event); });
+    configure(channel, "restoration test");
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::FDI,
+        AttackInterface::SignalType::POWER_SETPOINT,
+        {1}));
+    channel.receive(sc::protocol::attack::encode(AttackInterface::AtDataMessage{
+        1,
+        AttackInterface::SignalType::POWER_SETPOINT,
+        clock.unixTimeMilliseconds(),
+        91.0F}));
+
+    float value = 10.0F;
+    REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_OK);
+    REQUIRE(value == Catch::Approx(91.0F));
+
+    channel.disconnect("connection reset");
+    channel.disconnect("duplicate notification");
+    value = 321.0F;
+    REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_DISABLED);
+    REQUIRE(value == Catch::Approx(321.0F));
+
+    const auto disconnectEvents = std::count_if(
+        auditEvents.begin(), auditEvents.end(), [](const std::string& event) {
+            return event.find("event=disconnected") != std::string::npos;
+        });
+    REQUIRE(disconnectEvents == 1);
+}
+
+TEST_CASE("a late heartbeat cannot revive an expired attack session") {
+    FakeAttackChannel channel;
+    FakeClock clock;
+    AttackInterface::AttackTiming timing;
+    timing.sessionLeaseTimeout = std::chrono::milliseconds(250);
+    AttackInterface::AttackInterface attack(1, channel, clock, timing);
+    configure(channel, "expired session");
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::TAP,
+        AttackInterface::SignalType::WIND_SPEED,
+        {1}));
+
+    clock.advance(std::chrono::milliseconds(250));
+    channel.checkLease();
+    channel.receive(sc::protocol::attack::encode(AttackInterface::HeartbeatMessage{}));
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::TAP,
+        AttackInterface::SignalType::WIND_SPEED,
+        {1}));
+
+    channel.clearSentMessages();
+    float value = 8.0F;
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    REQUIRE(channel.sentMessages().empty());
+}
+
+TEST_CASE("configuration acknowledgement failure revokes the new session") {
+    FakeAttackChannel channel;
+    FakeClock clock;
+    AttackInterface::AttackInterface attack(1, channel, clock);
+    std::vector<std::string> auditEvents;
+    attack.setAuditCallback([&](const std::string& event) { auditEvents.push_back(event); });
+    channel.setSendSucceeds(false);
+
+    channel.receive(sc::protocol::attack::encode(
+        AttackInterface::CfgDataMessage{"failed acknowledgement", 0, 0}));
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::TAP,
+        AttackInterface::SignalType::WIND_SPEED,
+        {1}));
+
+    channel.clearSentMessages();
+    float value = 8.0F;
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    REQUIRE(channel.sentMessages().empty());
+    REQUIRE(auditEvents.back().find(
+        "event=disconnected;reason=configuration acknowledgement failed") != std::string::npos);
 }
 
 TEST_CASE("control audit identifies signal and turbine and logs attack start once") {

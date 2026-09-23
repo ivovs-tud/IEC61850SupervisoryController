@@ -110,7 +110,10 @@ void AttackChannelTCP::bytesReceived(TcpServer::ClientId clientId, const uint8_t
 void AttackChannelTCP::clientDisconnected(TcpServer::ClientId clientId, const std::string& reason) {
     TcpServer::ClientId expected = clientId;
     if (!activeClient_.compare_exchange_strong(expected, 0)) return;
+    const std::string disconnectReason = decoder_.bufferedBytes() == 0
+        ? reason
+        : "protocol error: truncated attack message";
     decoder_.reset();
-    SOCKET_AT_ST("Raw TCP attack client disconnected: " << reason);
-    if (disconnectHandler_) disconnectHandler_(reason);
+    SOCKET_AT_ST("Raw TCP attack client disconnected: " << disconnectReason);
+    if (disconnectHandler_) disconnectHandler_(disconnectReason);
 }

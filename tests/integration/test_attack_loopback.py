@@ -76,8 +76,47 @@ class AttackLoopbackTests(unittest.TestCase):
             )
         }
         self.assertGreaterEqual(counters["configurations"], 1)
+        self.assertEqual(counters["disconnects"], 1)
+        self.assertEqual(counters["restored"], 1)
         self.assertGreaterEqual(counters["overwrite_successes"], 1)
         self.assertGreaterEqual(counters["overwrite_timeouts"], 1)
+
+    def test_zeromq_queue_overflow_revokes_the_session(self):
+        port = reserve_loopback_port()
+        server = subprocess.Popen(
+            [sys.argv[1], str(port), "slow-reader"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        client = AttackInterface(num_turbines=2)
+        output = ""
+        errors = ""
+        try:
+            client.connect("127.0.0.1", port)
+            client.configure("zeromq-overflow")
+            client.begin()
+            client.tap_communication("Yaw", [1, 0])
+            output, errors = server.communicate(timeout=5.0)
+        finally:
+            client.stop()
+            if server.poll() is None:
+                server.terminate()
+                output, errors = server.communicate(timeout=2.0)
+
+        self.assertEqual(server.returncode, 0, errors)
+        result_line = next(
+            line for line in output.splitlines() if line.startswith("SC_LOOPBACK_RESULT")
+        )
+        counters = {
+            key: int(value)
+            for key, value in (
+                entry.split("=", 1) for entry in result_line.split()[1:]
+            )
+        }
+        self.assertEqual(counters["configurations"], 1)
+        self.assertEqual(counters["disconnects"], 1)
+        self.assertEqual(counters["restored"], 1)
 
     def _poll_until(self, client, predicate, description):
         deadline = time.monotonic() + 5.0
