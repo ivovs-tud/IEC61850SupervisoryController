@@ -9,6 +9,7 @@ from .attack_protocol import (
     AtDataMessage,
     AttackMessage,
     AttackProtocolError,
+    AttackStreamDecoder,
     CfgDataMessage,
     ControlSignal,
     CtDataMessage,
@@ -19,6 +20,7 @@ from .attack_protocol import (
     SimCtrlMessage,
     TxDataMessage,
     TxDataType,
+    message_size,
     parse_message,
 )
 
@@ -29,6 +31,7 @@ __all__ = [
     "AttackInterfaceError",
     "AttackMessage",
     "AttackProtocolError",
+    "AttackStreamDecoder",
     "CfgDataMessage",
     "ControlSignal",
     "CtDataMessage",
@@ -39,5 +42,6 @@ __all__ = [
     "SimCtrlMessage",
     "TxDataMessage",
     "TxDataType",
+    "message_size",
     "parse_message",
 ]

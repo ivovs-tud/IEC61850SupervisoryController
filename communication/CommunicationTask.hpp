@@ -11,6 +11,7 @@
 #include "common/DataHistorian.hpp"
 #include "communication/CommunicationTypes.hpp"
 #include "communication/socket/SocketWrapper.hpp"
+#include "communication/socket/AttackChannelTCP.hpp"
 #include "communication/AttackInterface.hpp"
 
 class IECCommunicator;
@@ -65,6 +66,8 @@ private:
     CommConfig config_;
     libiec_wrapper iecWrapper_;
     SocketWrapper socketWrapper_;
+    AttackChannelTCP tcpAttackChannel_;
+    sc::ports::AttackChannel& attackChannel_;
     AttackInterface::AttackInterface attackInterface_;
     std::mutex attackInterfaceMutex_;
     std::vector<std::unique_ptr<IECCommunicator>> communicators_;

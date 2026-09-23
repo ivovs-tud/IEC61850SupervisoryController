@@ -51,10 +51,20 @@ inline ssize_t socket_read(socket_t fd, void* buf, size_t len)
     return static_cast<ssize_t>(recv(fd, static_cast<char*>(buf), static_cast<int>(len), 0));
 }
 
+inline ssize_t socket_write(socket_t fd, const void* buf, size_t len)
+{
+    return static_cast<ssize_t>(send(fd, static_cast<const char*>(buf), static_cast<int>(len), 0));
+}
+
 inline bool socket_would_block()
 {
     const int err = WSAGetLastError();
     return err == WSAEWOULDBLOCK;
+}
+
+inline bool socket_interrupted()
+{
+    return WSAGetLastError() == WSAEINTR;
 }
 
 inline const char* socket_strerror()
@@ -127,9 +137,23 @@ inline ssize_t socket_read(socket_t fd, void* buf, size_t len)
     return read(fd, buf, len);
 }
 
+inline ssize_t socket_write(socket_t fd, const void* buf, size_t len)
+{
+#ifdef MSG_NOSIGNAL
+    return send(fd, buf, len, MSG_NOSIGNAL);
+#else
+    return send(fd, buf, len, 0);
+#endif
+}
+
 inline bool socket_would_block()
 {
     return errno == EAGAIN || errno == EWOULDBLOCK;
+}
+
+inline bool socket_interrupted()
+{
+    return errno == EINTR;
 }
 
 inline const char* socket_strerror()

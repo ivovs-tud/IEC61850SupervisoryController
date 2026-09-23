@@ -111,10 +111,17 @@
     "attackInterfaceServer": {
       "type": "object",
       "properties": {
+        "transport": {"enum": ["zeromq", "tcp"]},
+        "bind_address": {"type": "string", "minLength": 1},
         "port": {"type": "integer", "minimum": 1, "maximum": 65535},
         "poll_period_ms": {"type": "integer", "minimum": 1},
         "heartbeat_interval_ms": {"type": "integer", "minimum": 1},
         "lease_timeout_ms": {"type": "integer", "minimum": 1},
+        "receive_buffer_bytes": {"type": "integer", "minimum": 268},
+        "transmit_buffer_bytes": {"type": "integer", "minimum": 268},
+        "zmq_heartbeat_interval_ms": {"type": "integer", "minimum": 1},
+        "zmq_heartbeat_timeout_ms": {"type": "integer", "minimum": 1},
+        "tcp_user_timeout_ms": {"type": "integer", "minimum": 0},
         "extensions": {"$ref": "#/$defs/extensions"}
       },
       "additionalProperties": true

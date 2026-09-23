@@ -1,8 +1,4 @@
-"""Attack-interface wire messages.
-
-This module captures the x86-64 GCC-compatible native C++ layouts used by the
-current controller and Python client.
-"""
+"""Explicit attack-interface wire encoding and stream decoding."""
 
 from __future__ import annotations
 
@@ -56,6 +52,7 @@ _CT_HEADER = struct.Struct("<B3xII")
 _CFG = struct.Struct("<B256s3xii")
 _SIM_CONTROL = struct.Struct("<BB")
 _SESSION_CONTROL = struct.Struct("<B")
+DEFAULT_BUFFER_LIMIT = 64 * 1024
 
 
 def _require_size(data: bytes, expected: int, message_name: str) -> None:
@@ -163,7 +160,11 @@ class CtDataMessage:
         header, signal, data_type = _CT_HEADER.unpack_from(data)
         if header != DataHeader.CT_DATA:
             raise AttackProtocolError("invalid CT_DATA header")
-        enable = tuple(bool(value) for value in data[_CT_HEADER.size :])
+        raw_enable = data[_CT_HEADER.size :]
+        if any(value not in (0, 1) for value in raw_enable):
+            # Do not interpret pointer bytes from the retired native layout as flags.
+            raise AttackProtocolError("invalid CT_DATA enable flag")
+        enable = tuple(bool(value) for value in raw_enable)
         return cls(ControlSignal(signal), TxDataType(data_type), enable)
 
 
@@ -206,6 +207,8 @@ class SimCtrlMessage:
         header, sim_start = _SIM_CONTROL.unpack(data)
         if header != DataHeader.SIM_CTRL:
             raise AttackProtocolError("invalid SIM_CTRL header")
+        if sim_start not in (0, 1):
+            raise AttackProtocolError("invalid SIM_CTRL flag")
         return cls(bool(sim_start))
 
 
@@ -267,3 +270,68 @@ def parse_message(data: bytes) -> AttackMessage:
         DataHeader.RELEASE: ReleaseMessage,
     }
     return message_types[header].unpack(data)
+
+
+def message_size(header: DataHeader | int, num_turbines: int) -> int:
+    """Return the canonical byte size for a message header."""
+    if num_turbines <= 0:
+        raise ValueError("num_turbines must be positive")
+    try:
+        message_header = DataHeader(header)
+    except ValueError as error:
+        raise AttackProtocolError(f"unknown message header 0x{int(header):02x}") from error
+
+    sizes = {
+        DataHeader.TX_DATA: _TX.size,
+        DataHeader.RQ_DATA: _RQ.size,
+        DataHeader.AT_DATA: _AT.size,
+        DataHeader.CT_DATA: _CT_HEADER.size + num_turbines,
+        DataHeader.CFG_DATA: _CFG.size,
+        DataHeader.SIM_CTRL: _SIM_CONTROL.size,
+        DataHeader.HEARTBEAT: _SESSION_CONTROL.size,
+        DataHeader.RELEASE: _SESSION_CONTROL.size,
+    }
+    return sizes[message_header]
+
+
+class AttackStreamDecoder:
+    """Split an attack TCP byte stream into validated messages."""
+
+    def __init__(
+        self,
+        num_turbines: int,
+        max_buffer_bytes: int = DEFAULT_BUFFER_LIMIT,
+    ) -> None:
+        if num_turbines <= 0:
+            raise ValueError("num_turbines must be positive")
+        if max_buffer_bytes <= 0:
+            raise ValueError("max_buffer_bytes must be positive")
+        self._num_turbines = num_turbines
+        self._max_buffer_bytes = max_buffer_bytes
+        self._buffer = bytearray()
+
+    @property
+    def buffered_bytes(self) -> int:
+        return len(self._buffer)
+
+    def feed(self, data: bytes) -> list[AttackMessage]:
+        if len(data) > self._max_buffer_bytes - len(self._buffer):
+            raise AttackProtocolError("attack receive buffer limit exceeded")
+        self._buffer.extend(data)
+
+        messages: list[AttackMessage] = []
+        while self._buffer:
+            expected_size = message_size(self._buffer[0], self._num_turbines)
+            if len(self._buffer) < expected_size:
+                break
+            payload = bytes(self._buffer[:expected_size])
+            del self._buffer[:expected_size]
+            messages.append(parse_message(payload))
+        return messages
+
+    def finish(self) -> None:
+        if self._buffer:
+            raise AttackProtocolError("truncated attack message at end of stream")
+
+    def reset(self) -> None:
+        self._buffer.clear()

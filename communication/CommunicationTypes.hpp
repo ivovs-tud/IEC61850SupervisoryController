@@ -3,8 +3,10 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <cstddef>
 
 #include "communication/libiec_wrapper.hpp"
+#include "sc/ports/AttackTransport.hpp"
 
 typedef enum rc {
     COMM_OK = 0,
@@ -25,10 +27,17 @@ struct CommConfig
     } operatorServer;
 
     struct AttackInterface {
+        sc::ports::AttackTransport    transport   {sc::ports::AttackTransport::ZEROMQ};
+        std::string                   bindAddress {"0.0.0.0"};
         int                       port        {9002};
         std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
         std::chrono::milliseconds heartbeatInterval {std::chrono::milliseconds(200)};
         std::chrono::milliseconds leaseTimeout {std::chrono::milliseconds(750)};
+        std::size_t                receiveBufferBytes {64 * 1024};
+        std::size_t                transmitBufferBytes {64 * 1024};
+        std::chrono::milliseconds  zmqHeartbeatInterval {std::chrono::milliseconds(200)};
+        std::chrono::milliseconds  zmqHeartbeatTimeout {std::chrono::milliseconds(750)};
+        std::chrono::milliseconds  tcpUserTimeout {std::chrono::milliseconds(0)};
     } attackInterface;
 
     struct DataHistorian {

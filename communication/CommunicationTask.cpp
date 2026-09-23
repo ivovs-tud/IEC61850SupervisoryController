@@ -18,6 +18,18 @@ AttackInterface::AttackTiming makeAttackTiming(const CommConfig& config)
     return timing;
 }
 
+AttackChannelTCP::Config makeTcpAttackConfig(const CommConfig& config) {
+    AttackChannelTCP::Config tcp;
+    tcp.bindAddress = config.attackInterface.bindAddress;
+    tcp.port = config.attackInterface.port;
+    tcp.pollPeriod = config.attackInterface.pollPeriod;
+    tcp.turbineCount = config.mms.turbines.size();
+    tcp.receiveBufferBytes = config.attackInterface.receiveBufferBytes;
+    tcp.transmitBufferBytes = config.attackInterface.transmitBufferBytes;
+    tcp.tcpUserTimeout = config.attackInterface.tcpUserTimeout;
+    return tcp;
+}
+
 } // namespace
 
 CommunicationOrchestrator::CommunicationOrchestrator(const CommConfig& config)
@@ -28,18 +40,31 @@ CommunicationOrchestrator::CommunicationOrchestrator(const CommConfig& config)
                      static_cast<int>(config.attackInterface.pollPeriod.count()),
                      config.dataHistorian.port,
                      static_cast<int>(config.dataHistorian.pollPeriod.count())),
+      tcpAttackChannel_(makeTcpAttackConfig(config)),
+      attackChannel_(config.attackInterface.transport == sc::ports::AttackTransport::TCP
+                         ? static_cast<sc::ports::AttackChannel&>(tcpAttackChannel_)
+                         : static_cast<sc::ports::AttackChannel&>(socketWrapper_)),
       attackInterface_(static_cast<int>(config.mms.turbines.size()),
-                       socketWrapper_,
+                       attackChannel_,
                        sc::ports::systemClock(),
                        makeAttackTiming(config))
 {
     socketStatus_.store(COMM_DISCONNECTED);
     iecStatus_.store(COMM_DISCONNECTED);
+    socketWrapper_.ConfigureAttackInterface(
+        config.attackInterface.receiveBufferBytes,
+        config.attackInterface.transmitBufferBytes,
+        config.attackInterface.zmqHeartbeatInterval,
+        config.attackInterface.zmqHeartbeatTimeout);
     socketWrapper_.setFailureHandler([this](const std::string& message) {
         if (message.rfind("attack interface server:", 0) == 0) {
             attackInterface_.shutdown("transport failure");
         }
         handleRuntimeFailure(message);
+    });
+    tcpAttackChannel_.setFailureHandler([this](const std::string& message) {
+        attackInterface_.shutdown("transport failure");
+        handleRuntimeFailure("raw TCP attack interface server: " + message);
     });
 }
 
@@ -163,7 +188,11 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::start()
         return {false, StartupStage::OperatorServer, "failed to start operator server"};
     }
     operatorStarted_ = true;
-    if (socketWrapper_.StartAttackInterfaceServer(config_.attackInterface.port) < tcpSOCKET_CONNECTED) {
+    const bool attackServerStarted =
+        config_.attackInterface.transport == sc::ports::AttackTransport::TCP
+            ? tcpAttackChannel_.start()
+            : socketWrapper_.StartAttackInterfaceServer(config_.attackInterface.port) >= tcpSOCKET_CONNECTED;
+    if (!attackServerStarted) {
         COMMTASK_ERR("Failed to start attack interface server on port " << config_.attackInterface.port);
         rollbackStart(0);
         return {false, StartupStage::AttackInterface, "failed to start attack interface server"};
@@ -229,7 +258,11 @@ void CommunicationOrchestrator::rollbackStart(std::size_t communicatorCount)
     }
     if (attackStarted_) {
         attackInterface_.shutdown("controller shutdown");
-        socketWrapper_.StopAttackInterfaceServer();
+        if (config_.attackInterface.transport == sc::ports::AttackTransport::TCP) {
+            tcpAttackChannel_.stop();
+        } else {
+            socketWrapper_.StopAttackInterfaceServer();
+        }
         attackStarted_ = false;
     }
     if (operatorStarted_) {

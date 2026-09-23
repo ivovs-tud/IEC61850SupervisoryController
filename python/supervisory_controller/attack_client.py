@@ -52,6 +52,8 @@ class AttackClient:
     RECV_TIMEOUT_MS = 500
     SEND_TIMEOUT_MS = 500
     HEARTBEAT_INTERVAL_SECONDS = 0.2
+    ZEROMQ_HEARTBEAT_INTERVAL_MS = 200
+    ZEROMQ_HEARTBEAT_TIMEOUT_MS = 750
 
     SIGNAL_TYPES = {
         "Wind Speed": TxDataType.TX_WS,
@@ -115,6 +117,8 @@ class AttackClient:
         socket.setsockopt(zmq.SNDHWM, self.ZEROMQ_MAX_MESSAGES)
         socket.setsockopt(zmq.RCVTIMEO, self.RECV_TIMEOUT_MS)
         socket.setsockopt(zmq.SNDTIMEO, self.SEND_TIMEOUT_MS)
+        socket.setsockopt(zmq.HEARTBEAT_IVL, self.ZEROMQ_HEARTBEAT_INTERVAL_MS)
+        socket.setsockopt(zmq.HEARTBEAT_TIMEOUT, self.ZEROMQ_HEARTBEAT_TIMEOUT_MS)
         return socket
 
     def _empty_control_map(self) -> dict[str, list[bool]]:

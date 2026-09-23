@@ -20,6 +20,10 @@ public:
         leaseCheckHandler_ = std::move(handler);
     }
 
+    void setDisconnectHandler(sc::ports::AttackDisconnectHandler handler) override {
+        disconnectHandler_ = std::move(handler);
+    }
+
     bool send(const uint8_t* data, std::size_t size) override {
         if (data == nullptr || size == 0) {
             return false;
@@ -46,6 +50,13 @@ public:
         leaseCheckHandler_();
     }
 
+    void disconnect(const std::string& reason) const {
+        if (!disconnectHandler_) {
+            throw std::logic_error("no attack disconnect handler is installed");
+        }
+        disconnectHandler_(reason);
+    }
+
     void setSendObserver(SendObserver observer) {
         sendObserver_ = std::move(observer);
     }
@@ -65,6 +76,7 @@ public:
 private:
     sc::ports::AttackReceiveHandler receiveHandler_;
     sc::ports::AttackLeaseCheckHandler leaseCheckHandler_;
+    sc::ports::AttackDisconnectHandler disconnectHandler_;
     SendObserver sendObserver_;
     std::vector<std::vector<uint8_t>> sentMessages_;
     bool sendSucceeds_{true};

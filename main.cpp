@@ -110,10 +110,17 @@ CommConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& runtime) {
     CommConfig config;
     config.operatorServer.port = runtime.communication.operatorServer.port;
     config.operatorServer.pollPeriod = runtime.communication.operatorServer.pollPeriod;
+    config.attackInterface.transport = runtime.communication.attackInterface.transport;
+    config.attackInterface.bindAddress = runtime.communication.attackInterface.bindAddress;
     config.attackInterface.port = runtime.communication.attackInterface.port;
     config.attackInterface.pollPeriod = runtime.communication.attackInterface.pollPeriod;
     config.attackInterface.heartbeatInterval = runtime.communication.attackInterface.heartbeatInterval;
     config.attackInterface.leaseTimeout = runtime.communication.attackInterface.leaseTimeout;
+    config.attackInterface.receiveBufferBytes = runtime.communication.attackInterface.receiveBufferBytes;
+    config.attackInterface.transmitBufferBytes = runtime.communication.attackInterface.transmitBufferBytes;
+    config.attackInterface.zmqHeartbeatInterval = runtime.communication.attackInterface.zmqHeartbeatInterval;
+    config.attackInterface.zmqHeartbeatTimeout = runtime.communication.attackInterface.zmqHeartbeatTimeout;
+    config.attackInterface.tcpUserTimeout = runtime.communication.attackInterface.tcpUserTimeout;
     config.dataHistorian.port = runtime.communication.dataHistorian.port;
     config.dataHistorian.pollPeriod = runtime.communication.dataHistorian.pollPeriod;
 
