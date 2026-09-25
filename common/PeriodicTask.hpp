@@ -63,6 +63,8 @@ private:
     mutable std::mutex lifecycleMutex_;
     std::condition_variable lifecycleCv_;
     std::condition_variable wakeCv_;
+    bool startupFinished_{false};
+    bool startupSucceeded_{false};
     std::exception_ptr failure_;
     FailureHandler failureHandler_;
 };

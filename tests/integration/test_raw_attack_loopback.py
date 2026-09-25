@@ -250,7 +250,8 @@ class RawAttackLoopbackTests(unittest.TestCase):
                 lambda message: isinstance(message, TxDataMessage)
                 and message.data_type == TxDataType.TX_YAW,
             )
-            client.close()
+            # Keep the read side open so Winsock does not reset unread server data.
+            client.shutdown(socket.SHUT_WR)
             output, errors = server.communicate(timeout=5.0)
         finally:
             if client.fileno() >= 0:
@@ -356,7 +357,8 @@ class RawAttackLoopbackTests(unittest.TestCase):
 
         counters = self.assert_server_success(server, output, errors)
         self.assert_cleanup(counters, {6})
-        self.assertGreaterEqual(counters["lease_elapsed_ms"], 250)
+        # The connected audit event is emitted after the lease timer starts.
+        self.assertGreaterEqual(counters["lease_elapsed_ms"], 200)
         self.assertLess(counters["lease_elapsed_ms"], 500)
 
     def test_server_shutdown_is_reported_by_the_python_client(self):
