@@ -19,10 +19,15 @@ inline std::string formatTime(uint64_t totalMs) {
     time_t totalSec = static_cast<time_t>(totalMs / 1000);
     int    ms = static_cast<int>(totalMs % 1000);
 
-    std::tm* local = std::localtime(&totalSec); // swap for gmtime() if you want UTC
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &totalSec);
+#else
+    localtime_r(&totalSec, &local);
+#endif
 
     std::ostringstream oss;
-    oss << std::put_time(local, "%H:%M:%S")
+    oss << std::put_time(&local, "%H:%M:%S")
         << '.'
         << std::setfill('0') << std::setw(3) << ms;
 
@@ -32,4 +37,3 @@ inline std::string formatTime(uint64_t totalMs) {
 inline std::string getCurrentTimeFormatted() {
     return formatTime(getCurrentTimeMs());
 }
-

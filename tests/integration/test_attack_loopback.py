@@ -42,9 +42,10 @@ class AttackLoopbackTests(unittest.TestCase):
 
             client.tap_communication("Yaw Setpoint", [1, 0])
             client.fdi_communication("Yaw Setpoint", [1, 0])
-            client.fdi_next["Yaw Setpoint"][0] = 123.5
 
+            # Leave FDI without a value long enough to exercise the timeout path.
             time.sleep(0.25)
+            client.fdi_next["Yaw Setpoint"][0] = 123.5
             self._poll_until(
                 client,
                 lambda: math.isclose(

@@ -95,7 +95,7 @@ void AttackChannelTCP::bytesReceived(TcpServer::ClientId clientId, const uint8_t
         while (offset < size) {
             const std::size_t available = config_.receiveBufferBytes - decoder_.bufferedBytes();
             if (available == 0) throw sc::protocol::attack::ProtocolError("attack receive buffer limit exceeded");
-            const std::size_t chunkSize = std::min(available, size - offset);
+            const std::size_t chunkSize = (std::min)(available, size - offset);
             const auto messages = decoder_.push(data + offset, chunkSize);
             offset += chunkSize;
             for (const auto& message : messages) {
