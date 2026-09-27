@@ -80,6 +80,12 @@ class AttackClient:
     }
     _TEXT2TYPE = SIGNAL_TYPES
     _TYPE2TEXT = {value: key for key, value in SIGNAL_TYPES.items()}
+    _NORMALIZED_SIGNAL_NAMES: dict[str, str] = {}
+    for _signal_name in SIGNAL_TYPES:
+        _NORMALIZED_SIGNAL_NAMES[
+            "".join(character for character in _signal_name.casefold() if character.isalnum())
+        ] = _signal_name
+    del _signal_name
     _AttackInterfaceExcept = AttackInterfaceError
 
     def __init__(
@@ -282,18 +288,28 @@ class AttackClient:
         target = self._tap_cfg if signal == ControlSignal.CTRL_TAP else self._fdi_cfg
 
         for name in names:
-            try:
-                data_type = self.SIGNAL_TYPES[name]
-            except KeyError as error:
-                raise AttackInterfaceError(f"unknown attack channel: {name}") from error
-            target[name] = enabled.copy()
+            canonical_name = self._canonical_signal_name(name)
+            data_type = self.SIGNAL_TYPES[canonical_name]
+            target[canonical_name] = enabled.copy()
             self._send(CtDataMessage(signal, data_type, tuple(enabled)))
             logging.info(
                 "Updated %s for %s: %s",
                 "tap" if signal == ControlSignal.CTRL_TAP else "FDI",
-                name,
+                canonical_name,
                 enabled,
             )
+
+    @classmethod
+    def _canonical_signal_name(cls, name: object) -> str:
+        if not isinstance(name, str):
+            raise AttackInterfaceError(f"unknown attack channel: {name!r}")
+        normalized = "".join(
+            character for character in name.casefold() if character.isalnum()
+        )
+        try:
+            return cls._NORMALIZED_SIGNAL_NAMES[normalized]
+        except KeyError as error:
+            raise AttackInterfaceError(f"unknown attack channel: {name}") from error
 
     def _validate_turbine_flags(self, turbine_ids: Sequence[int | bool]) -> list[bool]:
         if isinstance(turbine_ids, (str, bytes)):

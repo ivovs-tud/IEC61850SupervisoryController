@@ -149,6 +149,36 @@ class AttackClientTests(unittest.TestCase):
         with self.assertRaises(AttackInterfaceError):
             client.tap_communication("not-a-signal", [1, 0])
 
+    def test_signal_names_ignore_capitalization_and_separators(self):
+        client, socket = self.make_client()
+        client.configure("test attack")
+        socket.sent.clear()
+        aliases = [
+            ("Wind Speed", TxDataType.TX_WS),
+            ("wind speed", TxDataType.TX_WS),
+            ("windspeed", TxDataType.TX_WS),
+            ("  WIND---SPEED  ", TxDataType.TX_WS),
+            ("wind_speed", TxDataType.TX_WS),
+            ("winddirection", TxDataType.TX_WD),
+            ("ROTOR-SPEED", TxDataType.TX_RPM),
+            (" yaw ", TxDataType.TX_YAW),
+            ("blade___pitch", TxDataType.TX_PTCH),
+            ("POWER", TxDataType.TX_PW),
+            ("yawsetpoint", TxDataType.TX_SPT_YAW),
+            ("power  setpoint", TxDataType.TX_SPT_PWR),
+            ("generator-torque", TxDataType.TX_GENTORQ),
+        ]
+
+        for alias, expected_type in aliases:
+            client.tap_communication(alias, [1, 0])
+            self.assertEqual(
+                parse_message(socket.sent[-1]),
+                CtDataMessage(ControlSignal.CTRL_TAP, expected_type, (True, False)),
+            )
+
+        self.assertEqual(set(client._tap_cfg), set(client.SIGNAL_TYPES))
+        self.assertTrue(all(client._tap_cfg[name] == [True, False] for name in client.SIGNAL_TYPES))
+
     def test_poll_updates_tapped_data_and_answers_valid_fdi_request(self):
         client, socket = self.make_client(wall_time_ms=lambda: 1_000)
         client.fdi_next["Yaw Setpoint"][1] = 42.5
