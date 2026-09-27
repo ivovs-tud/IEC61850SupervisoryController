@@ -12,11 +12,25 @@ void SocketWrapper::AttackInterfaceServer::setPort(int port) { port_ = port; }
 tcpSocketStatus SocketWrapper::AttackInterfaceServer::status() const { return status_.load(); }
 void SocketWrapper::AttackInterfaceServer::setCallback(AttackCallback cb) {callback_ = std::move(cb); }
 void SocketWrapper::AttackInterfaceServer::setLeaseCheckCallback(sc::ports::AttackLeaseCheckHandler callback) { leaseCheckCallback_ = std::move(callback); }
+void SocketWrapper::AttackInterfaceServer::setDisconnectCallback(sc::ports::AttackDisconnectHandler callback) { disconnectCallback_ = std::move(callback); }
+
+void SocketWrapper::AttackInterfaceServer::configure(
+    std::size_t receiveBufferBytes,
+    std::size_t transmitBufferBytes,
+    std::chrono::milliseconds heartbeatInterval,
+    std::chrono::milliseconds heartbeatTimeout) {
+    receiveBufferBytes_ = receiveBufferBytes;
+    transmitBufferBytes_ = transmitBufferBytes;
+    heartbeatInterval_ = heartbeatInterval;
+    heartbeatTimeout_ = heartbeatTimeout;
+}
 
 void SocketWrapper::AttackInterfaceServer::onStart() {
     try {
         socket_.emplace(context_, zmq::socket_type::pair);
         socket_->set(zmq::sockopt::rcvhwm, 3);
+        socket_->set(zmq::sockopt::heartbeat_ivl, static_cast<int>(heartbeatInterval_.count()));
+        socket_->set(zmq::sockopt::heartbeat_timeout, static_cast<int>(heartbeatTimeout_.count()));
         socket_->bind("tcp://*:" + std::to_string(port_));
         SOCKET_AT_ST("Attack interface server listening on port " << port_);
         status_.store(tcpSOCKET_CONNECTED);
@@ -35,6 +49,12 @@ void SocketWrapper::AttackInterfaceServer::execute() {
     const auto result = socket_->recv(message, zmq::recv_flags::dontwait);
     if (result) {
         SOCKET_AT_LOG_V2("Received a message of size " << message.size() << " bytes");
+
+        if (message.size() > receiveBufferBytes_) {
+            SOCKET_AT_ERR("Attack interface message exceeds receive buffer limit");
+            if (disconnectCallback_) disconnectCallback_("receive buffer overflow");
+            return;
+        }
 
         if (callback_) {
             try {
@@ -59,10 +79,12 @@ void SocketWrapper::AttackInterfaceServer::drainOutboundQueue() {
         std::memcpy(message.data(), pending.data(), pending.size());
         try {
             if (!socket_->send(message, zmq::send_flags::dontwait)) return;
+            queuedBytes_ -= pending.size();
             outboundQueue_.pop_front();
         } catch (const zmq::error_t& error) {
             SOCKET_AT_ERR("Failed to send attack interface message: " << error.what());
             status_.store(tcpSOCKET_ERROR);
+            if (disconnectCallback_) disconnectCallback_("transport send failure");
             throw;
         }
     }
@@ -73,6 +95,7 @@ void SocketWrapper::AttackInterfaceServer::onStop() {
     {
         std::lock_guard<std::mutex> lock(outboundMutex_);
         outboundQueue_.clear();
+        queuedBytes_ = 0;
     }
     socket_.reset();
     status_.store(tcpSOCKET_CLOSED);

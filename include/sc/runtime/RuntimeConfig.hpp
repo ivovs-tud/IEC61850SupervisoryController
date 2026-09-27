@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "sc/ports/AttackTransport.hpp"
+
 namespace sc::runtime {
 
 struct TurbineEndpointConfig {
@@ -83,10 +85,17 @@ struct RuntimeConfig {
     struct Communication {
         SocketServer operatorServer{9001};
         struct AttackInterfaceServer {
+            sc::ports::AttackTransport transport{sc::ports::AttackTransport::ZEROMQ};
+            std::string bindAddress{"0.0.0.0"};
             int port{9002};
             std::chrono::milliseconds pollPeriod{10};
             std::chrono::milliseconds heartbeatInterval{200};
             std::chrono::milliseconds leaseTimeout{750};
+            std::size_t receiveBufferBytes{64 * 1024};
+            std::size_t transmitBufferBytes{64 * 1024};
+            std::chrono::milliseconds zmqHeartbeatInterval{200};
+            std::chrono::milliseconds zmqHeartbeatTimeout{750};
+            std::chrono::milliseconds tcpUserTimeout{0};
         } attackInterface;
         SocketServer dataHistorian{9003};
 

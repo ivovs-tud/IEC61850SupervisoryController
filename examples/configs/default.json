@@ -39,10 +39,17 @@
     "orchestration_period_ms": 10,
     "operator": {"port": 9001, "poll_period_ms": 10},
     "attack_interface": {
+      "transport": "zeromq",
+      "bind_address": "0.0.0.0",
       "port": 9002,
       "poll_period_ms": 10,
       "heartbeat_interval_ms": 200,
-      "lease_timeout_ms": 750
+      "lease_timeout_ms": 750,
+      "receive_buffer_bytes": 65536,
+      "transmit_buffer_bytes": 65536,
+      "zmq_heartbeat_interval_ms": 200,
+      "zmq_heartbeat_timeout_ms": 750,
+      "tcp_user_timeout_ms": 0
     },
     "data_historian": {"port": 9003, "poll_period_ms": 10},
     "mms": {

@@ -24,8 +24,14 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
         REQUIRE(endpoint.logicalDevice == "LD0");
     }
     REQUIRE_FALSE(config.monitoring.alarmAcknowledgementEnabled);
+    REQUIRE(config.communication.attackInterface.transport == sc::ports::AttackTransport::ZEROMQ);
+    REQUIRE(config.communication.attackInterface.bindAddress == "0.0.0.0");
     REQUIRE(config.communication.attackInterface.heartbeatInterval == 200ms);
     REQUIRE(config.communication.attackInterface.leaseTimeout == 750ms);
+    REQUIRE(config.communication.attackInterface.receiveBufferBytes == 64 * 1024);
+    REQUIRE(config.communication.attackInterface.transmitBufferBytes == 64 * 1024);
+    REQUIRE(config.communication.attackInterface.zmqHeartbeatInterval == 200ms);
+    REQUIRE(config.communication.attackInterface.zmqHeartbeatTimeout == 750ms);
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, 9));
 }
 
@@ -61,7 +67,14 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
         "  \"monitoring\": {\"alarm_acknowledgement_enabled\": true},\n"
         "  \"hmi\": {\"window_size\": 42},\n"
         "  \"historian\": {\"output_directory\": \"logs\"},\n"
-        "  \"communication\": {\"mms\": {\"reporting_enabled\": false}}\n"
+        "  \"communication\": {\n"
+        "    \"attack_interface\": {\n"
+        "      \"transport\": \"tcp\", \"bind_address\": \"127.0.0.1\",\n"
+        "      \"receive_buffer_bytes\": 4096, \"transmit_buffer_bytes\": 8192,\n"
+        "      \"tcp_user_timeout_ms\": 1200\n"
+        "    },\n"
+        "    \"mms\": {\"reporting_enabled\": false}\n"
+        "  }\n"
         "}\n");
 
     const auto config = sc::runtime::loadRuntimeConfig(file.path());
@@ -76,6 +89,11 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
     REQUIRE(config.monitoring.alarmAcknowledgementEnabled);
     REQUIRE(config.control.yawLutCsvPath == parent / "lut.csv");
     REQUIRE(config.historian.outputDirectory == parent / "logs");
+    REQUIRE(config.communication.attackInterface.transport == sc::ports::AttackTransport::TCP);
+    REQUIRE(config.communication.attackInterface.bindAddress == "127.0.0.1");
+    REQUIRE(config.communication.attackInterface.receiveBufferBytes == 4096);
+    REQUIRE(config.communication.attackInterface.transmitBufferBytes == 8192);
+    REQUIRE(config.communication.attackInterface.tcpUserTimeout == 1200ms);
     REQUIRE_FALSE(config.communication.mms.reports.front().enabled);
 }
 
@@ -154,6 +172,32 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.leaseTimeout = config.communication.attackInterface.heartbeatInterval;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("attack buffers must fit the configuration message") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.communication.attackInterface.receiveBufferBytes = 267;
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("raw TCP bind address must be an IPv4 address") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.communication.attackInterface.transport = sc::ports::AttackTransport::TCP;
+        config.communication.attackInterface.bindAddress = "localhost";
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("ZeroMQ heartbeat timeout must exceed its interval") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.communication.attackInterface.zmqHeartbeatTimeout =
+            config.communication.attackInterface.zmqHeartbeatInterval;
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("unknown attack transport") {
+        const sc::test::TemporaryCsv file(
+            "{\"communication\":{\"attack_interface\":{\"transport\":\"udp\"}}}\n");
+        REQUIRE_THROWS_AS(sc::runtime::loadRuntimeConfig(file.path()), std::runtime_error);
     }
 
     SECTION("unsupported schema version") {

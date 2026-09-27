@@ -26,6 +26,8 @@ bool PeriodicTask::start() {
     }
 
     failure_ = nullptr;
+    startupFinished_ = false;
+    startupSucceeded_ = false;
     running_.store(true);
     state_.store(State::Starting);
     try {
@@ -33,14 +35,15 @@ bool PeriodicTask::start() {
     } catch (...) {
         running_.store(false);
         state_.store(State::Failed);
+        startupFinished_ = true;
         failure_ = std::current_exception();
         throw;
     }
 
     lifecycleCv_.wait(lock, [this]() {
-        return state_.load() != State::Starting;
+        return startupFinished_;
     });
-    const bool started = state_.load() == State::Running;
+    const bool started = startupSucceeded_;
     lock.unlock();
 
     if (!started) {
@@ -50,10 +53,14 @@ bool PeriodicTask::start() {
 }
 
 void PeriodicTask::requestStop() noexcept {
-    running_.store(false);
-    State currentState = state_.load();
-    while ((currentState == State::Starting || currentState == State::Running) &&
-           !state_.compare_exchange_weak(currentState, State::StopRequested)) {
+    {
+        // Update the wait predicate under its mutex to prevent a lost wake-up.
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        running_.store(false);
+        State currentState = state_.load();
+        while ((currentState == State::Starting || currentState == State::Running) &&
+               !state_.compare_exchange_weak(currentState, State::StopRequested)) {
+        }
     }
     lifecycleCv_.notify_all();
     wakeCv_.notify_all();
@@ -96,10 +103,11 @@ void PeriodicTask::run() {
     bool failed = false;
     try {
         onStart();
-        if (running_.load()) {
-            state_.store(State::Running);
-        } else {
-            state_.store(State::StopRequested);
+        {
+            std::lock_guard<std::mutex> lock(lifecycleMutex_);
+            startupSucceeded_ = running_.load();
+            startupFinished_ = true;
+            state_.store(startupSucceeded_ ? State::Running : State::StopRequested);
         }
         lifecycleCv_.notify_all();
 
@@ -117,6 +125,11 @@ void PeriodicTask::run() {
         failed = true;
         running_.store(false);
         recordFailure(std::current_exception());
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        if (!startupFinished_) {
+            startupFinished_ = true;
+            startupSucceeded_ = false;
+        }
     }
 
     try {

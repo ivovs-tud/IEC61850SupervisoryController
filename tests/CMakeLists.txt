@@ -14,6 +14,21 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+add_executable(sc_attack_protocol_tests
+    unit/AttackProtocolTests.cpp
+)
+
+target_link_libraries(sc_attack_protocol_tests PRIVATE
+    Catch2::Catch2WithMain
+    common
+)
+
+catch_discover_tests(
+    sc_attack_protocol_tests
+    TEST_PREFIX "sc.attack_protocol."
+    DISCOVERY_MODE PRE_TEST
+)
+
 add_executable(sc_attack_interface_tests
     unit/AttackInterfaceTests.cpp
 )
@@ -198,6 +213,7 @@ if(SC_BUILD_INTEGRATION_TESTS)
 
     add_executable(sc_attack_loopback_server
         integration/AttackLoopbackServer.cpp
+        ${PROJECT_SOURCE_DIR}/communication/socket/TcpServer.cpp
         ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapper.cpp
         ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperAt.cpp
         ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperDH.cpp
@@ -240,4 +256,75 @@ if(SC_BUILD_INTEGRATION_TESTS)
         ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
         TIMEOUT 30
     )
+
+    add_executable(sc_raw_attack_loopback_server
+        integration/RawAttackLoopbackServer.cpp
+        ${PROJECT_SOURCE_DIR}/communication/socket/AttackChannelTCP.cpp
+        ${PROJECT_SOURCE_DIR}/communication/socket/TcpServer.cpp
+    )
+
+    target_include_directories(sc_raw_attack_loopback_server PRIVATE
+        ${PROJECT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/communication
+        ${PROJECT_SOURCE_DIR}/communication/socket
+    )
+
+    target_link_libraries(sc_raw_attack_loopback_server PRIVATE
+        common
+        sc_application
+        Threads::Threads
+    )
+
+    if(WIN32)
+        target_link_libraries(sc_raw_attack_loopback_server PRIVATE ws2_32)
+    endif()
+
+    add_test(
+        NAME sc.integration.raw_attack_loopback
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_raw_attack_loopback.py
+                $<TARGET_FILE:sc_raw_attack_loopback_server>
+    )
+    set_tests_properties(sc.integration.raw_attack_loopback PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/python;PYTHONDONTWRITEBYTECODE=1"
+        TIMEOUT 30
+    )
+
+    add_executable(sc_data_historian_tcp_tests
+        integration/DataHistorianTcpTests.cpp
+        ${PROJECT_SOURCE_DIR}/communication/socket/TcpServer.cpp
+        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapper.cpp
+        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperAt.cpp
+        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperDH.cpp
+        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperOp.cpp
+    )
+
+    target_include_directories(sc_data_historian_tcp_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/communication
+        ${PROJECT_SOURCE_DIR}/communication/socket
+        ${CPPZMQ_INCLUDE_DIR}
+        ${ZMQ_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(sc_data_historian_tcp_tests PRIVATE
+        common
+        sc_application
+        Threads::Threads
+        ${ZMQ_LIBRARIES}
+    )
+
+    if(WIN32)
+        target_link_libraries(sc_data_historian_tcp_tests PRIVATE ws2_32)
+        if(TARGET libzmq)
+            add_custom_command(TARGET sc_data_historian_tcp_tests POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        $<TARGET_FILE:libzmq>
+                        $<TARGET_FILE_DIR:sc_data_historian_tcp_tests>
+            )
+        endif()
+    endif()
+
+    add_test(NAME sc.integration.data_historian_tcp COMMAND sc_data_historian_tcp_tests)
+    set_tests_properties(sc.integration.data_historian_tcp PROPERTIES TIMEOUT 15)
 endif()

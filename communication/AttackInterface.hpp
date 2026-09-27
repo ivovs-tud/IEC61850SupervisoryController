@@ -3,16 +3,14 @@
 #include "common/SharedData.hpp"
 #include "common/config.hpp"
 #include "sc/application/AttackSessionManager.hpp"
-#include "sc/application/AttackSignalType.hpp"
 #include "sc/ports/AttackChannel.hpp"
 #include "sc/ports/Clock.hpp"
+#include "sc/protocol/AttackProtocol.hpp"
 
 #include <chrono>
 #include <atomic>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <mutex>
 #include <set>
@@ -24,85 +22,23 @@
 
 namespace AttackInterface {
 
-typedef enum eDataHeader {
-    TX_DATA = 0x01,
-    RQ_DATA = 0x02,
-    AT_DATA = 0x04,
-    CT_DATA = 0x08,
-    CFG_DATA = 0x10,
-    SIM_CTRL = 0x20,
-    HEARTBEAT = 0x40,
-    RELEASE = 0x80,
-} DataHeader;
-
-typedef DataHeader MessageType;
-
-typedef enum eControlSignal {
-    CTRL_NONE = 0x00,
-    CTRL_TAP = 0x01,
-    CTRL_FDI = 0x02,
-} ControlSignal;
-
-typedef uint64_t TimeStamp;
+using MessageType = sc::protocol::attack::MessageType;
+using ControlSignal = sc::protocol::attack::ControlSignal;
+using TimeStamp = sc::protocol::attack::TimeStamp;
+using TxDataMessage = sc::protocol::attack::TxDataMessage;
+using RqDataMessage = sc::protocol::attack::RqDataMessage;
+using AtDataMessage = sc::protocol::attack::AtDataMessage;
+using CtDataMessage = sc::protocol::attack::CtDataMessage;
+using CfgDataMessage = sc::protocol::attack::CfgDataMessage;
+using SimCtrlMessage = sc::protocol::attack::SimCtrlMessage;
+using HeartbeatMessage = sc::protocol::attack::HeartbeatMessage;
+using ReleaseMessage = sc::protocol::attack::ReleaseMessage;
 
 struct AttackTiming {
     std::chrono::milliseconds requestLifetime{250};
     std::chrono::milliseconds requestRetryPeriod{500};
     std::chrono::milliseconds sessionLeaseTimeout{750};
 };
-
-typedef struct sTxDataMessage {
-    const uint8_t header = TX_DATA;
-    uint8_t turbineId;
-    SignalType dataType;
-    const uint8_t payload_length = 0x01;
-    float value;
-} TxDataMessage;
-
-typedef struct sRqDataMessage {
-    const uint8_t header = RQ_DATA;
-    uint8_t turbineId;
-    SignalType dataType;
-    TimeStamp rq_time;
-    TimeStamp exp_time;
-} RqDataMessage;
-
-typedef struct sAtDataMessage {
-    const uint8_t header = AT_DATA;
-    uint8_t turbineId;
-    SignalType dataType;
-    TimeStamp at_time;
-    float fake_value;
-} AtDataMessage;
-
-typedef struct sCtDataMessage {
-    const uint8_t header = CT_DATA;
-    ControlSignal signal;
-    SignalType dataType;
-    uint8_t* enable;
-} CtDataMessage;
-
-// Current configuration layout. Only teamName is used as the session label.
-typedef struct sCfgDataMessage {
-    const uint8_t header = CFG_DATA;
-    char teamName[256];
-    int scenarioId;
-    int turbineController;
-} CfgDataMessage;
-
-// Retained for wire compatibility; simulation control is no longer accepted here.
-typedef struct sSimCtrlMessage {
-    const uint8_t header = SIM_CTRL;
-    bool simStart;
-} SimCtrlMessage;
-
-typedef struct sHeartbeatMessage {
-    const uint8_t header = HEARTBEAT;
-} HeartbeatMessage;
-
-typedef struct sReleaseMessage {
-    const uint8_t header = RELEASE;
-} ReleaseMessage;
 
 typedef enum eAIRC {
     AI_OK = 1,
@@ -129,6 +65,7 @@ public:
             handleMessage(data, length);
         });
         channel_.setLeaseCheckHandler([this]() { checkSessionLease(); });
+        channel_.setDisconnectHandler([this](const std::string& reason) { endSession(reason); });
     }
 
     void setAuditCallback(AuditCallback callback) {
@@ -157,11 +94,9 @@ public:
         }
         if (!sessionManager_.tapEnabled(static_cast<int>(turbineId), signalType)) return;
 
-        TxDataMessage message;
-        message.turbineId = static_cast<uint8_t>(turbineId);
-        message.dataType = signalType;
-        message.value = *static_cast<float*>(value);
-        channel_.send(reinterpret_cast<const uint8_t*>(&message), sizeof(message));
+        const auto message = sc::protocol::attack::encode(TxDataMessage{
+            static_cast<uint8_t>(turbineId), signalType, 1, *static_cast<float*>(value)});
+        channel_.send(message.data(), message.size());
     }
 
     AIRC overwrite(unsigned int turbineId, SignalType signalType, float& value) {
@@ -250,47 +185,32 @@ private:
         interface.attackFdiSignals.assign(fdiSignals.begin(), fdiSignals.end());
     }
 
-    void parseControl(const uint8_t* data, size_t length) {
-        const size_t fullLength = sizeof(CtDataMessage) + static_cast<size_t>(numTurbines_);
-        constexpr size_t compactPrefixLength = 4 + sizeof(ControlSignal) + sizeof(SignalType);
-        const size_t compactLength = compactPrefixLength + static_cast<size_t>(numTurbines_);
-        const uint8_t* enabled = nullptr;
-        if (length >= fullLength) enabled = data + sizeof(CtDataMessage);
-        else if (length >= compactLength) enabled = data + compactPrefixLength;
-        else {
-            protocolError("invalid CT_DATA length");
-            return;
-        }
-
+    void parseControl(const CtDataMessage& message) {
         const auto session = sessionManager_.session();
         if (!session) {
             ATTACK_ERR("Ignoring CT_DATA without an active configured session");
             return;
         }
 
-        ControlSignal control = CTRL_NONE;
-        SignalType signalType = SignalType::NONE;
-        std::memcpy(&control, data + 4, sizeof(control));
-        std::memcpy(&signalType, data + 4 + sizeof(control), sizeof(signalType));
-        if (control != CTRL_TAP && control != CTRL_FDI) {
+        if (message.signal != ControlSignal::TAP && message.signal != ControlSignal::FDI) {
             protocolError("unsupported control signal");
             return;
         }
 
         bool anyEnabled = false;
         for (int turbineId = 1; turbineId <= numTurbines_; ++turbineId) {
-            const bool value = enabled[static_cast<size_t>(turbineId - 1)] != 0;
-            const bool updated = control == CTRL_TAP
-                ? sessionManager_.setTapEnabled(turbineId, signalType, value)
-                : sessionManager_.setFdiEnabled(turbineId, signalType, value);
+            const bool value = message.enabled[static_cast<size_t>(turbineId - 1)] != 0;
+            const bool updated = message.signal == ControlSignal::TAP
+                ? sessionManager_.setTapEnabled(turbineId, message.dataType, value)
+                : sessionManager_.setFdiEnabled(turbineId, message.dataType, value);
             if (!updated) {
                 protocolError("unsupported attack signal type");
                 return;
             }
             anyEnabled = anyEnabled || value;
             audit(*session,
-                  std::string(control == CTRL_TAP ? "tap" : "fdi") +
-                      ";signal=" + signalTypeName(signalType) +
+                  std::string(message.signal == ControlSignal::TAP ? "tap" : "fdi") +
+                      ";signal=" + signalTypeName(message.dataType) +
                       ";turbine=" + std::to_string(turbineId) +
                       ";enabled=" + (value ? "true" : "false"));
         }
@@ -300,39 +220,18 @@ private:
         }
     }
 
-    void parseAttackData(const uint8_t* data, size_t length) {
-        if (length < sizeof(AtDataMessage)) {
-            protocolError("invalid AT_DATA length");
-            return;
-        }
-        uint8_t turbineId = 0;
-        SignalType signalType = SignalType::NONE;
-        float fakeValue = 0.0F;
-        std::memcpy(&turbineId, data + offsetof(AtDataMessage, turbineId), sizeof(turbineId));
-        std::memcpy(&signalType, data + offsetof(AtDataMessage, dataType), sizeof(signalType));
-        std::memcpy(&fakeValue, data + offsetof(AtDataMessage, fake_value), sizeof(fakeValue));
-
-        if (std::isnan(fakeValue) ||
-            !sessionManager_.setFdiValue(static_cast<int>(turbineId), signalType, fakeValue)) {
+    void parseAttackData(const AtDataMessage& message) {
+        if (std::isnan(message.fakeValue) ||
+            !sessionManager_.setFdiValue(static_cast<int>(message.turbineId), message.dataType, message.fakeValue)) {
             return;
         }
         std::lock_guard<std::mutex> lock(requestMutex_);
-        if (signalType == requestedSignalType_ && turbineId == requestedTurbineId_) {
+        if (message.dataType == requestedSignalType_ && message.turbineId == requestedTurbineId_) {
             awaitingResponse_ = false;
         }
     }
 
-    void parseConfiguration(const uint8_t* data, size_t length) {
-        if (length < sizeof(CfgDataMessage)) {
-            protocolError("invalid CFG_DATA length");
-            return;
-        }
-        CfgDataMessage configuration{};
-        std::memcpy(configuration.teamName,
-                    data + offsetof(CfgDataMessage, teamName),
-                    sizeof(configuration.teamName));
-        configuration.teamName[sizeof(configuration.teamName) - 1] = '\0';
-
+    void parseConfiguration(const CfgDataMessage& configuration) {
         endSession("reconfigured");
         const auto started = sessionManager_.startSession(configuration.teamName);
         if (!started) {
@@ -343,29 +242,31 @@ private:
         const auto session = sessionManager_.session();
         if (session) audit(*session, "connected");
         publishResourceUsage();
+
+        const auto acknowledgement = sc::protocol::attack::encode(configuration);
+        if (!channel_.send(acknowledgement.data(), acknowledgement.size())) {
+            endSession("configuration acknowledgement failed");
+        }
     }
 
     void handleMessage(const uint8_t* data, size_t length) {
         if (data == nullptr || length == 0) return;
-        switch (static_cast<MessageType>(data[0])) {
-            case CT_DATA: parseControl(data, length); break;
-            case AT_DATA: parseAttackData(data, length); break;
-            case CFG_DATA: parseConfiguration(data, length); break;
-            case HEARTBEAT:
-                if (length == sizeof(HeartbeatMessage)) sessionManager_.heartbeat();
-                else protocolError("invalid HEARTBEAT length");
-                break;
-            case RELEASE:
-                if (length == sizeof(ReleaseMessage)) endSession("client release");
-                else protocolError("invalid RELEASE length");
-                break;
-            case SIM_CTRL:
-                ATTACK_LOG_V1("Ignoring unused SIM_CTRL command");
-                break;
-            default:
-                protocolError("unknown message type");
+        try {
+            const auto message = sc::protocol::attack::decode(data, length, static_cast<size_t>(numTurbines_));
+            std::visit([this](const auto& value) { handleDecodedMessage(value); }, message);
+        } catch (const sc::protocol::attack::ProtocolError& error) {
+            protocolError(error.what());
         }
     }
+
+    void handleDecodedMessage(const CtDataMessage& message) { parseControl(message); }
+    void handleDecodedMessage(const AtDataMessage& message) { parseAttackData(message); }
+    void handleDecodedMessage(const CfgDataMessage& message) { parseConfiguration(message); }
+    void handleDecodedMessage(const HeartbeatMessage&) { sessionManager_.heartbeat(); }
+    void handleDecodedMessage(const ReleaseMessage&) { endSession("client release"); }
+    void handleDecodedMessage(const SimCtrlMessage&) { ATTACK_LOG_V1("Ignoring unused SIM_CTRL command"); }
+    void handleDecodedMessage(const TxDataMessage&) { protocolError("unexpected TX_DATA message"); }
+    void handleDecodedMessage(const RqDataMessage&) { protocolError("unexpected RQ_DATA message"); }
 
     void protocolError(const std::string& message) {
         ATTACK_ERR(message);
@@ -388,12 +289,13 @@ private:
             requestExpiresAt_ = now + timing_.requestRetryPeriod;
         }
 
-        RqDataMessage request;
-        request.turbineId = static_cast<uint8_t>(turbineId);
-        request.dataType = signalType;
-        request.rq_time = clock_.unixTimeMilliseconds();
-        request.exp_time = request.rq_time + static_cast<TimeStamp>(timing_.requestLifetime.count());
-        if (!channel_.send(reinterpret_cast<const uint8_t*>(&request), sizeof(request))) {
+        const TimeStamp requestTime = clock_.unixTimeMilliseconds();
+        const auto request = sc::protocol::attack::encode(RqDataMessage{
+            static_cast<uint8_t>(turbineId),
+            signalType,
+            requestTime,
+            requestTime + static_cast<TimeStamp>(timing_.requestLifetime.count())});
+        if (!channel_.send(request.data(), request.size())) {
             cancelPendingOverwrite();
         }
     }

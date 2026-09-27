@@ -3,6 +3,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
+#include <algorithm>
 #include <limits>
 #include <set>
 #include <sstream>
@@ -42,6 +43,22 @@ std::filesystem::path configuredPath(const std::filesystem::path& configPath,
         path = configPath.parent_path() / path;
     }
     return path.lexically_normal();
+}
+
+sc::ports::AttackTransport parseAttackTransport(const std::string& value) {
+    if (value == "zeromq") return sc::ports::AttackTransport::ZEROMQ;
+    if (value == "tcp") return sc::ports::AttackTransport::TCP;
+    throw std::runtime_error("communication.attack_interface.transport must be 'zeromq' or 'tcp'");
+}
+
+bool isIpv4Address(const std::string& value) {
+    std::istringstream input(value);
+    for (int index = 0; index < 4; ++index) {
+        int octet = -1;
+        if (!(input >> octet) || octet < 0 || octet > 255) return false;
+        if (index < 3 && input.get() != '.') return false;
+    }
+    return input.peek() == std::char_traits<char>::eof();
 }
 
 } // namespace
@@ -116,12 +133,31 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
                          config.communication.operatorServer.pollPeriod);
         config.communication.attackInterface.port = root.get<int>(
             "communication.attack_interface.port", config.communication.attackInterface.port);
+        if (const auto value = root.get_optional<std::string>(
+                "communication.attack_interface.transport")) {
+            config.communication.attackInterface.transport = parseAttackTransport(*value);
+        }
+        config.communication.attackInterface.bindAddress = root.get<std::string>(
+            "communication.attack_interface.bind_address",
+            config.communication.attackInterface.bindAddress);
         loadMilliseconds(root, "communication.attack_interface.poll_period_ms",
                          config.communication.attackInterface.pollPeriod);
         loadMilliseconds(root, "communication.attack_interface.heartbeat_interval_ms",
                          config.communication.attackInterface.heartbeatInterval);
         loadMilliseconds(root, "communication.attack_interface.lease_timeout_ms",
                          config.communication.attackInterface.leaseTimeout);
+        config.communication.attackInterface.receiveBufferBytes = root.get<std::size_t>(
+            "communication.attack_interface.receive_buffer_bytes",
+            config.communication.attackInterface.receiveBufferBytes);
+        config.communication.attackInterface.transmitBufferBytes = root.get<std::size_t>(
+            "communication.attack_interface.transmit_buffer_bytes",
+            config.communication.attackInterface.transmitBufferBytes);
+        loadMilliseconds(root, "communication.attack_interface.zmq_heartbeat_interval_ms",
+                         config.communication.attackInterface.zmqHeartbeatInterval);
+        loadMilliseconds(root, "communication.attack_interface.zmq_heartbeat_timeout_ms",
+                         config.communication.attackInterface.zmqHeartbeatTimeout);
+        loadMilliseconds(root, "communication.attack_interface.tcp_user_timeout_ms",
+                         config.communication.attackInterface.tcpUserTimeout);
         config.communication.dataHistorian.port = root.get<int>(
             "communication.data_historian.port", config.communication.dataHistorian.port);
         loadMilliseconds(root, "communication.data_historian.poll_period_ms",
@@ -272,6 +308,47 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
         config.communication.attackInterface.heartbeatInterval) {
         throw std::runtime_error(
             "communication.attack_interface.lease_timeout_ms must exceed heartbeat_interval_ms");
+    }
+    if (config.communication.attackInterface.transport == sc::ports::AttackTransport::TCP &&
+        !isIpv4Address(config.communication.attackInterface.bindAddress)) {
+        throw std::runtime_error(
+            "communication.attack_interface.bind_address must be an IPv4 address");
+    }
+    const std::size_t minimumReceiveBuffer = std::max(
+        std::size_t{268}, std::size_t{12} + config.turbines.size());
+    if (config.communication.attackInterface.receiveBufferBytes < minimumReceiveBuffer) {
+        throw std::runtime_error(
+            "communication.attack_interface.receive_buffer_bytes is too small for a complete message");
+    }
+    if (config.communication.attackInterface.transmitBufferBytes < 268) {
+        throw std::runtime_error(
+            "communication.attack_interface.transmit_buffer_bytes must be at least 268");
+    }
+    requirePositive(config.communication.attackInterface.zmqHeartbeatInterval,
+                    "communication.attack_interface.zmq_heartbeat_interval_ms");
+    requirePositive(config.communication.attackInterface.zmqHeartbeatTimeout,
+                    "communication.attack_interface.zmq_heartbeat_timeout_ms");
+    if (config.communication.attackInterface.zmqHeartbeatTimeout <=
+        config.communication.attackInterface.zmqHeartbeatInterval) {
+        throw std::runtime_error(
+            "communication.attack_interface.zmq_heartbeat_timeout_ms must exceed "
+            "zmq_heartbeat_interval_ms");
+    }
+    if (config.communication.attackInterface.zmqHeartbeatInterval.count() >
+            std::numeric_limits<int>::max() ||
+        config.communication.attackInterface.zmqHeartbeatTimeout.count() >
+            std::numeric_limits<int>::max()) {
+        throw std::runtime_error(
+            "communication.attack_interface ZeroMQ heartbeat values exceed the socket option range");
+    }
+    if (config.communication.attackInterface.tcpUserTimeout.count() < 0) {
+        throw std::runtime_error(
+            "communication.attack_interface.tcp_user_timeout_ms must not be negative");
+    }
+    if (config.communication.attackInterface.tcpUserTimeout.count() >
+        std::numeric_limits<int>::max()) {
+        throw std::runtime_error(
+            "communication.attack_interface.tcp_user_timeout_ms exceeds the socket option range");
     }
     validateServer(config.communication.dataHistorian, "communication.data_historian");
     const std::set<int> serverPorts{

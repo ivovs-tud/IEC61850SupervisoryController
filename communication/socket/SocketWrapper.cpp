@@ -41,6 +41,15 @@ void SocketWrapper::AttachAttackInterfaceCallback(AttackCallback callback) {
     attackServer_.setCallback(std::move(callback));
 }
 
+void SocketWrapper::ConfigureAttackInterface(
+    std::size_t receiveBufferBytes,
+    std::size_t transmitBufferBytes,
+    std::chrono::milliseconds heartbeatInterval,
+    std::chrono::milliseconds heartbeatTimeout) {
+    attackServer_.configure(
+        receiveBufferBytes, transmitBufferBytes, heartbeatInterval, heartbeatTimeout);
+}
+
 tcpSocketStatus SocketWrapper::StartAttackInterfaceServer(int port) {
     if (attackServer_.status() >= tcpSOCKET_CONNECTED) {
         SOCKET_AT_ERR("Attack interface server is already running.");
@@ -78,11 +87,15 @@ bool SocketWrapper::AttackInterfaceServer::txData(const uint8_t* data, size_t da
     if (status_.load() < tcpSOCKET_CONNECTED) {
         return false;
     }
-    if (outboundQueue_.size() >= kMaxPendingMessages) {
-        SOCKET_AT_ERR("Attack interface outbound queue is full; dropping message");
+    if (dataSize > transmitBufferBytes_ - queuedBytes_) {
+        SOCKET_AT_ERR("Attack interface outbound buffer is full");
+        outboundQueue_.clear();
+        queuedBytes_ = 0;
+        if (disconnectCallback_) disconnectCallback_("transmit buffer overflow");
         return false;
     }
     outboundQueue_.emplace_back(data, data + dataSize);
+    queuedBytes_ += dataSize;
     return true;
 }
 
@@ -96,6 +109,10 @@ void SocketWrapper::setReceiveHandler(sc::ports::AttackReceiveHandler handler) {
 
 void SocketWrapper::setLeaseCheckHandler(sc::ports::AttackLeaseCheckHandler handler) {
     attackServer_.setLeaseCheckCallback(std::move(handler));
+}
+
+void SocketWrapper::setDisconnectHandler(sc::ports::AttackDisconnectHandler handler) {
+    attackServer_.setDisconnectCallback(std::move(handler));
 }
 
 bool SocketWrapper::send(const uint8_t* data, std::size_t size) {

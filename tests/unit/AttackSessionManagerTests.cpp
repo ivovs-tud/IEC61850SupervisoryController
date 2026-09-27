@@ -77,3 +77,23 @@ TEST_CASE("heartbeats extend the attack client lease") {
     REQUIRE(expired->reason == "lease timeout");
     REQUIRE_FALSE(state.heartbeat());
 }
+
+TEST_CASE("a new session cannot revive controls or values from an ended session") {
+    FakeClock clock;
+    AttackSessionManager state(1, {SignalType::YAW_SETPOINT}, clock);
+
+    const auto first = state.startSession("first session");
+    REQUIRE(first);
+    REQUIRE(state.setTapEnabled(1, SignalType::YAW_SETPOINT, true));
+    REQUIRE(state.setFdiEnabled(1, SignalType::YAW_SETPOINT, true));
+    REQUIRE(state.setFdiValue(1, SignalType::YAW_SETPOINT, 91.0F));
+    REQUIRE(state.endSession("connection lost"));
+    REQUIRE_FALSE(state.heartbeat());
+
+    const auto second = state.startSession("second session");
+    REQUIRE(second);
+    REQUIRE(second.id != first.id);
+    REQUIRE_FALSE(state.tapEnabled(1, SignalType::YAW_SETPOINT));
+    REQUIRE_FALSE(state.fdiEnabled(1, SignalType::YAW_SETPOINT));
+    REQUIRE_FALSE(state.fdiValue(1, SignalType::YAW_SETPOINT));
+}

@@ -4,8 +4,10 @@ add_library(communication STATIC
     IECCommunicator.cpp
     libiec_wrapper.cpp
     IEC61850Manager.cpp
+    socket/TcpServer.cpp
     socket/SocketWrapper.cpp
     socket/SocketWrapperAt.cpp
+    socket/AttackChannelTCP.cpp
     socket/SocketWrapperDH.cpp
     socket/SocketWrapperOp.cpp
 )
@@ -53,6 +55,7 @@ if(WIN32)
                 sc_application
         PRIVATE ${ZMQ_LIBRARIES}
                 iec61850
+                ws2_32
                 # Windows uses Threads::Threads from find_package(Threads) instead of pthread
     )
 else()
