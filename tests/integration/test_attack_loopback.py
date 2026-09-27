@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
-from supervisory_controller import AttackInterface
+from scadaAttackInterface import AttackInterface
 
 
 def reserve_loopback_port():

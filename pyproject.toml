@@ -15,6 +15,3 @@ license-files = ["LICENSES/HackAWindFarm-Apache-2.0.txt"]
 
 [tool.setuptools.packages.find]
 where = ["python"]
-
-[tool.setuptools.package-data]
-supervisory_controller = ["THIRD_PARTY_NOTICES.md"]

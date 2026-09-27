@@ -1,4 +1,4 @@
-"""Python clients and protocol helpers for supervisory_controller."""
+"""Python clients and protocol helpers for the SCADA attack interface."""
 
 from .attack_client import (
     AttackClient,

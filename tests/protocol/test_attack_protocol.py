@@ -1,6 +1,6 @@
 import unittest
 
-from supervisory_controller.attack_protocol import (
+from scadaAttackInterface.attack_protocol import (
     AttackProtocolError,
     AttackStreamDecoder,
     AtDataMessage,

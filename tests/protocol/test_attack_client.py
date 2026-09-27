@@ -4,7 +4,7 @@ import time
 import unittest
 from collections import deque
 
-from supervisory_controller import (
+from scadaAttackInterface import (
     AtDataMessage,
     AttackClient,
     AttackInterface,
