@@ -250,7 +250,7 @@ class RawAttackLoopbackTests(unittest.TestCase):
                 lambda message: isinstance(message, TxDataMessage)
                 and message.data_type == TxDataType.TX_YAW,
             )
-            # Keep the read side open so Winsock does not reset unread server data.
+            # Keep the read side open while the server processes the peer EOF.
             client.shutdown(socket.SHUT_WR)
             output, errors = server.communicate(timeout=5.0)
         finally:
@@ -262,7 +262,10 @@ class RawAttackLoopbackTests(unittest.TestCase):
 
         counters = self.assert_server_success(server, output, errors)
         self.assertEqual(counters["configurations"], 1)
-        self.assert_cleanup(counters, {2})
+        # Winsock may surface this half-close as WSAECONNRESET while server
+        # messages are still in flight; both paths use the same cleanup.
+        expected_reasons = {2, 3} if os.name == "nt" else {2}
+        self.assert_cleanup(counters, expected_reasons)
 
     def test_connection_reset_revokes_the_session(self):
         server, client = self.start_server()
