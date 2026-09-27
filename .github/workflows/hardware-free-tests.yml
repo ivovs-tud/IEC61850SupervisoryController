@@ -37,7 +37,8 @@ jobs:
           cache: pip
 
       - name: Restore vcpkg binary packages
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: .cache/vcpkg
           key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}
@@ -69,6 +70,13 @@ jobs:
 
       - name: Configure
         run: cmake --preset vcpkg-hardware-free-integration
+
+      - name: Save vcpkg binary packages
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/vcpkg
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Build
         run: cmake --build --preset vcpkg-hardware-free-integration --parallel 4
