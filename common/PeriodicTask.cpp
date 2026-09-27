@@ -53,10 +53,14 @@ bool PeriodicTask::start() {
 }
 
 void PeriodicTask::requestStop() noexcept {
-    running_.store(false);
-    State currentState = state_.load();
-    while ((currentState == State::Starting || currentState == State::Running) &&
-           !state_.compare_exchange_weak(currentState, State::StopRequested)) {
+    {
+        // Update the wait predicate under its mutex to prevent a lost wake-up.
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        running_.store(false);
+        State currentState = state_.load();
+        while ((currentState == State::Starting || currentState == State::Running) &&
+               !state_.compare_exchange_weak(currentState, State::StopRequested)) {
+        }
     }
     lifecycleCv_.notify_all();
     wakeCv_.notify_all();
