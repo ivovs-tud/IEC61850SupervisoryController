@@ -5,8 +5,8 @@
 #include <string>
 #include <thread>
 
-#include "communication/AttackInterface.hpp"
-#include "communication/socket/SocketWrapper.hpp"
+#include "AttackInterface.hpp"
+#include "SocketWrapper.hpp"
 
 int main(int argc, char* argv[]) {
     if (argc < 2 || argc > 3) {

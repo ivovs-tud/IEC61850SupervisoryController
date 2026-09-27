@@ -54,6 +54,8 @@
     "data_historian": {"port": 9003, "poll_period_ms": 10},
     "mms": {
       "poll_period_ms": 10,
+      "reconnect_initial_delay_ms": 100,
+      "reconnect_max_delay_ms": 5000,
       "reports": [
         {
           "name": "operational",
@@ -85,6 +87,7 @@
       "extensions": {}
     },
     "goose": {
+      "enabled": false,
       "network_interface": "veth1",
       "poll_period_ms": 4
     },

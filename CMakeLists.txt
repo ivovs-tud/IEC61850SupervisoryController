@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
-project(supervisory_controller CXX)
+project(wind_farm_scada LANGUAGES CXX)
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(ProjectWarnings)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,18 +19,6 @@ endif()
 # Default to Debug if no build type is specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
-endif()
-
-# Platform-specific compiler flags
-if(MSVC)
-    # MSVC compiler options
-    add_compile_options(/W4 /permissive-)
-else()
-    # Warning options shared by GCC and Clang. The ABI-version option is GCC-only.
-    add_compile_options(-Wall -Wextra -Wpedantic)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        add_compile_options(-fabi-version=18)
-    endif()
 endif()
 
 # Threading support (works on both Windows and Linux with std::thread)
@@ -95,68 +86,21 @@ elseif(SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS)
     endif()
 endif()
 
-add_subdirectory(common)
+add_subdirectory(src/runtime)
 add_subdirectory(src/application)
-if(SC_BUILD_CONTROLLER)
-    add_subdirectory(tasks)
-    add_subdirectory(communication)
-
-    add_executable(supervisory_controller main.cpp)
-
-    target_link_libraries(supervisory_controller PRIVATE
-        tasks
-        communication
-        Threads::Threads
-        Boost::headers
-    )
+if(SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS)
+    add_subdirectory(src/adapters/tcp)
+    add_subdirectory(src/adapters/socket)
 endif()
 
-# Windows: Copy required DLLs to executable directory for runtime
-if(WIN32 AND SC_BUILD_CONTROLLER)
-    # Copy libiec61850 DLL
-    set(LIBIEC61850_DIR "H:/libiec61850" CACHE PATH "Path to libiec61850 source")
-    add_custom_command(TARGET supervisory_controller POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${LIBIEC61850_DIR}/build/src/Debug/iec61850.dll"
-            $<TARGET_FILE_DIR:supervisory_controller>
-        COMMENT "Copying iec61850.dll to output directory"
-    )
-    
-    # Copy ZeroMQ DLL (from vcpkg)
-    if(TARGET libzmq)
-        add_custom_command(TARGET supervisory_controller POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:libzmq>
-                $<TARGET_FILE_DIR:supervisory_controller>
-            COMMENT "Copying libzmq.dll to output directory"
-        )
-    endif()
-    
-    # Set debugging command arguments for Visual Studio
-    # Edit these arguments as needed
-    # Visual Studio is a multi-config generator. Set both the generic and
-    # per-configuration debugger argument properties so the value is picked up
-    # regardless of the active configuration in the IDE.
-    set_target_properties(supervisory_controller PROPERTIES
-        VS_DEBUGGER_COMMAND_ARGUMENTS "${DEFAULT_YAW_LUT}"
-        VS_DEBUGGER_COMMAND_ARGUMENTS_DEBUG "${DEFAULT_YAW_LUT}"
-        VS_DEBUGGER_COMMAND_ARGUMENTS_RELEASE "${DEFAULT_YAW_LUT}"
-        VS_DEBUGGER_COMMAND_ARGUMENTS_RELWITHDEBINFO "${DEFAULT_YAW_LUT}"
-        VS_DEBUGGER_COMMAND_ARGUMENTS_MINSIZEREL "${DEFAULT_YAW_LUT}"
-        VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        VS_DEBUGGER_WORKING_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}"
-        VS_DEBUGGER_WORKING_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}"
-        VS_DEBUGGER_WORKING_DIRECTORY_RELWITHDEBINFO "${CMAKE_SOURCE_DIR}"
-        VS_DEBUGGER_WORKING_DIRECTORY_MINSIZEREL "${CMAKE_SOURCE_DIR}"
-    )
-    
-    # Optional: Add a custom target to run with arguments
-    add_custom_target(run
-        COMMAND supervisory_controller "${DEFAULT_YAW_LUT}"
-        DEPENDS supervisory_controller
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "Running supervisory_controller with arguments"
-    )
+if(SC_BUILD_CONTROLLER)
+    add_subdirectory(src/adapters/iec61850)
+endif()
+
+add_subdirectory(src/controller)
+
+if(SC_BUILD_CONTROLLER)
+    add_subdirectory(apps/wind_farm_scada)
 endif()
 
 if(SC_BUILD_TESTS)

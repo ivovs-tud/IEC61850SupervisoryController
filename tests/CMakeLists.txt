@@ -39,8 +39,7 @@ target_include_directories(sc_attack_interface_tests PRIVATE
 
 target_link_libraries(sc_attack_interface_tests PRIVATE
     Catch2::Catch2WithMain
-    common
-    sc_application
+    sc::attack_interface
 )
 
 catch_discover_tests(
@@ -175,6 +174,42 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+if(TARGET sc_controller)
+    add_executable(sc_iec_lifecycle_tests
+        unit/IecLifecycleTests.cpp
+    )
+
+    target_include_directories(sc_iec_lifecycle_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_link_libraries(sc_iec_lifecycle_tests PRIVATE
+        Catch2::Catch2WithMain
+        sc::controller
+    )
+
+    if(WIN32)
+        add_custom_command(TARGET sc_iec_lifecycle_tests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:iec61850>
+                    $<TARGET_FILE_DIR:sc_iec_lifecycle_tests>
+        )
+        if(TARGET libzmq)
+            add_custom_command(TARGET sc_iec_lifecycle_tests POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        $<TARGET_FILE:libzmq>
+                        $<TARGET_FILE_DIR:sc_iec_lifecycle_tests>
+            )
+        endif()
+    endif()
+
+    catch_discover_tests(
+        sc_iec_lifecycle_tests
+        TEST_PREFIX "sc.iec_lifecycle."
+        DISCOVERY_MODE PRE_TEST
+    )
+endif()
+
 add_test(
     NAME sc.python_attack_protocol
     COMMAND ${Python3_EXECUTABLE} -m unittest discover
@@ -213,30 +248,17 @@ if(SC_BUILD_INTEGRATION_TESTS)
 
     add_executable(sc_attack_loopback_server
         integration/AttackLoopbackServer.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/TcpServer.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapper.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperAt.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperDH.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperOp.cpp
-    )
-
-    target_include_directories(sc_attack_loopback_server PRIVATE
-        ${PROJECT_SOURCE_DIR}
-        ${PROJECT_SOURCE_DIR}/communication
-        ${PROJECT_SOURCE_DIR}/communication/socket
-        ${CPPZMQ_INCLUDE_DIR}
-        ${ZMQ_INCLUDE_DIRS}
     )
 
     target_link_libraries(sc_attack_loopback_server PRIVATE
-        common
-        sc_application
+        sc::runtime
+        sc::application
+        sc::attack_interface
+        sc::socket_adapters
         Threads::Threads
-        ${ZMQ_LIBRARIES}
     )
 
     if(WIN32)
-        target_link_libraries(sc_attack_loopback_server PRIVATE ws2_32)
         if(TARGET libzmq)
             add_custom_command(TARGET sc_attack_loopback_server POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -259,25 +281,15 @@ if(SC_BUILD_INTEGRATION_TESTS)
 
     add_executable(sc_raw_attack_loopback_server
         integration/RawAttackLoopbackServer.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/AttackChannelTCP.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/TcpServer.cpp
-    )
-
-    target_include_directories(sc_raw_attack_loopback_server PRIVATE
-        ${PROJECT_SOURCE_DIR}
-        ${PROJECT_SOURCE_DIR}/communication
-        ${PROJECT_SOURCE_DIR}/communication/socket
     )
 
     target_link_libraries(sc_raw_attack_loopback_server PRIVATE
-        common
-        sc_application
+        sc::runtime
+        sc::application
+        sc::attack_interface
+        sc::tcp
         Threads::Threads
     )
-
-    if(WIN32)
-        target_link_libraries(sc_raw_attack_loopback_server PRIVATE ws2_32)
-    endif()
 
     add_test(
         NAME sc.integration.raw_attack_loopback
@@ -292,30 +304,15 @@ if(SC_BUILD_INTEGRATION_TESTS)
 
     add_executable(sc_data_historian_tcp_tests
         integration/DataHistorianTcpTests.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/TcpServer.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapper.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperAt.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperDH.cpp
-        ${PROJECT_SOURCE_DIR}/communication/socket/SocketWrapperOp.cpp
-    )
-
-    target_include_directories(sc_data_historian_tcp_tests PRIVATE
-        ${PROJECT_SOURCE_DIR}
-        ${PROJECT_SOURCE_DIR}/communication
-        ${PROJECT_SOURCE_DIR}/communication/socket
-        ${CPPZMQ_INCLUDE_DIR}
-        ${ZMQ_INCLUDE_DIRS}
     )
 
     target_link_libraries(sc_data_historian_tcp_tests PRIVATE
-        common
-        sc_application
+        sc::runtime
+        sc::socket_adapters
         Threads::Threads
-        ${ZMQ_LIBRARIES}
     )
 
     if(WIN32)
-        target_link_libraries(sc_data_historian_tcp_tests PRIVATE ws2_32)
         if(TARGET libzmq)
             add_custom_command(TARGET sc_data_historian_tcp_tests POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different

@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <string>
 
-#include "common/SharedData.hpp"
+#include "SharedData.hpp"
 #include "sc/application/YawLut.hpp"
 #include "sc/runtime/RuntimeConfig.hpp"
 #include "support/TemporaryCsv.hpp"
@@ -32,6 +32,9 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
     REQUIRE(config.communication.attackInterface.transmitBufferBytes == 64 * 1024);
     REQUIRE(config.communication.attackInterface.zmqHeartbeatInterval == 200ms);
     REQUIRE(config.communication.attackInterface.zmqHeartbeatTimeout == 750ms);
+    REQUIRE(config.communication.mms.reconnectInitialDelay == 100ms);
+    REQUIRE(config.communication.mms.reconnectMaxDelay == 5000ms);
+    REQUIRE_FALSE(config.communication.goose.enabled);
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, 9));
 }
 
@@ -73,7 +76,8 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
         "      \"receive_buffer_bytes\": 4096, \"transmit_buffer_bytes\": 8192,\n"
         "      \"tcp_user_timeout_ms\": 1200\n"
         "    },\n"
-        "    \"mms\": {\"reporting_enabled\": false}\n"
+        "    \"mms\": {\"reconnect_initial_delay_ms\": 25, \"reconnect_max_delay_ms\": 250, \"reporting_enabled\": false},\n"
+        "    \"goose\": {\"enabled\": true, \"network_interface\": \"test0\"}\n"
         "  }\n"
         "}\n");
 
@@ -94,7 +98,11 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
     REQUIRE(config.communication.attackInterface.receiveBufferBytes == 4096);
     REQUIRE(config.communication.attackInterface.transmitBufferBytes == 8192);
     REQUIRE(config.communication.attackInterface.tcpUserTimeout == 1200ms);
+    REQUIRE(config.communication.mms.reconnectInitialDelay == 25ms);
+    REQUIRE(config.communication.mms.reconnectMaxDelay == 250ms);
     REQUIRE_FALSE(config.communication.mms.reports.front().enabled);
+    REQUIRE(config.communication.goose.enabled);
+    REQUIRE(config.communication.goose.networkInterface == "test0");
 }
 
 TEST_CASE("runtime JSON accepts future turbine metadata and named report definitions") {
@@ -215,6 +223,20 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
     SECTION("multiple enabled reports are reserved for a later implementation") {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.mms.reports.push_back({"diagnostics"});
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("MMS reconnect maximum must not be shorter than the initial delay") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.communication.mms.reconnectInitialDelay = 500ms;
+        config.communication.mms.reconnectMaxDelay = 100ms;
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("enabled GOOSE requires a network interface") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.communication.goose.enabled = true;
+        config.communication.goose.networkInterface.clear();
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 }

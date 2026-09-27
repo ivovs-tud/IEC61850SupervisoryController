@@ -7,7 +7,7 @@
 #include <string>
 #include <thread>
 
-#include "common/PeriodicTask.hpp"
+#include "PeriodicTask.hpp"
 
 using namespace std::chrono_literals;
 

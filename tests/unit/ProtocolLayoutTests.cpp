@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "common/DataHistorian.hpp"
+#include "DataHistorian.hpp"
 #include "sc/protocol/AttackProtocol.hpp"
 
 namespace {

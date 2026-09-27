@@ -1,6 +1,6 @@
-#include "common/DataHistorian.hpp"
-#include "communication/socket/SocketWrapper.hpp"
-#include "communication/socket/socket_platform.h"
+#include "DataHistorian.hpp"
+#include "SocketWrapper.hpp"
+#include "socket_platform.h"
 
 #include <array>
 #include <chrono>

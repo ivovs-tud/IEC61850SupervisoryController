@@ -66,6 +66,8 @@
           "type": "object",
           "properties": {
             "poll_period_ms": {"type": "integer", "minimum": 1},
+            "reconnect_initial_delay_ms": {"type": "integer", "minimum": 1},
+            "reconnect_max_delay_ms": {"type": "integer", "minimum": 1},
             "reports": {
               "type": "array",
               "items": {"$ref": "#/$defs/report"}
@@ -77,6 +79,7 @@
         "goose": {
           "type": "object",
           "properties": {
+            "enabled": {"type": "boolean"},
             "network_interface": {"type": "string", "minLength": 1},
             "poll_period_ms": {"type": "integer", "minimum": 1},
             "subscriptions": {

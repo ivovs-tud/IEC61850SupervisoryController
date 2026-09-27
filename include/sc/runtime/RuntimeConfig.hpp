@@ -101,10 +101,13 @@ struct RuntimeConfig {
 
         struct Mms {
             std::chrono::milliseconds pollPeriod{10};
+            std::chrono::milliseconds reconnectInitialDelay{100};
+            std::chrono::milliseconds reconnectMaxDelay{5000};
             std::vector<ReportConfig> reports{{"operational"}};
         } mms;
 
         struct Goose {
+            bool enabled{false};
             std::string networkInterface{"veth1"};
             std::chrono::milliseconds pollPeriod{4};
         } goose;
