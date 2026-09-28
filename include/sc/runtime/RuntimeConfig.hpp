@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "sc/ports/AttackTransport.hpp"
+#include "sc/communication/attack/AttackTransport.hpp"
 
 namespace sc::runtime {
 
@@ -51,7 +51,7 @@ struct RuntimeConfig {
     } tasks;
 
     struct Control {
-        std::filesystem::path yawLutCsvPath{"yaw_lut.csv"};
+        std::filesystem::path yawLutCsvPath{"config/yaw_lut.csv"};
     } control;
 
     struct Monitoring {

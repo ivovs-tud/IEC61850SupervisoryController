@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <string>
 
-#include "SharedData.hpp"
+#include "sc/model/SharedData.hpp"
 #include "sc/application/YawLut.hpp"
 #include "sc/runtime/RuntimeConfig.hpp"
 #include "support/TemporaryCsv.hpp"
@@ -41,14 +41,14 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
 TEST_CASE("default runtime turbine list matches the shipped yaw LUT") {
     const auto config = sc::runtime::defaultRuntimeConfig();
     const sc::application::YawLut yawLut(
-        (std::filesystem::path(SC_SOURCE_DIR) / "yaw_lut.csv").string());
+        (std::filesystem::path(SC_SOURCE_DIR) / "config/yaw_lut.csv").string());
 
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, yawLut.turbineCount()));
 }
 
 TEST_CASE("shipped versioned JSON example loads and matches its yaw LUT") {
     const auto config = sc::runtime::loadRuntimeConfig(
-        std::filesystem::path(SC_SOURCE_DIR) / "examples/configs/default.json");
+        std::filesystem::path(SC_SOURCE_DIR) / "config/default.json");
     const sc::application::YawLut yawLut(config.control.yawLutCsvPath.string());
 
     REQUIRE(config.turbines.size() == 9);

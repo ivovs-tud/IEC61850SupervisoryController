@@ -1,6 +1,6 @@
-#include "DataHistorian.hpp"
-#include "SocketWrapper.hpp"
-#include "socket_platform.h"
+#include "sc/communication/data_historian/DataHistorianRecord.hpp"
+#include "sc/communication/data_historian/DataHistorianServer.hpp"
+#include "SocketPlatform.hpp"
 
 #include <array>
 #include <chrono>
@@ -62,11 +62,11 @@ bool writeAll(socket_t client, const uint8_t* data, std::size_t size) {
     return true;
 }
 
-DH_TCP_DATA makeRecord(uint32_t id, uint64_t timestamp, float yaw) {
-    DH_TCP_DATA record{};
-    record.nID = id;
-    record.nUnixTime = timestamp;
-    record.YwAng = yaw;
+DataHistorianRecord makeRecord(uint32_t id, uint64_t timestamp, float yaw) {
+    DataHistorianRecord record{};
+    record.turbineId = id;
+    record.unixTime = timestamp;
+    record.yawAngle = yaw;
     return record;
 }
 
@@ -84,24 +84,17 @@ int main() {
         return 2;
     }
 
-    SocketWrapper wrapper(9001, 10, 9002, 10, port, 1);
+    DataHistorianServer server({port, std::chrono::milliseconds(1)});
     std::mutex receivedMutex;
     std::condition_variable receivedCv;
-    std::vector<DH_TCP_DATA> received;
-    bool invalidSize = false;
-    wrapper.AttachDataHistorianCallback([&](const uint8_t* data, std::size_t size) {
+    std::vector<DataHistorianRecord> received;
+    server.setRecordHandler([&](const DataHistorianRecord& record) {
         std::lock_guard<std::mutex> lock(receivedMutex);
-        if (size != sizeof(DH_TCP_DATA)) {
-            invalidSize = true;
-        } else {
-            DH_TCP_DATA record{};
-            std::memcpy(&record, data, sizeof(record));
-            received.push_back(record);
-        }
+        received.push_back(record);
         receivedCv.notify_all();
     });
 
-    if (wrapper.StartDataHistorianServer(port) < tcpSOCKET_CONNECTED) {
+    if (!server.start()) {
         std::cerr << "failed to start data historian TCP server\n";
         socket_cleanup();
         return 3;
@@ -109,12 +102,12 @@ int main() {
     const socket_t client = connectLoopback(port);
     if (client == INVALID_SOCKET_FD) {
         std::cerr << "failed to connect data historian test client\n";
-        wrapper.StopDataHistorianServer();
+        server.stop();
         socket_cleanup();
         return 4;
     }
 
-    const std::array<DH_TCP_DATA, 3> records{
+    const std::array<DataHistorianRecord, 3> records{
         makeRecord(1, 1001, 10.5F),
         makeRecord(2, 1002, 20.5F),
         makeRecord(3, 1003, 30.5F),
@@ -124,7 +117,7 @@ int main() {
     if (!writeAll(client, first, split)) {
         std::cerr << "failed to write fragmented record prefix\n";
         socket_close(client);
-        wrapper.StopDataHistorianServer();
+        server.stop();
         socket_cleanup();
         return 5;
     }
@@ -134,19 +127,19 @@ int main() {
         if (!received.empty()) {
             std::cerr << "historian emitted an incomplete TCP record\n";
             socket_close(client);
-            wrapper.StopDataHistorianServer();
+            server.stop();
             socket_cleanup();
             return 6;
         }
     }
 
-    std::vector<uint8_t> remainder(sizeof(DH_TCP_DATA) - split + 2 * sizeof(DH_TCP_DATA));
-    std::memcpy(remainder.data(), first + split, sizeof(DH_TCP_DATA) - split);
-    std::memcpy(remainder.data() + sizeof(DH_TCP_DATA) - split, &records[1], 2 * sizeof(DH_TCP_DATA));
+    std::vector<uint8_t> remainder(sizeof(DataHistorianRecord) - split + 2 * sizeof(DataHistorianRecord));
+    std::memcpy(remainder.data(), first + split, sizeof(DataHistorianRecord) - split);
+    std::memcpy(remainder.data() + sizeof(DataHistorianRecord) - split, &records[1], 2 * sizeof(DataHistorianRecord));
     if (!writeAll(client, remainder.data(), remainder.size())) {
         std::cerr << "failed to write coalesced historian records\n";
         socket_close(client);
-        wrapper.StopDataHistorianServer();
+        server.stop();
         socket_cleanup();
         return 7;
     }
@@ -155,21 +148,21 @@ int main() {
     {
         std::unique_lock<std::mutex> lock(receivedMutex);
         complete = receivedCv.wait_for(lock, std::chrono::seconds(3), [&]() {
-            return received.size() == records.size() || invalidSize;
+            return received.size() == records.size();
         });
     }
     socket_close(client);
-    wrapper.StopDataHistorianServer();
+    server.stop();
     socket_cleanup();
 
-    if (!complete || invalidSize || received.size() != records.size()) {
+    if (!complete || received.size() != records.size()) {
         std::cerr << "data historian did not reconstruct all TCP records\n";
         return 8;
     }
     for (std::size_t index = 0; index < records.size(); ++index) {
-        if (received[index].nID != records[index].nID ||
-            received[index].nUnixTime != records[index].nUnixTime ||
-            received[index].YwAng != records[index].YwAng) {
+        if (received[index].turbineId != records[index].turbineId ||
+            received[index].unixTime != records[index].unixTime ||
+            received[index].yawAngle != records[index].yawAngle) {
             std::cerr << "data historian record order or content changed\n";
             return 9;
         }

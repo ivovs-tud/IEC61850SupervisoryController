@@ -1,6 +1,6 @@
 #include "sc/application/Monitoring.hpp"
 
-#include "sc/TurbineParameters.hpp"
+#include "sc/model/TurbineParameters.hpp"
 
 #include <algorithm>
 #include <cmath>

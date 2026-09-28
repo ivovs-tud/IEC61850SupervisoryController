@@ -8,11 +8,11 @@
 #include <string>
 #include <vector>
 
-#include "AttackInterface.hpp"
-#include "CommunicationTypes.hpp"
-#include "IEC61850Manager.hpp"
-#include "IECCommunicator.hpp"
-#include "libiec_wrapper.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
+#include "sc/communication/CommunicationConfig.hpp"
+#include "sc/communication/iec61850/IEC61850Manager.hpp"
+#include "sc/communication/iec61850/IECCommunicator.hpp"
+#include "LibIecGooseReceiver.hpp"
 #include "support/FakeAttackChannel.hpp"
 #include "support/FakeClock.hpp"
 
@@ -220,7 +220,7 @@ TEST_CASE("IEC communicator falls back to polling while its report is pending") 
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
     REQUIRE(manager.connectTurbine(1));
 
-    CommConfig config;
+    CommunicationConfig config;
     config.mms.reportingEnabled = true;
     config.mms.reportControlBlockReference = "LLN0$RP$Measurements";
     config.mms.reportDataSetReference = "LLN0$Measurements";
@@ -247,7 +247,7 @@ TEST_CASE("IEC communicator records activity only for accepted report values") {
     IEC61850Manager manager(clock);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
 
-    CommConfig config;
+    CommunicationConfig config;
     config.mms.reportingEnabled = false;
     IECCommunicator communicator(config, 1, manager, attackInterface, attackInterfaceMutex);
     const auto noActivity = std::chrono::system_clock::time_point{};
@@ -267,7 +267,7 @@ TEST_CASE("IEC communicator records activity only for accepted report values") {
 }
 
 TEST_CASE("GOOSE resources can be configured and stopped repeatedly without starting reception") {
-    libiec_wrapper wrapper;
+    LibIecGooseReceiver wrapper;
     REQUIRE(wrapper.configureGooseReceiver("test-interface"));
     REQUIRE(wrapper.addGooseSubscriber(
         "IED1LD0/LLN0$GO$TurbineState",

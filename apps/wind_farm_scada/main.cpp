@@ -12,17 +12,16 @@
 
 using namespace std::chrono_literals;
 
-#include "ConsoleColors.hpp"
-#include "DataHistorian.hpp"
-#include "SharedData.hpp"
-#include "config.hpp"
-#include "CommunicationTask.hpp"
+#include "ConsoleSupport.hpp"
+#include "sc/runtime/DataHistorian.hpp"
+#include "sc/model/SharedData.hpp"
+#include "sc/runtime/Logging.hpp"
+#include "sc/communication/CommunicationOrchestrator.hpp"
 #include "sc/application/YawLut.hpp"
 #include "sc/runtime/RuntimeConfig.hpp"
-#include "ControlTask.hpp"
-#include "HmiTask.hpp"
-#include "MonitoringTask.hpp"
-#include "SignalProcessingTask.hpp"
+#include "sc/tasks/ControlTask.hpp"
+#include "sc/tasks/MonitoringTask.hpp"
+#include "sc/tasks/SignalProcessingTask.hpp"
 
 #ifdef PLATFORM_WINDOWS
 #include <conio.h>
@@ -106,8 +105,13 @@ void printUsage(const char* executable) {
               << "       " << executable << " [yaw_lut.csv]\n";
 }
 
-CommConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& runtime) {
-    CommConfig config;
+CommunicationConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& runtime) {
+    CommunicationConfig config;
+    config.hmi.period = runtime.hmi.period;
+    config.hmi.windowSize = runtime.hmi.windowSize;
+    config.hmi.publisherEndpoint = runtime.hmi.publisherEndpoint;
+    config.hmi.commandEndpoint = runtime.hmi.commandEndpoint;
+    config.hmi.alarmAcknowledgementEnabled = runtime.monitoring.alarmAcknowledgementEnabled;
     config.operatorServer.port = runtime.communication.operatorServer.port;
     config.operatorServer.pollPeriod = runtime.communication.operatorServer.pollPeriod;
     config.attackInterface.transport = runtime.communication.attackInterface.transport;
@@ -192,24 +196,14 @@ int main(int argc, char* argv[]) {
         const int numTurbines = static_cast<int>(runtime.turbines.size());
         SharedData::instance().configureTurbineCount(runtime.turbines.size());
 
-        HmiConfig hmiConfig = defaultHmiConfig(numTurbines);
-        hmiConfig.windowSize = runtime.hmi.windowSize;
-        hmiConfig.publisherEndpoint = runtime.hmi.publisherEndpoint;
-        hmiConfig.commandEndpoint = runtime.hmi.commandEndpoint;
-        hmiConfig.alarmAcknowledgementEnabled = runtime.monitoring.alarmAcknowledgementEnabled;
-        if (hmiConfig.numTurbines != numTurbines) {
-            throw std::runtime_error("HMI turbine count does not match runtime turbine endpoints");
-        }
-
         ControlTask::Config controlConfig;
         controlConfig.period = runtime.tasks.controlPeriod;
         controlConfig.yawLutCsvPath = runtime.control.yawLutCsvPath.string();
         controlConfig.numTurbines = numTurbines;
 
-        const CommConfig communicationConfig = makeCommunicationConfig(runtime);
+        const CommunicationConfig communicationConfig = makeCommunicationConfig(runtime);
 
         // All validation and dynamic state sizing is complete before any worker starts.
-        HmiTask hmiTask(std::move(hmiConfig), runtime.hmi.period);
         ControlTask controlTask(controlConfig);
         SignalProcessingTask signalTask(runtime.tasks.signalProcessingPeriod);
         MonitoringTask monitoringTask(runtime.tasks.monitoringPeriod, numTurbines,
@@ -225,9 +219,6 @@ int main(int argc, char* argv[]) {
                 shutdownRequested.store(true);
             };
         };
-        hmiTask.setFailureHandler([](const std::string& message) {
-            std::cerr << "Optional HMI task stopped after failure: " << message << '\n';
-        });
         controlTask.setFailureHandler(criticalFailureHandler("control task"));
         signalTask.setFailureHandler(criticalFailureHandler("signal-processing task"));
         monitoringTask.setFailureHandler(criticalFailureHandler("monitoring task"));
@@ -248,10 +239,6 @@ int main(int argc, char* argv[]) {
             DataHistorian::instance().start();
             historianStarted = true;
 
-            if (!hmiTask.start()) {
-                std::cerr << "HMI unavailable; controller will continue without it: "
-                          << hmiTask.failureMessage() << '\n';
-            }
             if (!controlTask.start()) {
                 throw std::runtime_error(
                     "control task failed to start: " + controlTask.failureMessage());
@@ -269,11 +256,9 @@ int main(int argc, char* argv[]) {
                 throw std::runtime_error(communicationStart.message);
             }
         } catch (...) {
-            hmiTask.requestStop();
             controlTask.requestStop();
             signalTask.requestStop();
             monitoringTask.requestStop();
-            hmiTask.waitStopped();
             controlTask.waitStopped();
             signalTask.waitStopped();
             monitoringTask.waitStopped();
@@ -300,12 +285,10 @@ int main(int argc, char* argv[]) {
             std::cout << " done\n";
         };
 
-        hmiTask.requestStop();
         controlTask.requestStop();
         signalTask.requestStop();
         monitoringTask.requestStop();
 
-        stopStep("HMI", [&]() { hmiTask.waitStopped(); });
         stopStep("control", [&]() { controlTask.waitStopped(); });
         stopStep("signal processing", [&]() { signalTask.waitStopped(); });
         stopStep("monitoring", [&]() { monitoringTask.waitStopped(); });

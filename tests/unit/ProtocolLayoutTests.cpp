@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "DataHistorian.hpp"
-#include "sc/protocol/AttackProtocol.hpp"
+#include "sc/communication/data_historian/DataHistorianRecord.hpp"
+#include "sc/communication/attack/AttackProtocol.hpp"
 
 namespace {
 
@@ -48,9 +48,9 @@ TEST_CASE("attack protocol retains the documented wire bytes") {
 }
 
 TEST_CASE("historian record retains the documented native ABI") {
-    STATIC_REQUIRE(sizeof(DH_TCP_DATA) == 56);
-    STATIC_REQUIRE(offsetof(DH_TCP_DATA, nID) == 0);
-    STATIC_REQUIRE(offsetof(DH_TCP_DATA, nUnixTime) == 8);
-    STATIC_REQUIRE(offsetof(DH_TCP_DATA, YwAng) == 16);
-    STATIC_REQUIRE(offsetof(DH_TCP_DATA, PitchAngleSpt) == 48);
+    STATIC_REQUIRE(sizeof(DataHistorianRecord) == 56);
+    STATIC_REQUIRE(offsetof(DataHistorianRecord, turbineId) == 0);
+    STATIC_REQUIRE(offsetof(DataHistorianRecord, unixTime) == 8);
+    STATIC_REQUIRE(offsetof(DataHistorianRecord, yawAngle) == 16);
+    STATIC_REQUIRE(offsetof(DataHistorianRecord, pitchSetpoint) == 48);
 }

@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "sc/application/AttackSessionManager.hpp"
+#include "sc/communication/attack/AttackSessionManager.hpp"
 #include "support/FakeClock.hpp"
 
 #include <chrono>

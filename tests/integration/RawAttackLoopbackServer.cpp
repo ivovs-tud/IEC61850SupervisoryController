@@ -8,8 +8,8 @@
 #include <thread>
 #include <vector>
 
-#include "AttackInterface.hpp"
-#include "AttackChannelTCP.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
+#include "sc/communication/attack/AttackChannelTCP.hpp"
 
 namespace {
 

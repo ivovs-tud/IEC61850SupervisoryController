@@ -1,5 +1,5 @@
 #include "catch2/catch_test_macros.hpp"
-#include "sc/TurbineParameters.hpp"
+#include "sc/model/TurbineParameters.hpp"
 #include "sc/application/Monitoring.hpp"
 
 #include <algorithm>

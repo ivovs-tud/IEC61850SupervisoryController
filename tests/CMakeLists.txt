@@ -4,7 +4,7 @@ add_executable(sc_protocol_layout_tests
 
 target_link_libraries(sc_protocol_layout_tests PRIVATE
     Catch2::Catch2WithMain
-    common
+    sc_runtime
 )
 
 include(Catch)
@@ -20,7 +20,7 @@ add_executable(sc_attack_protocol_tests
 
 target_link_libraries(sc_attack_protocol_tests PRIVATE
     Catch2::Catch2WithMain
-    common
+    sc_runtime
 )
 
 catch_discover_tests(
@@ -39,7 +39,7 @@ target_include_directories(sc_attack_interface_tests PRIVATE
 
 target_link_libraries(sc_attack_interface_tests PRIVATE
     Catch2::Catch2WithMain
-    sc::attack_interface
+    sc_attack
 )
 
 catch_discover_tests(
@@ -58,7 +58,7 @@ target_include_directories(sc_attack_session_manager_tests PRIVATE
 
 target_link_libraries(sc_attack_session_manager_tests PRIVATE
     Catch2::Catch2WithMain
-    sc_application
+    sc_attack
 )
 
 catch_discover_tests(
@@ -149,7 +149,7 @@ target_compile_definitions(sc_runtime_config_tests PRIVATE
 
 target_link_libraries(sc_runtime_config_tests PRIVATE
     Catch2::Catch2WithMain
-    common
+    sc_runtime
     sc_application
 )
 
@@ -165,7 +165,7 @@ add_executable(sc_periodic_task_tests
 
 target_link_libraries(sc_periodic_task_tests PRIVATE
     Catch2::Catch2WithMain
-    common
+    sc_runtime
 )
 
 catch_discover_tests(
@@ -174,18 +174,19 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
-if(TARGET sc_controller)
+if(TARGET sc_iec61850)
     add_executable(sc_iec_lifecycle_tests
         unit/IecLifecycleTests.cpp
     )
 
     target_include_directories(sc_iec_lifecycle_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/src/communication/iec61850
     )
 
     target_link_libraries(sc_iec_lifecycle_tests PRIVATE
         Catch2::Catch2WithMain
-        sc::controller
+        sc_iec61850
     )
 
     if(WIN32)
@@ -251,10 +252,9 @@ if(SC_BUILD_INTEGRATION_TESTS)
     )
 
     target_link_libraries(sc_attack_loopback_server PRIVATE
-        sc::runtime
-        sc::application
-        sc::attack_interface
-        sc::socket_adapters
+        sc_runtime
+        sc_attack
+        sc_attack_zmq
         Threads::Threads
     )
 
@@ -284,10 +284,9 @@ if(SC_BUILD_INTEGRATION_TESTS)
     )
 
     target_link_libraries(sc_raw_attack_loopback_server PRIVATE
-        sc::runtime
-        sc::application
-        sc::attack_interface
-        sc::tcp
+        sc_runtime
+        sc_attack
+        sc_attack_tcp
         Threads::Threads
     )
 
@@ -307,9 +306,14 @@ if(SC_BUILD_INTEGRATION_TESTS)
     )
 
     target_link_libraries(sc_data_historian_tcp_tests PRIVATE
-        sc::runtime
-        sc::socket_adapters
+        sc_runtime
+        sc_data_historian_server
+        sc_tcp_server
         Threads::Threads
+    )
+
+    target_include_directories(sc_data_historian_tcp_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/communication/network
     )
 
     if(WIN32)

@@ -28,7 +28,7 @@ find_package(Threads REQUIRED)
 # This file will be passed as the first argument when launching the executable
 # from Visual Studio's debugger. You can override at configure time with
 # -DDEFAULT_YAW_LUT="/path/to/file.csv".
-set(DEFAULT_YAW_LUT "${CMAKE_SOURCE_DIR}/yaw_lut.csv" CACHE PATH "Default yaw LUT CSV file passed as first argument to the executable when debugging in Visual Studio")
+set(DEFAULT_YAW_LUT "${CMAKE_SOURCE_DIR}/config/yaw_lut.csv" CACHE PATH "Default yaw LUT CSV file passed as first argument to the executable when debugging in Visual Studio")
 if(WIN32)
     if(EXISTS "${DEFAULT_YAW_LUT}")
         message(STATUS "Using default yaw LUT for debugger args: ${DEFAULT_YAW_LUT}")
@@ -88,16 +88,11 @@ endif()
 
 add_subdirectory(src/runtime)
 add_subdirectory(src/application)
-if(SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS)
-    add_subdirectory(src/adapters/tcp)
-    add_subdirectory(src/adapters/socket)
-endif()
+add_subdirectory(src/communication)
 
 if(SC_BUILD_CONTROLLER)
-    add_subdirectory(src/adapters/iec61850)
+    add_subdirectory(src/tasks)
 endif()
-
-add_subdirectory(src/controller)
 
 if(SC_BUILD_CONTROLLER)
     add_subdirectory(apps/wind_farm_scada)

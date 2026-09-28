@@ -3,7 +3,7 @@
 #include <chrono>
 #include <cstdint>
 
-#include "sc/ports/Clock.hpp"
+#include "sc/runtime/Clock.hpp"
 
 class FakeClock final : public sc::ports::Clock {
 public:

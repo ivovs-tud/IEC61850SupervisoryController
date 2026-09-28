@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "sc/protocol/AttackProtocol.hpp"
+#include "sc/communication/attack/AttackProtocol.hpp"
 
 namespace {
 

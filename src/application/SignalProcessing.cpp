@@ -1,5 +1,5 @@
 #include "sc/application/SignalProcessing.hpp"
-#include "sc/TurbineParameters.hpp"
+#include "sc/model/TurbineParameters.hpp"
 
 #include <algorithm>
 #include <cstddef>

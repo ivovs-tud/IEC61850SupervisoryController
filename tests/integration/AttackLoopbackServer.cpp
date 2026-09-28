@@ -5,8 +5,8 @@
 #include <string>
 #include <thread>
 
-#include "AttackInterface.hpp"
-#include "SocketWrapper.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
+#include "sc/communication/attack/AttackChannelZMQ.hpp"
 
 int main(int argc, char* argv[]) {
     if (argc < 2 || argc > 3) {
@@ -20,7 +20,11 @@ int main(int argc, char* argv[]) {
     }
 
     const int port = std::atoi(argv[1]);
-    SocketWrapper channel;
+    AttackChannelZMQ::Config channelConfig;
+    channelConfig.port = port;
+    channelConfig.pollPeriod = std::chrono::milliseconds(1);
+    channelConfig.transmitBufferBytes = slowReaderMode ? 1024 : 64 * 1024;
+    AttackChannelZMQ channel(channelConfig);
     AttackInterface::AttackTiming timing;
     timing.requestLifetime = std::chrono::milliseconds(200);
     timing.requestRetryPeriod = std::chrono::milliseconds(100);
@@ -45,13 +49,7 @@ int main(int argc, char* argv[]) {
         }
     });
 
-    channel.ConfigureAttackInterface(
-        64 * 1024,
-        slowReaderMode ? 1024 : 64 * 1024,
-        std::chrono::milliseconds(200),
-        std::chrono::milliseconds(750));
-
-    if (channel.StartAttackInterfaceServer(port) < tcpSOCKET_CONNECTED) {
+    if (!channel.start()) {
         std::cerr << "failed to start attack server\n";
         return 3;
     }
@@ -73,7 +71,7 @@ int main(int argc, char* argv[]) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    channel.StopAttackInterfaceServer();
+    channel.stop();
     float authoritativeValue = 321.0F;
     const bool restored =
         attack.overwrite(1, AttackInterface::SignalType::YAW_SETPOINT, authoritativeValue) ==

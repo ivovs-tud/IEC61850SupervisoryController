@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include "sc/ports/AttackChannel.hpp"
+#include "sc/communication/attack/AttackChannel.hpp"
 
 class FakeAttackChannel final : public sc::ports::AttackChannel {
 public:

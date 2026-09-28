@@ -1,12 +1,12 @@
 add_executable(wind_farm_scada main.cpp)
-add_executable(supervisory_controller ALIAS wind_farm_scada)
 
 set_target_properties(wind_farm_scada PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
 )
 
 target_link_libraries(wind_farm_scada PRIVATE
-    sc::controller
+    sc_communication
+    sc_tasks
     Threads::Threads
     sc::project_warnings
 )

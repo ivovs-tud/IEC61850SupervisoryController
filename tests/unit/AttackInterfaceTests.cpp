@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "AttackInterface.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
 #include "support/FakeAttackChannel.hpp"
 #include "support/FakeClock.hpp"
 
