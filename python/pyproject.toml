@@ -3,10 +3,10 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "supervisory-controller-client"
+name = "wind-farm-scada-attack-client"
 version = "0.1.0"
-description = "Python protocol helpers and clients for the supervisory controller"
-readme = "python/README.md"
+description = "Auxiliary Python client for connecting attack scripts to Wind Farm SCADA"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["pyzmq>=25"]
 
@@ -14,4 +14,5 @@ dependencies = ["pyzmq>=25"]
 license-files = ["LICENSES/HackAWindFarm-Apache-2.0.txt"]
 
 [tool.setuptools.packages.find]
-where = ["python"]
+where = ["."]
+include = ["scadaAttackInterface*"]

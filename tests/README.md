@@ -42,7 +42,7 @@ server from the production attack socket sources and does not link
 libiec61850:
 
 ```sh
-python -m pip install -e .
+python -m pip install -e ./python
 cmake -S . -B build-integration \
   -DSC_BUILD_CONTROLLER=OFF \
   -DSC_BUILD_TESTS=ON \

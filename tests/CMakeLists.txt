@@ -244,7 +244,7 @@ if(SC_BUILD_INTEGRATION_TESTS)
         message(FATAL_ERROR
             "SC_BUILD_INTEGRATION_TESTS requires pyzmq. "
             "Install the Python package with: "
-            "python -m pip install -e .")
+            "python -m pip install -e ./python")
     endif()
 
     add_executable(sc_attack_loopback_server

@@ -66,7 +66,7 @@ jobs:
         run: ./vcpkg/bootstrap-vcpkg.bat -disableMetrics
 
       - name: Install Python package
-        run: python -m pip install .
+        run: python -m pip install ./python
 
       - name: Configure
         run: cmake --preset vcpkg-hardware-free-integration
