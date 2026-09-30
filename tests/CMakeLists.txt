@@ -189,6 +189,21 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+add_executable(sc_data_historian_tests
+    unit/DataHistorianTests.cpp
+)
+
+target_link_libraries(sc_data_historian_tests PRIVATE
+    Catch2::Catch2WithMain
+    sc_runtime
+)
+
+catch_discover_tests(
+    sc_data_historian_tests
+    TEST_PREFIX "sc.data_historian."
+    DISCOVERY_MODE PRE_TEST
+)
+
 if(TARGET sc_iec61850)
     add_executable(sc_iec_lifecycle_tests
         unit/IecLifecycleTests.cpp

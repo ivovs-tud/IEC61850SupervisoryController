@@ -8,7 +8,7 @@ DataHistorian& DataHistorian::instance() {
     return historian;
 }
 
-DataHistorian::~DataHistorian() { flush(); }
+DataHistorian::~DataHistorian() { stopRun(); }
 
 void DataHistorian::configure(std::string experimentName, std::filesystem::path outputDir, std::size_t flushEvery, std::chrono::milliseconds flushPeriod) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -18,27 +18,42 @@ void DataHistorian::configure(std::string experimentName, std::filesystem::path 
     currentExperimentName_ = sanitizeName(std::move(experimentName));
 }
 
-void DataHistorian::start() { startNewRun(currentExperimentName_); }
+void DataHistorian::start() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!started_) {
+        startNewRunUnlocked(currentExperimentName_);
+    }
+}
 
 void DataHistorian::startNewRun(std::string experimentName) {
     std::lock_guard<std::mutex> lock(mutex_);
+    startNewRunUnlocked(std::move(experimentName));
+}
+
+void DataHistorian::startNewRunUnlocked(std::string experimentName) {
     flushUnlocked();
     if (file_.is_open()) {
         file_.close();
     }
+    started_ = false;
 
     std::filesystem::create_directories(outputDir_);
     currentExperimentName_ = sanitizeName(std::move(experimentName));
     const auto now = std::chrono::system_clock::now().time_since_epoch();
-    const auto timestampSeconds = std::chrono::duration_cast<std::chrono::seconds>(now).count();
-    filePath_ = outputDir_ / (currentExperimentName_ + "_" + std::to_string(timestampSeconds) + ".log");
-    file_.open(filePath_, std::ios::out | std::ios::trunc);
+    const auto timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+    const std::string baseName = currentExperimentName_ + "_" + std::to_string(timestampMs);
+    filePath_ = outputDir_ / (baseName + ".log");
+    std::size_t suffix = 1;
+    while (std::filesystem::exists(filePath_)) {
+        filePath_ = outputDir_ / (baseName + "_" + std::to_string(suffix++) + ".log");
+    }
+
+    // Append mode prevents an unexpected filesystem race from truncating an existing run.
+    file_.open(filePath_, std::ios::out | std::ios::app);
     if (!file_.is_open()) {
         throw std::runtime_error("DataHistorian failed to open file: " + filePath_.string());
     }
 
-    file_ << "timestamp_ms,key,value\n";
-    file_.flush();
     lastFlushTime_ = std::chrono::steady_clock::now();
     started_ = true;
 }
@@ -46,6 +61,9 @@ void DataHistorian::startNewRun(std::string experimentName) {
 void DataHistorian::stopRun() {
     std::lock_guard<std::mutex> lock(mutex_);
     flushUnlocked();
+    if (file_.is_open()) {
+        file_.close();
+    }
     started_ = false;
 }
 

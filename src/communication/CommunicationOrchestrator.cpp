@@ -162,7 +162,9 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::init()
                         interface.simConfigured = false;
                     }
                 }
-                if (!value.running) {
+                if (value.running) {
+                    DataHistorian::instance().start();
+                } else {
                     DataHistorian::instance().stopRun();
                 }
                 COMMTASK_LOG_V1("Received simulation control message from operator server: simStarting = " << value.running);

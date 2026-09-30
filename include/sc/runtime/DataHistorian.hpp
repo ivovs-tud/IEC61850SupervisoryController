@@ -33,11 +33,12 @@ private:
     DataHistorian() = default;
 
     static std::string sanitizeName(std::string name);
+    void startNewRunUnlocked(std::string experimentName);
     void ensureFileOpen();
     void flushUnlocked();
     void maybeFlushUnlocked();
 
-    std::filesystem::path outputDir_;
+    std::filesystem::path outputDir_{"data"};
     std::filesystem::path filePath_;
     std::ofstream file_;
     std::mutex mutex_;
