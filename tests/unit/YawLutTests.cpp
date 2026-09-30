@@ -111,6 +111,22 @@ TEST_CASE("yaw LUT performs bilinear interpolation") {
     requireSetpoints(lut.lookup(2.5F, 5.0F), 7.5F, 15.0F);
 }
 
+TEST_CASE("yaw LUT uses wind-speed rows for both upper interpolation corners") {
+    TemporaryCsv file(
+        "ws,wd,WT1\n"
+        "0,0,0\n"
+        "0,20,20\n"
+        "10,0,10\n"
+        "10,20,30\n"
+        "20,0,20\n"
+        "20,20,40\n");
+    const sc::application::YawLut lut(file.path());
+
+    const auto setpoints = lut.lookup(15.0F, 10.0F);
+    REQUIRE(setpoints.size() == 1);
+    REQUIRE(setpoints[0] == Catch::Approx(25.0F));
+}
+
 TEST_CASE("yaw LUT preserves and validates turbine column count") {
     SECTION("lookup contains one value per turbine column") {
         TemporaryCsv file(gridWithHeader("ws,wd,WT1,WT2\n"));

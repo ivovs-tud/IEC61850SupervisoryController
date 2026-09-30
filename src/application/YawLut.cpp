@@ -225,9 +225,10 @@ YawLut::TurbineYawSetpoints YawLut::lookup(float windSpeed, float windDirection)
     const size_t wd_lowIdx =  static_cast<std::size_t>(windDirectionBracket.lowIndex);
     const size_t wd_highIdx = static_cast<std::size_t>(windDirectionBracket.highIndex);
 
+    // Wind speed indexes the outer dimension; wind direction indexes the inner dimension.
     const auto& setpointsLowLow   = yawSetpoints_[ws_lowIdx][wd_lowIdx];
     const auto& setpointsLowHigh  = yawSetpoints_[ws_lowIdx][wd_highIdx];
-    const auto& setpointsHighLow  = yawSetpoints_[wd_highIdx][wd_lowIdx];
+    const auto& setpointsHighLow  = yawSetpoints_[ws_highIdx][wd_lowIdx];
     const auto& setpointsHighHigh = yawSetpoints_[ws_highIdx][wd_highIdx];
 
     TurbineYawSetpoints result(setpointsLowLow.size(), 0.0f);
