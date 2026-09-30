@@ -155,6 +155,8 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
         config.communication.attackInterface.transmitBufferBytes = root.get<std::size_t>(
             "communication.attack_interface.transmit_buffer_bytes",
             config.communication.attackInterface.transmitBufferBytes);
+        loadMilliseconds(root, "communication.attack_interface.configuration_timeout_ms",
+                         config.communication.attackInterface.configurationTimeout);
         loadMilliseconds(root, "communication.attack_interface.zmq_heartbeat_interval_ms",
                          config.communication.attackInterface.zmqHeartbeatInterval);
         loadMilliseconds(root, "communication.attack_interface.zmq_heartbeat_timeout_ms",
@@ -333,6 +335,8 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
         throw std::runtime_error(
             "communication.attack_interface.transmit_buffer_bytes must be at least 268");
     }
+    requirePositive(config.communication.attackInterface.configurationTimeout,
+                    "communication.attack_interface.configuration_timeout_ms");
     requirePositive(config.communication.attackInterface.zmqHeartbeatInterval,
                     "communication.attack_interface.zmq_heartbeat_interval_ms");
     requirePositive(config.communication.attackInterface.zmqHeartbeatTimeout,

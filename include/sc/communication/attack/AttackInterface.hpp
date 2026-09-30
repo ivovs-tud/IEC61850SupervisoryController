@@ -58,12 +58,14 @@ public:
     void shutdown(const std::string& reason = "controller shutdown");
     void checkSessionLease();
     void txData(unsigned int turbineId, SignalType signalType, float value);
+    void txData(unsigned int turbineId, SignalType signalType, uint32_t value);
     AIRC overwrite(unsigned int turbineId, SignalType signalType, float& value);
     AIRC processValue(unsigned int turbineId, SignalType signalType, float& value);
     void processValue(unsigned int turbineId, SignalType signalType, uint32_t value);
 
 private:
     void txDataUnlocked(unsigned int turbineId, SignalType signalType, float value);
+    void txDataUnlocked(unsigned int turbineId, SignalType signalType, uint32_t value);
     AIRC overwriteUnlocked(unsigned int turbineId, SignalType signalType, float& value);
     static std::vector<SignalType> supportedSignalTypes();
     static std::string signalTypeName(SignalType signalType);

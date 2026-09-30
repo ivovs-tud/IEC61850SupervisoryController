@@ -39,6 +39,7 @@ struct CommunicationConfig
         bool                         reuseLastFdiValueOnFailure {true};
         std::size_t                receiveBufferBytes {64 * 1024};
         std::size_t                transmitBufferBytes {64 * 1024};
+        std::chrono::milliseconds  configurationTimeout {std::chrono::milliseconds(1000)};
         std::chrono::milliseconds  zmqHeartbeatInterval {std::chrono::milliseconds(200)};
         std::chrono::milliseconds  zmqHeartbeatTimeout {std::chrono::milliseconds(750)};
         std::chrono::milliseconds  tcpUserTimeout {std::chrono::milliseconds(0)};

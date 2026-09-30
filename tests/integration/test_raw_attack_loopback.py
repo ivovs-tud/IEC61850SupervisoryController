@@ -32,6 +32,36 @@ def reserve_loopback_port():
 
 
 class RawAttackLoopbackTests(unittest.TestCase):
+    def test_unconfigured_client_times_out_and_releases_the_client_slot(self):
+        server, stalled_client = self.start_server("configuration-timeout")
+        port = stalled_client.getpeername()[1]
+        client = AttackInterface(num_turbines=2, transport="tcp")
+        output = ""
+        errors = ""
+        try:
+            stalled_client.settimeout(2.0)
+            try:
+                self.assertEqual(stalled_client.recv(1), b"")
+            except (ConnectionResetError, ConnectionAbortedError):
+                pass
+            stalled_client.close()
+
+            self.connect_client(client, server, port)
+            client.configure("after-configuration-timeout")
+            client.release()
+            output, errors = server.communicate(timeout=5.0)
+        finally:
+            client.stop()
+            if stalled_client.fileno() >= 0:
+                stalled_client.close()
+            if server.poll() is None:
+                server.terminate()
+                output, errors = server.communicate(timeout=2.0)
+
+        counters = self.assert_server_success(server, output, errors)
+        self.assertEqual(counters["configurations"], 1)
+        self.assert_cleanup(counters, {1})
+
     def test_client_process_kill_revokes_the_session(self):
         server, port = self.start_server_process()
         child = subprocess.Popen(

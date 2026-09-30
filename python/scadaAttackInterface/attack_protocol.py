@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
@@ -45,7 +46,9 @@ class ControlSignal(IntEnum):
     CTRL_FDI = 0x02
 
 
-_TX = struct.Struct("<BB2xIB3xf")
+_TX_HEADER = struct.Struct("<BB2xIB3x")
+_TX_FLOAT_VALUE = struct.Struct("<f")
+_TX_INTEGER_VALUE = struct.Struct("<I")
 _RQ = struct.Struct("<BB2xIQQ")
 _AT = struct.Struct("<BB2xIQf4x")
 _CT_HEADER = struct.Struct("<B3xII")
@@ -53,6 +56,10 @@ _CFG = struct.Struct("<B256s3xii")
 _SIM_CONTROL = struct.Struct("<BB")
 _SESSION_CONTROL = struct.Struct("<B")
 DEFAULT_BUFFER_LIMIT = 64 * 1024
+_INTEGER_TX_DATA_TYPES = {
+    TxDataType.TX_ST,
+    TxDataType.TX_OP_CMD,
+}
 
 
 def _require_size(data: bytes, expected: int, message_name: str) -> None:
@@ -64,26 +71,47 @@ def _require_size(data: bytes, expected: int, message_name: str) -> None:
 class TxDataMessage:
     turbine_id: int
     data_type: TxDataType
-    value: float
-    payload_length: int = 1
+    value: float | int
 
     def pack(self) -> bytes:
-        return _TX.pack(
+        header = _TX_HEADER.pack(
             DataHeader.TX_DATA,
             self.turbine_id,
             int(self.data_type),
-            self.payload_length,
-            self.value,
+            1,
         )
+        if self.data_type in _INTEGER_TX_DATA_TYPES:
+            if isinstance(self.value, bool) or not isinstance(self.value, int):
+                raise AttackProtocolError("attack signal requires an integer value")
+            if self.value < 0 or self.value > 0xFFFFFFFF:
+                raise AttackProtocolError("attack integer value is outside uint32 range")
+            return header + _TX_INTEGER_VALUE.pack(self.value)
+
+        if isinstance(self.value, bool) or not isinstance(self.value, (float, int)):
+            raise AttackProtocolError("attack signal requires a floating-point value")
+        value = float(self.value)
+        if not math.isfinite(value):
+            raise AttackProtocolError("attack observation must be finite")
+        return header + _TX_FLOAT_VALUE.pack(value)
 
     @classmethod
     def unpack(cls, data: bytes) -> "TxDataMessage":
-        _require_size(data, _TX.size, cls.__name__)
-        header, turbine_id, data_type, payload_length, value = _TX.unpack(data)
+        _require_size(data, _TX_HEADER.size + _TX_FLOAT_VALUE.size, cls.__name__)
+        header, turbine_id, data_type, payload_length = _TX_HEADER.unpack_from(data)
         if header != DataHeader.TX_DATA:
             raise AttackProtocolError("invalid TX_DATA header")
+        if payload_length != 1:
+            raise AttackProtocolError("invalid TX_DATA payload length")
+
+        typed_data = TxDataType(data_type)
+        if typed_data in _INTEGER_TX_DATA_TYPES:
+            value = _TX_INTEGER_VALUE.unpack_from(data, _TX_HEADER.size)[0]
+        else:
+            value = _TX_FLOAT_VALUE.unpack_from(data, _TX_HEADER.size)[0]
+            if not math.isfinite(value):
+                raise AttackProtocolError("attack observation must be finite")
         
-        return cls(turbine_id, TxDataType(data_type), value, payload_length)
+        return cls(turbine_id, typed_data, value)
 
 
 @dataclass(frozen=True)
@@ -114,6 +142,8 @@ class AtDataMessage:
     fake_value: float
 
     def pack(self) -> bytes:
+        if math.isinf(self.fake_value):
+            raise AttackProtocolError("attack replacement must not be infinite")
         return _AT.pack(DataHeader.AT_DATA, self.turbine_id, int(self.data_type), self.attack_time_ms, self.fake_value)
 
     @classmethod
@@ -122,6 +152,8 @@ class AtDataMessage:
         header, turbine_id, data_type, attack_time, fake_value = _AT.unpack(data)
         if header != DataHeader.AT_DATA:
             raise AttackProtocolError("invalid AT_DATA header")
+        if math.isinf(fake_value):
+            raise AttackProtocolError("attack replacement must not be infinite")
         
         return cls(turbine_id, TxDataType(data_type), attack_time, fake_value)
 
@@ -272,7 +304,7 @@ def message_size(header: DataHeader | int, num_turbines: int) -> int:
         raise AttackProtocolError(f"unknown message header 0x{int(header):02x}") from error
 
     sizes = {
-        DataHeader.TX_DATA: _TX.size,
+        DataHeader.TX_DATA: _TX_HEADER.size + _TX_FLOAT_VALUE.size,
         DataHeader.RQ_DATA: _RQ.size,
         DataHeader.AT_DATA: _AT.size,
         DataHeader.CT_DATA: _CT_HEADER.size + num_turbines,

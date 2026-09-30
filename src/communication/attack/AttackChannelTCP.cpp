@@ -26,6 +26,9 @@ TcpServer::Config makeTcpConfig(const AttackChannelTCP::Config& config) {
 AttackChannelTCP::AttackChannelTCP(Config config): PeriodicTask(config.pollPeriod), config_(std::move(config)), 
                     decoder_(config_.turbineCount, config_.receiveBufferBytes), tcpServer_(makeTcpConfig(config_)) {
 
+    if (config_.configurationTimeout <= std::chrono::milliseconds::zero()) {
+        throw std::invalid_argument("attack configuration timeout must be positive");
+    }
     tcpServer_.setConnectedHandler([this](TcpServer::ClientId clientId) {clientConnected(clientId);});
     tcpServer_.setDataHandler([this](TcpServer::ClientId clientId, const uint8_t* data, std::size_t size) {bytesReceived(clientId, data, size);});
     tcpServer_.setDisconnectedHandler([this](TcpServer::ClientId clientId, const std::string& reason) {clientDisconnected(clientId, reason);});
@@ -45,7 +48,12 @@ void AttackChannelTCP::setDisconnectHandler(sc::ports::AttackDisconnectHandler h
 }
 
 bool AttackChannelTCP::send(const uint8_t* data, std::size_t size) {
-    return tcpServer_.send(activeClient_.load(), data, size);
+    const bool sent = tcpServer_.send(activeClient_.load(), data, size);
+    if (sent && size == sc::protocol::attack::CFG_DATA_SIZE &&
+        data[0] == static_cast<uint8_t>(sc::protocol::attack::MessageType::CFG_DATA)) {
+        configurationAcknowledged_.store(true);
+    }
+    return sent;
 }
 
 std::size_t AttackChannelTCP::queuedBytes() const {
@@ -54,6 +62,8 @@ std::size_t AttackChannelTCP::queuedBytes() const {
 
 void AttackChannelTCP::onStart() {
     activeClient_.store(0);
+    configurationAcknowledged_.store(false);
+    connectedAt_ = {};
     decoder_.reset();
     tcpServer_.start();
     SOCKET_AT_ST("Raw TCP attack interface listening on " << config_.bindAddress << ':' << config_.port);
@@ -64,17 +74,27 @@ void AttackChannelTCP::execute() {
         leaseCheckHandler_();
     }
     tcpServer_.poll();
+
+    const auto clientId = activeClient_.load();
+    if (clientId != 0 && !configurationAcknowledged_.load() &&
+        std::chrono::steady_clock::now() - connectedAt_ >= config_.configurationTimeout) {
+        tcpServer_.disconnect(clientId, "configuration timeout");
+    }
 }
 
 void AttackChannelTCP::onStop() {
     tcpServer_.stop();
     activeClient_.store(0);
+    configurationAcknowledged_.store(false);
+    connectedAt_ = {};
     decoder_.reset();
     SOCKET_AT_ST("Raw TCP attack interface stopped");
 }
 
 void AttackChannelTCP::clientConnected(TcpServer::ClientId clientId) {
     activeClient_.store(clientId);
+    configurationAcknowledged_.store(false);
+    connectedAt_ = std::chrono::steady_clock::now();
     decoder_.reset();
     SOCKET_AT_ST("Accepted raw TCP attack client");
 }
@@ -111,6 +131,8 @@ void AttackChannelTCP::clientDisconnected(TcpServer::ClientId clientId, const st
 
     const std::string disconnectReason = decoder_.bufferedBytes() == 0 ? reason : "protocol error: truncated attack message";
     decoder_.reset();
+    configurationAcknowledged_.store(false);
+    connectedAt_ = {};
     SOCKET_AT_ST("Raw TCP attack client disconnected: " << disconnectReason);
     if (disconnectHandler_) {
         disconnectHandler_(disconnectReason);

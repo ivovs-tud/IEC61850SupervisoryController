@@ -123,6 +123,7 @@
         "reuse_last_fdi_value_on_failure": {"type": "boolean"},
         "receive_buffer_bytes": {"type": "integer", "minimum": 268},
         "transmit_buffer_bytes": {"type": "integer", "minimum": 268},
+        "configuration_timeout_ms": {"type": "integer", "minimum": 1},
         "zmq_heartbeat_interval_ms": {"type": "integer", "minimum": 1},
         "zmq_heartbeat_timeout_ms": {"type": "integer", "minimum": 1},
         "tcp_user_timeout_ms": {"type": "integer", "minimum": 0},

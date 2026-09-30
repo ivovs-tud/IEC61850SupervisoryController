@@ -53,6 +53,11 @@ void AttackInterface::txData(unsigned int turbineId, SignalType signalType, floa
     txDataUnlocked(turbineId, signalType, value);
 }
 
+void AttackInterface::txData(unsigned int turbineId, SignalType signalType, uint32_t value) {
+    std::lock_guard<std::mutex> lock(operationMutex_);
+    txDataUnlocked(turbineId, signalType, value);
+}
+
 AIRC AttackInterface::overwrite(unsigned int turbineId, SignalType signalType, float& value) {
     std::lock_guard<std::mutex> lock(operationMutex_);
     return overwriteUnlocked(turbineId, signalType, value);
@@ -66,7 +71,7 @@ AIRC AttackInterface::processValue(unsigned int turbineId, SignalType signalType
 
 void AttackInterface::processValue(unsigned int turbineId, SignalType signalType, uint32_t value) {
     std::lock_guard<std::mutex> lock(operationMutex_);
-    txDataUnlocked(turbineId, signalType, static_cast<float>(value));
+    txDataUnlocked(turbineId, signalType, value);
 }
 
 void AttackInterface::txDataUnlocked(unsigned int turbineId, SignalType signalType, float value) {
@@ -82,8 +87,33 @@ void AttackInterface::txDataUnlocked(unsigned int turbineId, SignalType signalTy
     if (!sessionManager_.tapEnabled(static_cast<int>(turbineId), signalType)) {
         return;
     }
+    if (!std::isfinite(value)) {
+        ATTACK_ERR("Ignoring non-finite " << signalTypeName(signalType)
+                   << " observation for turbine " << turbineId);
+        return;
+    }
 
-    const auto message = sc::protocol::attack::encode(TxDataMessage{static_cast<uint8_t>(turbineId), signalType, 1, value});
+    const auto message = sc::protocol::attack::encode(
+        TxDataMessage{static_cast<uint8_t>(turbineId), signalType, value});
+    channel_.send(message.data(), message.size());
+}
+
+void AttackInterface::txDataUnlocked(unsigned int turbineId, SignalType signalType, uint32_t value) {
+    if (signalType == SignalType::NONE) {
+        return;
+    }
+
+    if (!validTurbine(turbineId)) {
+        ATTACK_ERR("Invalid turbine ID: " << turbineId);
+        return;
+    }
+
+    if (!sessionManager_.tapEnabled(static_cast<int>(turbineId), signalType)) {
+        return;
+    }
+
+    const auto message = sc::protocol::attack::encode(
+        TxDataMessage{static_cast<uint8_t>(turbineId), signalType, value});
     channel_.send(message.data(), message.size());
 }
 

@@ -308,9 +308,9 @@ TEST_CASE("IEC communicator maps typed control fields to their attack signals") 
     const auto yawMessage = std::get<AttackInterface::TxDataMessage>(
         sc::protocol::attack::decode(channel.sentMessages()[1].data(), channel.sentMessages()[1].size(), 1));
     REQUIRE(powerMessage.dataType == AttackInterface::SignalType::POWER_SETPOINT);
-    REQUIRE(powerMessage.value == Catch::Approx(125.5F));
+    REQUIRE(std::get<float>(powerMessage.value) == Catch::Approx(125.5F));
     REQUIRE(yawMessage.dataType == AttackInterface::SignalType::YAW_SETPOINT);
-    REQUIRE(yawMessage.value == Catch::Approx(271.25F));
+    REQUIRE(std::get<float>(yawMessage.value) == Catch::Approx(271.25F));
 }
 
 TEST_CASE("GOOSE resources can be configured and stopped repeatedly without starting reception") {

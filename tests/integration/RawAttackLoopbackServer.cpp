@@ -19,6 +19,7 @@ enum class Mode {
     LeaseTimeout,
     Shutdown,
     SlowReader,
+    ConfigurationTimeout,
 };
 
 Mode parseMode(int argc, char* argv[]) {
@@ -28,6 +29,7 @@ Mode parseMode(int argc, char* argv[]) {
     if (value == "lease-timeout") return Mode::LeaseTimeout;
     if (value == "shutdown") return Mode::Shutdown;
     if (value == "slow-reader") return Mode::SlowReader;
+    if (value == "configuration-timeout") return Mode::ConfigurationTimeout;
     throw std::invalid_argument("unknown raw attack loopback mode: " + value);
 }
 
@@ -47,7 +49,7 @@ int disconnectReasonCode(const std::string& reason) {
 int main(int argc, char* argv[]) {
     if (argc < 2 || argc > 3) {
         std::cerr << "usage: sc_raw_attack_loopback_server <port> "
-                     "[overflow|lease-timeout|shutdown|slow-reader]\n";
+                     "[overflow|lease-timeout|shutdown|slow-reader|configuration-timeout]\n";
         return 2;
     }
     Mode mode;
@@ -65,6 +67,9 @@ int main(int argc, char* argv[]) {
     channelConfig.turbineCount = 2;
     if (mode == Mode::Overflow) channelConfig.transmitBufferBytes = 268;
     if (mode == Mode::SlowReader) channelConfig.transmitBufferBytes = 1024;
+    if (mode == Mode::ConfigurationTimeout) {
+        channelConfig.configurationTimeout = std::chrono::milliseconds(100);
+    }
     AttackChannelTCP channel(channelConfig);
 
     AttackInterface::AttackTiming timing;

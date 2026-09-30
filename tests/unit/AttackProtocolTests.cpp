@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <variant>
 #include <vector>
 
 #include "sc/communication/attack/AttackProtocol.hpp"
@@ -13,7 +15,7 @@ using sc::protocol::attack::Bytes;
 std::vector<Bytes> messages(std::size_t turbineCount) {
     using namespace sc::protocol::attack;
     return {
-        encode(TxDataMessage{2, AttackInterface::SignalType::YAW_ANGLE, 1, 12.5F}),
+        encode(TxDataMessage{2, AttackInterface::SignalType::YAW_ANGLE, 12.5F}),
         encode(RqDataMessage{1, AttackInterface::SignalType::POWER, 1000, 1250}),
         encode(AtDataMessage{1, AttackInterface::SignalType::POWER, 1100, -7.25F}),
         encode(CtDataMessage{ControlSignal::TAP, AttackInterface::SignalType::WIND_SPEED, std::vector<uint8_t>(turbineCount, 1)}),
@@ -87,4 +89,68 @@ TEST_CASE("control message size follows the configured turbine count") {
     REQUIRE(decoder.push(control.data(), control.size() - 1).empty());
     const auto decoded = decoder.push(control.data() + control.size() - 1, 1);
     REQUIRE(decoded == std::vector<Bytes>{control});
+}
+
+TEST_CASE("TX data validates its payload length and preserves its value type") {
+    using namespace sc::protocol::attack;
+
+    const auto status = encode(TxDataMessage{
+        1, AttackInterface::SignalType::TURBINE_STATUS, uint32_t{3}});
+    const auto decoded = std::get<TxDataMessage>(decode(status, 1));
+    REQUIRE(std::get<uint32_t>(decoded.value) == 3);
+
+    auto invalidLength = encode(TxDataMessage{
+        1, AttackInterface::SignalType::WIND_SPEED, 12.5F});
+    invalidLength[8] = 2;
+    REQUIRE_THROWS_AS(decode(invalidLength, 1), ProtocolError);
+    REQUIRE_THROWS_AS(
+        encode(TxDataMessage{
+            1, AttackInterface::SignalType::TURBINE_STATUS, 3.0F}),
+        ProtocolError);
+    REQUIRE_THROWS_AS(
+        encode(TxDataMessage{
+            1, AttackInterface::SignalType::WIND_SPEED, uint32_t{3}}),
+        ProtocolError);
+}
+
+TEST_CASE("attack values reject infinities while preserving the NaN fallback sentinel") {
+    using namespace sc::protocol::attack;
+
+    REQUIRE_THROWS_AS(
+        encode(TxDataMessage{
+            1,
+            AttackInterface::SignalType::WIND_SPEED,
+            std::numeric_limits<float>::infinity()}),
+        ProtocolError);
+    REQUIRE_THROWS_AS(
+        encode(AtDataMessage{
+            1,
+            AttackInterface::SignalType::WIND_SPEED,
+            100,
+            std::numeric_limits<float>::infinity()}),
+        ProtocolError);
+
+    auto infiniteObservation = encode(TxDataMessage{
+        1, AttackInterface::SignalType::WIND_SPEED, 1.0F});
+    infiniteObservation[12] = 0;
+    infiniteObservation[13] = 0;
+    infiniteObservation[14] = 0x80;
+    infiniteObservation[15] = 0x7F;
+    REQUIRE_THROWS_AS(decode(infiniteObservation, 1), ProtocolError);
+
+    auto infiniteReplacement = encode(AtDataMessage{
+        1, AttackInterface::SignalType::WIND_SPEED, 100, 1.0F});
+    infiniteReplacement[16] = 0;
+    infiniteReplacement[17] = 0;
+    infiniteReplacement[18] = 0x80;
+    infiniteReplacement[19] = 0x7F;
+    REQUIRE_THROWS_AS(decode(infiniteReplacement, 1), ProtocolError);
+
+    const auto noReplacement = encode(AtDataMessage{
+        1,
+        AttackInterface::SignalType::WIND_SPEED,
+        100,
+        std::numeric_limits<float>::quiet_NaN()});
+    const auto decoded = std::get<AtDataMessage>(decode(noReplacement, 1));
+    REQUIRE(std::isnan(decoded.fakeValue));
 }

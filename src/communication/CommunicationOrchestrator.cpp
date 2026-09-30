@@ -27,6 +27,7 @@ AttackChannelTCP::Config makeTcpAttackConfig(const CommunicationConfig& config) 
     tcp.turbineCount = config.mms.turbines.size();
     tcp.receiveBufferBytes = config.attackInterface.receiveBufferBytes;
     tcp.transmitBufferBytes = config.attackInterface.transmitBufferBytes;
+    tcp.configurationTimeout = config.attackInterface.configurationTimeout;
     tcp.tcpUserTimeout = config.attackInterface.tcpUserTimeout;
     return tcp;
 }

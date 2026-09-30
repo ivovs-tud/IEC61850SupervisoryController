@@ -21,6 +21,7 @@ public:
         std::size_t turbineCount{9};
         std::size_t receiveBufferBytes{sc::protocol::attack::DEFAULT_BUFFER_LIMIT};
         std::size_t transmitBufferBytes{sc::protocol::attack::DEFAULT_BUFFER_LIMIT};
+        std::chrono::milliseconds configurationTimeout{1000};
         std::chrono::milliseconds tcpUserTimeout{0};
     };
 
@@ -49,6 +50,8 @@ private:
     sc::protocol::attack::StreamDecoder decoder_;
     TcpServer tcpServer_;
     std::atomic<TcpServer::ClientId> activeClient_{0};
+    std::atomic<bool> configurationAcknowledged_{false};
+    std::chrono::steady_clock::time_point connectedAt_{};
 
     sc::ports::AttackReceiveHandler receiveHandler_;
     sc::ports::AttackLeaseCheckHandler leaseCheckHandler_;

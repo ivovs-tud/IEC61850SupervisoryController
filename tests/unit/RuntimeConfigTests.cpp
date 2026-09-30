@@ -31,6 +31,7 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
     REQUIRE(config.communication.attackInterface.reuseLastFdiValueOnFailure);
     REQUIRE(config.communication.attackInterface.receiveBufferBytes == 64 * 1024);
     REQUIRE(config.communication.attackInterface.transmitBufferBytes == 64 * 1024);
+    REQUIRE(config.communication.attackInterface.configurationTimeout == 1000ms);
     REQUIRE(config.communication.attackInterface.zmqHeartbeatInterval == 200ms);
     REQUIRE(config.communication.attackInterface.zmqHeartbeatTimeout == 750ms);
     REQUIRE(config.communication.mms.reconnectInitialDelay == 100ms);
@@ -76,6 +77,7 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
         "      \"transport\": \"tcp\", \"bind_address\": \"127.0.0.1\",\n"
         "      \"reuse_last_fdi_value_on_failure\": false,\n"
         "      \"receive_buffer_bytes\": 4096, \"transmit_buffer_bytes\": 8192,\n"
+        "      \"configuration_timeout_ms\": 900,\n"
         "      \"tcp_user_timeout_ms\": 1200\n"
         "    },\n"
         "    \"mms\": {\"reconnect_initial_delay_ms\": 25, \"reconnect_max_delay_ms\": 250, \"reporting_enabled\": false},\n"
@@ -100,6 +102,7 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
     REQUIRE_FALSE(config.communication.attackInterface.reuseLastFdiValueOnFailure);
     REQUIRE(config.communication.attackInterface.receiveBufferBytes == 4096);
     REQUIRE(config.communication.attackInterface.transmitBufferBytes == 8192);
+    REQUIRE(config.communication.attackInterface.configurationTimeout == 900ms);
     REQUIRE(config.communication.attackInterface.tcpUserTimeout == 1200ms);
     REQUIRE(config.communication.mms.reconnectInitialDelay == 25ms);
     REQUIRE(config.communication.mms.reconnectMaxDelay == 250ms);
@@ -188,6 +191,12 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
     SECTION("attack buffers must fit the configuration message") {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.receiveBufferBytes = 267;
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("attack configuration timeout must be positive") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.communication.attackInterface.configurationTimeout = 0ms;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 

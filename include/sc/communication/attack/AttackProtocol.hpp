@@ -3,6 +3,7 @@
 #include "sc/communication/attack/AttackSignalType.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -33,6 +34,7 @@ enum class ControlSignal : uint32_t {
 
 using TimeStamp = uint64_t;
 using Bytes = std::vector<uint8_t>;
+using TxDataValue = std::variant<float, uint32_t>;
 
 inline constexpr std::size_t TX_DATA_SIZE = 16;
 inline constexpr std::size_t RQ_DATA_SIZE = 24;
@@ -47,8 +49,7 @@ inline constexpr std::size_t DEFAULT_BUFFER_LIMIT = 64 * 1024;
 struct TxDataMessage {
     uint8_t turbineId{0};
     AttackInterface::SignalType dataType{AttackInterface::SignalType::NONE};
-    uint8_t payloadLength{1};
-    float value{0.0F};
+    TxDataValue value{0.0F};
 };
 
 struct RqDataMessage {
@@ -177,6 +178,11 @@ inline ControlSignal controlSignal(uint32_t value) {
     throw ProtocolError("unknown attack control signal");
 }
 
+inline bool integerTxValue(AttackInterface::SignalType signalType) {
+    return signalType == AttackInterface::SignalType::TURBINE_STATUS ||
+           signalType == AttackInterface::SignalType::OPERATION_COMMAND;
+}
+
 } // namespace detail
 
 inline MessageType messageType(uint8_t header) {
@@ -212,8 +218,17 @@ inline Bytes encode(const TxDataMessage& message) {
     bytes[0] = static_cast<uint8_t>(MessageType::TX_DATA);
     bytes[1] = message.turbineId;
     detail::writeU32(bytes, 4, static_cast<uint32_t>(message.dataType));
-    bytes[8] = message.payloadLength;
-    detail::writeFloat(bytes, 12, message.value);
+    bytes[8] = 1;
+    if (detail::integerTxValue(message.dataType)) {
+        const auto* value = std::get_if<uint32_t>(&message.value);
+        if (value == nullptr) throw ProtocolError("attack signal requires an integer value");
+        detail::writeU32(bytes, 12, *value);
+    } else {
+        const auto* value = std::get_if<float>(&message.value);
+        if (value == nullptr) throw ProtocolError("attack signal requires a floating-point value");
+        if (!std::isfinite(*value)) throw ProtocolError("attack observation must be finite");
+        detail::writeFloat(bytes, 12, *value);
+    }
     return bytes;
 }
 
@@ -228,6 +243,9 @@ inline Bytes encode(const RqDataMessage& message) {
 }
 
 inline Bytes encode(const AtDataMessage& message) {
+    if (std::isinf(message.fakeValue)) {
+        throw ProtocolError("attack replacement must not be infinite");
+    }
     Bytes bytes(AT_DATA_SIZE, 0);
     bytes[0] = static_cast<uint8_t>(MessageType::AT_DATA);
     bytes[1] = message.turbineId;
@@ -281,12 +299,27 @@ inline Message decode(const uint8_t* data, std::size_t size, std::size_t turbine
     if (size != expectedSize) throw ProtocolError("invalid attack message size");
 
     switch (type) {
-        case MessageType::TX_DATA:
-            return TxDataMessage{data[1], detail::signalType(detail::readU32(data, 4)), data[8], detail::readFloat(data, 12)};
+        case MessageType::TX_DATA: {
+            if (data[8] != 1) throw ProtocolError("invalid TX_DATA payload length");
+            const auto signalType = detail::signalType(detail::readU32(data, 4));
+            if (detail::integerTxValue(signalType)) {
+                return TxDataMessage{data[1], signalType, detail::readU32(data, 12)};
+            }
+            const float value = detail::readFloat(data, 12);
+            if (!std::isfinite(value)) throw ProtocolError("attack observation must be finite");
+            return TxDataMessage{data[1], signalType, value};
+        }
         case MessageType::RQ_DATA:
             return RqDataMessage{data[1], detail::signalType(detail::readU32(data, 4)), detail::readU64(data, 8), detail::readU64(data, 16)};
-        case MessageType::AT_DATA:
-            return AtDataMessage{data[1], detail::signalType(detail::readU32(data, 4)), detail::readU64(data, 8), detail::readFloat(data, 16)};
+        case MessageType::AT_DATA: {
+            const float value = detail::readFloat(data, 16);
+            if (std::isinf(value)) throw ProtocolError("attack replacement must not be infinite");
+            return AtDataMessage{
+                data[1],
+                detail::signalType(detail::readU32(data, 4)),
+                detail::readU64(data, 8),
+                value};
+        }
         case MessageType::CT_DATA: {
             const auto flagsBegin = data + CT_DATA_PREFIX_SIZE;
             if (!std::all_of(flagsBegin, data + size, [](uint8_t value) { return value <= 1; })) {

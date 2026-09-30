@@ -24,7 +24,7 @@ std::vector<uint8_t> fromHex(const std::string& value) {
 TEST_CASE("attack protocol retains the documented wire bytes") {
     using namespace sc::protocol::attack;
 
-    REQUIRE(encode(TxDataMessage{2, AttackInterface::SignalType::YAW_ANGLE, 1, 12.5F}) ==
+    REQUIRE(encode(TxDataMessage{2, AttackInterface::SignalType::YAW_ANGLE, 12.5F}) ==
             fromHex("01020000050000000100000000004841"));
     REQUIRE(encode(RqDataMessage{3, AttackInterface::SignalType::POWER, 1000, 1500}) ==
             fromHex("0203000004000000e803000000000000dc05000000000000"));

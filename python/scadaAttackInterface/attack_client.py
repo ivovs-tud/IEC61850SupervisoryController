@@ -139,7 +139,7 @@ class AttackClient:
     def _empty_control_map(self) -> dict[str, list[bool]]:
         return {name: [False] * self.num_turbines for name in self.SIGNAL_TYPES}
 
-    def _empty_value_map(self) -> dict[str, list[float]]:
+    def _empty_value_map(self) -> dict[str, list[float | int]]:
         return {name: [float("nan")] * self.num_turbines for name in self.SIGNAL_TYPES}
 
     @property

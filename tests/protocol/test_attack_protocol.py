@@ -1,3 +1,5 @@
+import math
+import struct
 import unittest
 
 from scadaAttackInterface.attack_protocol import (
@@ -29,6 +31,12 @@ class AttackProtocolTests(unittest.TestCase):
         self.assert_round_trip(
             TxDataMessage(2, TxDataType.TX_YAW, 12.5),
             "01020000050000000100000000004841",
+        )
+
+    def test_tx_data_preserves_integer_values(self):
+        self.assert_round_trip(
+            TxDataMessage(2, TxDataType.TX_ST, 3),
+            "01020000030000000100000003000000",
         )
 
     def test_request_fixture(self):
@@ -72,6 +80,40 @@ class AttackProtocolTests(unittest.TestCase):
             parse_message(b"\xff")
         with self.assertRaises(AttackProtocolError):
             parse_message(b"\x01")
+
+        invalid_length = bytearray(TxDataMessage(2, TxDataType.TX_YAW, 12.5).pack())
+        invalid_length[8] = 2
+        with self.assertRaises(AttackProtocolError):
+            parse_message(invalid_length)
+
+    def test_rejects_invalid_value_types_and_infinities(self):
+        with self.assertRaises(AttackProtocolError):
+            TxDataMessage(1, TxDataType.TX_ST, 3.0).pack()
+        with self.assertRaises(AttackProtocolError):
+            TxDataMessage(1, TxDataType.TX_WS, float("inf")).pack()
+        with self.assertRaises(AttackProtocolError):
+            AtDataMessage(1, TxDataType.TX_WS, 100, float("-inf")).pack()
+
+        infinite_observation = bytearray(
+            TxDataMessage(1, TxDataType.TX_WS, 1.0).pack()
+        )
+        infinite_observation[12:16] = struct.pack("<f", float("inf"))
+        with self.assertRaises(AttackProtocolError):
+            parse_message(infinite_observation)
+
+        infinite_replacement = bytearray(
+            AtDataMessage(1, TxDataType.TX_WS, 100, 1.0).pack()
+        )
+        infinite_replacement[16:20] = struct.pack("<f", float("-inf"))
+        with self.assertRaises(AttackProtocolError):
+            parse_message(infinite_replacement)
+
+        no_replacement = AtDataMessage(
+            1, TxDataType.TX_WS, 100, float("nan")
+        )
+        decoded = parse_message(no_replacement.pack())
+        self.assertIsInstance(decoded, AtDataMessage)
+        self.assertTrue(math.isnan(decoded.fake_value))
 
 
 class AttackStreamDecoderTests(unittest.TestCase):

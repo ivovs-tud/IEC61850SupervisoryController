@@ -81,6 +81,27 @@ TEST_CASE("tap control gates outgoing observations per turbine") {
     REQUIRE(readValue<float>(message, 12) == Catch::Approx(firstYaw));
 }
 
+TEST_CASE("integer observations retain their type on the attack interface") {
+    FakeAttackChannel channel;
+    FakeClock clock;
+    AttackInterface::AttackInterface attack(1, channel, clock);
+    configure(channel);
+
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::TAP,
+        AttackInterface::SignalType::OPERATION_COMMAND,
+        {1}));
+
+    attack.processValue(
+        1, AttackInterface::SignalType::OPERATION_COMMAND, uint32_t{3});
+
+    REQUIRE(channel.sentMessages().size() == 1);
+    const auto message = std::get<AttackInterface::TxDataMessage>(
+        sc::protocol::attack::decode(channel.sentMessages().front(), 1));
+    REQUIRE(message.dataType == AttackInterface::SignalType::OPERATION_COMMAND);
+    REQUIRE(std::get<uint32_t>(message.value) == 3);
+}
+
 TEST_CASE("FDI request accepts a matching response through the fake channel") {
     FakeAttackChannel channel;
     FakeClock clock(25'000);
