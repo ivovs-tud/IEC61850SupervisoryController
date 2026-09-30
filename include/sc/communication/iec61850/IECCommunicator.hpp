@@ -71,11 +71,6 @@ private:
         IECCommunicator& owner_;
     };
 
-    enum class TxValueType {
-        Float,
-        Unsigned,
-    };
-
     struct RxDescriptor {
         const char*                              name;
         const char*                              unit;
@@ -88,27 +83,32 @@ private:
         uint32_t                                 intervalMs;
     };
 
-    struct TxDescriptor {
-        const char*                                  name;
-        TxValueType                                  type;
-        std::function<void*(ControlData&, int)>      valuePtr;
-        AttackInterface::SignalType                  txDataType;
-        const char*                                  controlReference;
-        const char*                                  stateReference;
-        uint32_t                                     intervalMs;
+    struct FloatTxDescriptor {
+        const char*                              name;
+        std::vector<float> ControlData::*         values;
+        AttackInterface::SignalType              signalType;
+        const char*                              controlReference;
+        uint32_t                                 intervalMs;
     };
 
-    static std::string descToString(void* value, const TxDescriptor& desc);
+    struct EnumTxDescriptor {
+        const char*                              name;
+        std::vector<uint32_t> ControlData::*      values;
+        const char*                              controlReference;
+        const char*                              stateReference;
+        uint32_t                                 intervalMs;
+    };
+
     uint64_t getRxNextExecutionTimeMs(size_t index) const;
-    uint64_t getTxNextExecutionTimeMs(size_t index) const;
     void setRxNextExecutionTimeMs(size_t index, uint64_t timeMs);
-    void setTxNextExecutionTimeMs(size_t index, uint64_t timeMs);
 
     void executeRx();
     void executeTx();
     void recordSuccessfulCommunication();
     void updateConnectionStatus();
-    void doTxSetpoint(size_t idx, const TxDescriptor& desc);
+    void doTxFloatSetpoint(const FloatTxDescriptor& desc);
+    void doTxEnumCommand(const EnumTxDescriptor& desc);
+    void handleTxResult(const char* name, [[maybe_unused]] const std::string& value, bool writeSucceeded);
     void doRxMeasurement(size_t idx, const RxDescriptor& desc);
     void processRxMeasurement(const RxDescriptor& desc, float value, uint64_t timestampMs);
     void doRxSecret();
@@ -132,7 +132,8 @@ private:
     TxTask txTask_;
 
     std::vector<uint64_t> rxNextExecutionTimes_;    ///< next execution times for RX descriptors
-    std::vector<uint64_t> txNextExecutionTimes_;    ///< next execution times for TX descriptors
+    std::vector<uint64_t> floatTxNextExecutionTimes_;
+    std::vector<uint64_t> enumTxNextExecutionTimes_;
     struct BufferedRxMeasurement {
         float value {0.0f};
         uint64_t timestampMs {0};
@@ -146,5 +147,6 @@ private:
     std::mutex failureHandlerMutex_;
 
     static const RxDescriptor RX_DESCRIPTORS[];
-    static const TxDescriptor TX_DESCRIPTORS[];
+    static const FloatTxDescriptor FLOAT_TX_DESCRIPTORS[];
+    static const EnumTxDescriptor ENUM_TX_DESCRIPTORS[];
 };

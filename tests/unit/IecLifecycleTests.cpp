@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
@@ -64,6 +65,10 @@ struct IECCommunicatorTestAccess {
 
     static void executeRx(IECCommunicator& communicator) {
         communicator.executeRx();
+    }
+
+    static void executeTx(IECCommunicator& communicator) {
+        communicator.executeTx();
     }
 
     static std::size_t scheduledRxCount(const IECCommunicator& communicator) {
@@ -262,6 +267,50 @@ TEST_CASE("IEC communicator records activity only for accepted report values") {
     REQUIRE(communicator.lastActivityTime() != noActivity);
     REQUIRE(communicator.status() == COMM_CONNECTED);
     REQUIRE(IECCommunicatorTestAccess::bufferedReportCount(communicator) == 1);
+}
+
+TEST_CASE("IEC communicator maps typed control fields to their attack signals") {
+    SharedData::instance().configureTurbineCount(1);
+    {
+        auto& control = SharedData::instance().control;
+        std::lock_guard<std::mutex> lock(control.mutex);
+        control.powerSetpoints[0] = 125.5F;
+        control.yawSetpoints[0] = 271.25F;
+        control.turbineEnabled[0] = 1;
+        control.turbineController[0] = ControlData::controllerKomega2;
+    }
+
+    FakeClock clock;
+    FakeAttackChannel channel;
+    AttackInterface::AttackInterface attackInterface(1, channel, clock);
+    channel.receive(sc::protocol::attack::encode(
+        AttackInterface::CfgDataMessage{"typed transmit test", 0, 0}));
+    channel.receive(sc::protocol::attack::encode(AttackInterface::CtDataMessage{
+        AttackInterface::ControlSignal::TAP,
+        AttackInterface::SignalType::POWER_SETPOINT,
+        {1}}));
+    channel.receive(sc::protocol::attack::encode(AttackInterface::CtDataMessage{
+        AttackInterface::ControlSignal::TAP,
+        AttackInterface::SignalType::YAW_SETPOINT,
+        {1}}));
+    channel.clearSentMessages();
+
+    IEC61850Manager manager(clock);
+    manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
+    CommunicationConfig config;
+    IECCommunicator communicator(config, 1, manager, attackInterface);
+
+    IECCommunicatorTestAccess::executeTx(communicator);
+
+    REQUIRE(channel.sentMessages().size() == 2);
+    const auto powerMessage = std::get<AttackInterface::TxDataMessage>(
+        sc::protocol::attack::decode(channel.sentMessages()[0].data(), channel.sentMessages()[0].size(), 1));
+    const auto yawMessage = std::get<AttackInterface::TxDataMessage>(
+        sc::protocol::attack::decode(channel.sentMessages()[1].data(), channel.sentMessages()[1].size(), 1));
+    REQUIRE(powerMessage.dataType == AttackInterface::SignalType::POWER_SETPOINT);
+    REQUIRE(powerMessage.value == Catch::Approx(125.5F));
+    REQUIRE(yawMessage.dataType == AttackInterface::SignalType::YAW_SETPOINT);
+    REQUIRE(yawMessage.value == Catch::Approx(271.25F));
 }
 
 TEST_CASE("GOOSE resources can be configured and stopped repeatedly without starting reception") {

@@ -15,11 +15,14 @@ const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
     { "Tor", "Nm", IEC_STRINGS::GEN_TORQ, "WCNV1$MX$Torq", AttackInterface::SignalType::GENERATOR_TORQUE, &CollectedData::lastGenTorque, &CollectedData::genTorqueHistory, &CollectedData::lastGenTorque_t, 500 },
 };
 
-const IECCommunicator::TxDescriptor IECCommunicator::TX_DESCRIPTORS[] = {
-    { "WSpt", TxValueType::Float, [](ControlData& d, int i)->void* { return &d.powerSetpoints[i]; }, AttackInterface::SignalType::POWER_SETPOINT, IEC_STRINGS::WTUR_DmdWSpt, nullptr, 1000 },
-    { "YawSpt", TxValueType::Float, [](ControlData& d, int i)->void* { return &d.yawSetpoints[i]; }, AttackInterface::SignalType::YAW_SETPOINT, IEC_STRINGS::XWYAW_YawSpt, nullptr, 1000 },
-    { "OP_CMD", TxValueType::Unsigned, [](ControlData& d, int i)->void* { return &d.turbineEnabled[i]; }, AttackInterface::SignalType::NONE, IEC_STRINGS::WTUR_OP_CMD, IEC_STRINGS::WTUR_OP_CMD_VAL, 5000 },
-    { "TUR_CTL", TxValueType::Unsigned, [](ControlData& d, int i)->void* { return &d.turbineController[i]; }, AttackInterface::SignalType::NONE, IEC_STRINGS::WTUR_TURCTL, IEC_STRINGS::WTUR_TURCTL_VAL, 5000 },
+const IECCommunicator::FloatTxDescriptor IECCommunicator::FLOAT_TX_DESCRIPTORS[] = {
+    { "WSpt", &ControlData::powerSetpoints, AttackInterface::SignalType::POWER_SETPOINT, IEC_STRINGS::WTUR_DmdWSpt, 1000 },
+    { "YawSpt", &ControlData::yawSetpoints, AttackInterface::SignalType::YAW_SETPOINT, IEC_STRINGS::XWYAW_YawSpt, 1000 },
+};
+
+const IECCommunicator::EnumTxDescriptor IECCommunicator::ENUM_TX_DESCRIPTORS[] = {
+    { "OP_CMD", &ControlData::turbineEnabled, IEC_STRINGS::WTUR_OP_CMD, IEC_STRINGS::WTUR_OP_CMD_VAL, 5000 },
+    { "TUR_CTL", &ControlData::turbineController, IEC_STRINGS::WTUR_TURCTL, IEC_STRINGS::WTUR_TURCTL_VAL, 5000 },
 };
 
 IECCommunicator::IECCommunicator(const CommunicationConfig& config,
@@ -34,7 +37,8 @@ IECCommunicator::IECCommunicator(const CommunicationConfig& config,
       rxTask_(*this, config.mms.pollPeriod),
       txTask_(*this, config.mms.pollPeriod),
       rxNextExecutionTimes_(std::size(RX_DESCRIPTORS), 0),
-      txNextExecutionTimes_(std::size(TX_DESCRIPTORS), 0),
+      floatTxNextExecutionTimes_(std::size(FLOAT_TX_DESCRIPTORS), 0),
+      enumTxNextExecutionTimes_(std::size(ENUM_TX_DESCRIPTORS), 0),
       reportRxBuffer_(std::size(RX_DESCRIPTORS))
 {
     rxTask_.setFailureHandler([this](const std::string& message) {
@@ -122,10 +126,16 @@ void IECCommunicator::handleWorkerFailure(const char* workerName, const std::str
 void IECCommunicator::executeTx()
 {
     const uint64_t currentTimeMs = getCurrentTimeMs();
-    for (size_t i = 0; i < std::size(TX_DESCRIPTORS); ++i) {
-        if (currentTimeMs >= getTxNextExecutionTimeMs(i)) {
-            doTxSetpoint(static_cast<size_t>(i), TX_DESCRIPTORS[i]);
-            setTxNextExecutionTimeMs(i, getCurrentTimeMs() + TX_DESCRIPTORS[i].intervalMs);
+    for (size_t i = 0; i < std::size(FLOAT_TX_DESCRIPTORS); ++i) {
+        if (currentTimeMs >= floatTxNextExecutionTimes_[i]) {
+            doTxFloatSetpoint(FLOAT_TX_DESCRIPTORS[i]);
+            floatTxNextExecutionTimes_[i] = getCurrentTimeMs() + FLOAT_TX_DESCRIPTORS[i].intervalMs;
+        }
+    }
+    for (size_t i = 0; i < std::size(ENUM_TX_DESCRIPTORS); ++i) {
+        if (currentTimeMs >= enumTxNextExecutionTimes_[i]) {
+            doTxEnumCommand(ENUM_TX_DESCRIPTORS[i]);
+            enumTxNextExecutionTimes_[i] = getCurrentTimeMs() + ENUM_TX_DESCRIPTORS[i].intervalMs;
         }
     }
 }
@@ -163,33 +173,14 @@ void IECCommunicator::executeRx()
     }
 }
 
-std::string IECCommunicator::descToString(void* value, const TxDescriptor& desc)
-{
-    switch (desc.type) {
-        case TxValueType::Float: return std::to_string(*static_cast<float*>(value));
-        case TxValueType::Unsigned: return std::to_string(*static_cast<uint32_t*>(value));
-    }
-    return "unknown";
-}
-
 uint64_t IECCommunicator::getRxNextExecutionTimeMs(size_t index) const
 {
     return rxNextExecutionTimes_[index];
 }
 
-uint64_t IECCommunicator::getTxNextExecutionTimeMs(size_t index) const
-{
-    return txNextExecutionTimes_[index];
-}
-
 void IECCommunicator::setRxNextExecutionTimeMs(size_t index, uint64_t timeMs)
 {
     rxNextExecutionTimes_[index] = timeMs;
-}
-
-void IECCommunicator::setTxNextExecutionTimeMs(size_t index, uint64_t timeMs)
-{
-    txNextExecutionTimes_[index] = timeMs;
 }
 
 void IECCommunicator::recordSuccessfulCommunication()
@@ -209,65 +200,65 @@ void IECCommunicator::updateConnectionStatus()
     }
 }
 
-void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
+void IECCommunicator::doTxFloatSetpoint(const FloatTxDescriptor& desc)
 {
-    float floatValue = 0.0f;
-    uint32_t uintValue = 0;
-    void* value = nullptr;
+    float value = 0.0f;
     {
         auto& control = SharedData::instance().control;
         std::lock_guard<std::mutex> lock(control.mutex);
-        void* sharedValue = desc.valuePtr(control, turbineId_ - 1);
-        switch (desc.type) {
-            case TxValueType::Float:
-                floatValue = *static_cast<float*>(sharedValue);
-                value = &floatValue;
-                break;
-            case TxValueType::Unsigned:
-                uintValue = *static_cast<uint32_t*>(sharedValue);
-                value = &uintValue;
-                break;
-        }
+        value = (control.*desc.values)[turbineId_ - 1];
     }
 
-    std::string logMsg = "[SC→WT" + std::to_string(turbineId_) + "]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + descToString(value, desc);
+    std::string logMsg = "[SC→WT" + std::to_string(turbineId_) + "]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
 
-    if (desc.type == TxValueType::Float) {
-        attackInterface_.processValue(turbineId_, desc.txDataType, floatValue);
-    } else {
-        attackInterface_.processValue(turbineId_, desc.txDataType, uintValue);
-    }
+    attackInterface_.processValue(turbineId_, desc.signalType, value);
 
-    logMsg = "[SC→WT" + std::to_string(turbineId_) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + descToString(value, desc);
+    logMsg = "[SC→WT" + std::to_string(turbineId_) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);
     DataHistorian::instance().log(logMsg);
 
-    bool writeSucceeded = false;
     const std::string controlReference = iecManager_.buildRef(turbineId_, desc.controlReference);
-    if (desc.type == TxValueType::Float) {
-        writeSucceeded = iecManager_.writeControlledFloat(
-            turbineId_, controlReference, *static_cast<float*>(value), false);
-    } else if (desc.type == TxValueType::Unsigned && desc.stateReference != nullptr) {
-        const int requested = static_cast<int>(*static_cast<uint32_t*>(value));
-        const auto current = iecManager_.readInt(
-            turbineId_, iecManager_.buildRef(turbineId_, desc.stateReference), 0);
-        if (current) recordSuccessfulCommunication();
-        writeSucceeded = current && *current == requested;
-        if (!writeSucceeded) {
-            writeSucceeded = iecManager_.writeControlledEnum(
-                turbineId_, controlReference, requested, false);
-        }
+    const bool writeSucceeded = iecManager_.writeControlledFloat(turbineId_, controlReference, value, false);
+    handleTxResult(desc.name, std::to_string(value), writeSucceeded);
+}
+
+void IECCommunicator::doTxEnumCommand(const EnumTxDescriptor& desc)
+{
+    uint32_t value = 0;
+    {
+        auto& control = SharedData::instance().control;
+        std::lock_guard<std::mutex> lock(control.mutex);
+        value = (control.*desc.values)[turbineId_ - 1];
     }
 
+    const std::string valueText = std::to_string(value);
+    std::string logMsg = "[SC→WT" + std::to_string(turbineId_) + "]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + valueText;
+    DataHistorian::instance().log(logMsg);
+    logMsg = "[SC→WT" + std::to_string(turbineId_) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + valueText;
+    DataHistorian::instance().log(logMsg);
+
+    const int requested = static_cast<int>(value);
+    const auto current = iecManager_.readInt(turbineId_, iecManager_.buildRef(turbineId_, desc.stateReference), 0);
+    if (current) recordSuccessfulCommunication();
+
+    bool writeSucceeded = current && *current == requested;
+    if (!writeSucceeded) {
+        writeSucceeded = iecManager_.writeControlledEnum(turbineId_, iecManager_.buildRef(turbineId_, desc.controlReference), requested, false);
+    }
+    handleTxResult(desc.name, valueText, writeSucceeded);
+}
+
+void IECCommunicator::handleTxResult(const char* name, [[maybe_unused]] const std::string& value, bool writeSucceeded)
+{
     if (!writeSucceeded) {
         if (iecManager_.status(turbineId_) == IEC_LINK_CONNECTED) {
-            COMMTASK_ERR("Failed to write " << desc.name << " to turbine " << turbineId_);
+            COMMTASK_ERR("Failed to write " << name << " to turbine " << turbineId_);
         } else {
-            COMMTASK_LOG_V2("Deferred " << desc.name << " for reconnecting turbine " << turbineId_);
+            COMMTASK_LOG_V2("Deferred " << name << " for reconnecting turbine " << turbineId_);
         }
     } else {
         recordSuccessfulCommunication();
-        COMMTASK_LOG_V1("Sent " << desc.name << " to turbine " << turbineId_ << ": " << descToString(value, desc));
+        COMMTASK_LOG_V1("Sent " << name << " to turbine " << turbineId_ << ": " << value);
     }
     updateConnectionStatus();
 }
