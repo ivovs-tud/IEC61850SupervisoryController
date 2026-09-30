@@ -15,6 +15,7 @@ AttackInterface::AttackTiming makeAttackTiming(const CommunicationConfig& config
 {
     AttackInterface::AttackTiming timing;
     timing.sessionLeaseTimeout = config.attackInterface.leaseTimeout;
+    timing.reuseLastFdiValueOnFailure = config.attackInterface.reuseLastFdiValueOnFailure;
     return timing;
 }
 
@@ -195,7 +196,7 @@ void CommunicationOrchestrator::createCommunicators()
     for (size_t idx = 0; idx < config_.mms.turbines.size(); ++idx) {
         const int turbineId = static_cast<int>(idx) + 1;
         auto communicator = std::make_unique<IECCommunicator>(
-            config_, turbineId, iecManager_, attackInterface_, attackInterfaceMutex_);
+            config_, turbineId, iecManager_, attackInterface_);
         communicator->setFailureHandler([this](const std::string& message) {
             handleRuntimeFailure(message);
         });

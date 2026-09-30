@@ -146,6 +146,9 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
                          config.communication.attackInterface.heartbeatInterval);
         loadMilliseconds(root, "communication.attack_interface.lease_timeout_ms",
                          config.communication.attackInterface.leaseTimeout);
+        config.communication.attackInterface.reuseLastFdiValueOnFailure = root.get<bool>(
+            "communication.attack_interface.reuse_last_fdi_value_on_failure",
+            config.communication.attackInterface.reuseLastFdiValueOnFailure);
         config.communication.attackInterface.receiveBufferBytes = root.get<std::size_t>(
             "communication.attack_interface.receive_buffer_bytes",
             config.communication.attackInterface.receiveBufferBytes);

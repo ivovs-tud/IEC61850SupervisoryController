@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import threading
 import time
 from collections import deque
@@ -424,17 +423,7 @@ class AttackClient:
             return
         
         self._send(HeartbeatMessage())
-        self._publish_fdi_values()
         self._next_heartbeat_at = now + self.HEARTBEAT_INTERVAL_SECONDS
-
-    def _publish_fdi_values(self) -> None:
-        timestamp = self._wall_time_ms()
-        for signal_name, enabled_turbines in self._fdi_cfg.items():
-            signal_type = self.SIGNAL_TYPES[signal_name]
-            for turbine_index, enabled in enumerate(enabled_turbines):
-                value = self.fdi_next[signal_name][turbine_index]
-                if enabled and not math.isnan(value):
-                    self._send(AtDataMessage(turbine_index + 1, signal_type, timestamp, value))
 
     def _handle_tx_data(self, message: TxDataMessage) -> None:
         signal_name = self._TYPE2TEXT.get(message.data_type)
@@ -451,7 +440,11 @@ class AttackClient:
             return
         
         value = self.fdi_next[signal_name][message.turbine_id - 1]
-        self._send(AtDataMessage(message.turbine_id, message.data_type, self._wall_time_ms(), value))
+        self._send(AtDataMessage(
+            message.turbine_id,
+            message.data_type,
+            message.request_time_ms,
+            value))
 
     def _attack_loop(self) -> None:
         started_at = self._monotonic()

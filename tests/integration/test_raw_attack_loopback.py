@@ -111,7 +111,8 @@ class RawAttackLoopbackTests(unittest.TestCase):
             client.tap_communication("Yaw Setpoint", [1, 0])
             client.fdi_communication("Yaw Setpoint", [1, 0])
             client.fdi_next["Yaw Setpoint"][0] = 123.5
-            self.wait_for_client_value(client, "Yaw Setpoint", 123.5)
+            self.wait_for_client_value(client, "Yaw Setpoint", -1.0)
+            time.sleep(0.5)
 
             client.release()
             output, errors = server.communicate(timeout=5.0)
@@ -174,12 +175,13 @@ class RawAttackLoopbackTests(unittest.TestCase):
 
             saw_yaw = False
             saw_request_after_observation = False
-            saw_replacement = False
+            response_sent = False
+            saw_cycle_after_response = False
             last_yaw_setpoint = None
             next_heartbeat = time.monotonic()
             deadline = time.monotonic() + 5.0
             while time.monotonic() < deadline and not (
-                saw_yaw and saw_request_after_observation and saw_replacement
+                saw_yaw and saw_request_after_observation and saw_cycle_after_response
             ):
                 now = time.monotonic()
                 if now >= next_heartbeat:
@@ -189,10 +191,10 @@ class RawAttackLoopbackTests(unittest.TestCase):
                     if isinstance(message, TxDataMessage):
                         if message.data_type == TxDataType.TX_YAW:
                             saw_yaw = math.isclose(message.value, 7.0)
+                            if response_sent:
+                                saw_cycle_after_response = True
                         elif message.data_type == TxDataType.TX_SPT_YAW:
                             last_yaw_setpoint = message.value
-                            if math.isclose(message.value, 123.5):
-                                saw_replacement = True
                     elif isinstance(message, RqDataMessage):
                         if message.data_type == TxDataType.TX_SPT_YAW:
                             saw_request_after_observation = (
@@ -203,14 +205,15 @@ class RawAttackLoopbackTests(unittest.TestCase):
                                 AtDataMessage(
                                     message.turbine_id,
                                     message.data_type,
-                                    int(time.time_ns() // 1_000_000),
+                                    message.request_time_ms,
                                     123.5,
                                 ).pack()
                             )
+                            response_sent = True
 
             self.assertTrue(saw_yaw)
             self.assertTrue(saw_request_after_observation)
-            self.assertTrue(saw_replacement)
+            self.assertTrue(saw_cycle_after_response)
 
             client.sendall(ReleaseMessage().pack())
             client.close()

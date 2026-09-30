@@ -120,6 +120,7 @@
         "poll_period_ms": {"type": "integer", "minimum": 1},
         "heartbeat_interval_ms": {"type": "integer", "minimum": 1},
         "lease_timeout_ms": {"type": "integer", "minimum": 1},
+        "reuse_last_fdi_value_on_failure": {"type": "boolean"},
         "receive_buffer_bytes": {"type": "integer", "minimum": 268},
         "transmit_buffer_bytes": {"type": "integer", "minimum": 268},
         "zmq_heartbeat_interval_ms": {"type": "integer", "minimum": 1},

@@ -196,7 +196,7 @@ class AttackClientTests(unittest.TestCase):
         self.assertEqual(client.last_received["Yaw"][0], 15.25)
         self.assertEqual(
             parse_message(socket.sent[0]),
-            AtDataMessage(2, TxDataType.TX_SPT_YAW, 1_000, 42.5),
+            AtDataMessage(2, TxDataType.TX_SPT_YAW, 900, 42.5),
         )
 
     def test_expired_or_out_of_range_request_is_ignored(self):
@@ -281,10 +281,10 @@ class AttackClientTests(unittest.TestCase):
         client.poll_once()
         self.assertEqual(len(socket.sent), 1)
 
-    def test_heartbeat_publishes_enabled_fdi_values(self):
+    def test_heartbeat_does_not_publish_unsolicited_fdi_values(self):
         now = [0.0]
         client, socket = self.make_client(monotonic=lambda: now[0])
-        client.configure("proactive FDI test")
+        client.configure("heartbeat-only test")
         client.fdi_communication("Yaw Setpoint", [1, 0])
         client.fdi_next["Yaw Setpoint"][0] = 37.5
         socket.sent.clear()
@@ -293,10 +293,7 @@ class AttackClientTests(unittest.TestCase):
         client.poll_once()
 
         self.assertEqual(parse_message(socket.sent[0]), HeartbeatMessage())
-        self.assertEqual(
-            parse_message(socket.sent[1]),
-            AtDataMessage(1, TxDataType.TX_SPT_YAW, 1_000, 37.5),
-        )
+        self.assertEqual(len(socket.sent), 1)
 
     def test_configuration_requires_a_printable_label(self):
         client, _ = self.make_client()

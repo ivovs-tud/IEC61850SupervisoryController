@@ -45,6 +45,7 @@
       "poll_period_ms": 10,
       "heartbeat_interval_ms": 200,
       "lease_timeout_ms": 750,
+      "reuse_last_fdi_value_on_failure": true,
       "receive_buffer_bytes": 65536,
       "transmit_buffer_bytes": 65536,
       "zmq_heartbeat_interval_ms": 200,

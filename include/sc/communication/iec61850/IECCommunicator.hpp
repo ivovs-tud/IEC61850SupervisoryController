@@ -27,8 +27,7 @@ public:
     explicit IECCommunicator(const CommunicationConfig& config,
                              int turbineId,
                              IEC61850Manager& iecManager,
-                             AttackInterface::AttackInterface& attackInterface,
-                             std::mutex& attackInterfaceMutex);
+                             AttackInterface::AttackInterface& attackInterface);
     ~IECCommunicator();
 
     bool start();
@@ -125,7 +124,6 @@ private:
     int turbineId_;
     IEC61850Manager& iecManager_;
     AttackInterface::AttackInterface& attackInterface_;
-    std::mutex& attackInterfaceMutex_;
 
     std::atomic<CommunicationStatus> iecStatus_{COMM_DISCONNECTED};
     std::chrono::system_clock::time_point lastActivityTime_;

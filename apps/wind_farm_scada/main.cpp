@@ -120,6 +120,7 @@ CommunicationConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& ru
     config.attackInterface.pollPeriod = runtime.communication.attackInterface.pollPeriod;
     config.attackInterface.heartbeatInterval = runtime.communication.attackInterface.heartbeatInterval;
     config.attackInterface.leaseTimeout = runtime.communication.attackInterface.leaseTimeout;
+    config.attackInterface.reuseLastFdiValueOnFailure = runtime.communication.attackInterface.reuseLastFdiValueOnFailure;
     config.attackInterface.receiveBufferBytes = runtime.communication.attackInterface.receiveBufferBytes;
     config.attackInterface.transmitBufferBytes = runtime.communication.attackInterface.transmitBufferBytes;
     config.attackInterface.zmqHeartbeatInterval = runtime.communication.attackInterface.zmqHeartbeatInterval;

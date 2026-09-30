@@ -76,7 +76,6 @@ private:
     sc::ports::AttackChannel& attackChannel_;
     AttackInterface::AttackInterface attackInterface_;
     DataHistorianServer dataHistorianServer_;
-    std::mutex attackInterfaceMutex_;
     std::vector<std::unique_ptr<IECCommunicator>> communicators_;
     std::atomic<CommunicationStatus> socketStatus_{COMM_DISCONNECTED};
     std::atomic<CommunicationStatus> iecStatus_{COMM_DISCONNECTED};

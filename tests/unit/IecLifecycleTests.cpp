@@ -215,7 +215,6 @@ TEST_CASE("IEC communicator falls back to polling while its report is pending") 
     FakeClock clock;
     FakeAttackChannel channel;
     AttackInterface::AttackInterface attackInterface(1, channel, clock);
-    std::mutex attackInterfaceMutex;
     IEC61850Manager manager(clock, 100ms, 400ms);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
     REQUIRE(manager.connectTurbine(1));
@@ -224,7 +223,7 @@ TEST_CASE("IEC communicator falls back to polling while its report is pending") 
     config.mms.reportingEnabled = true;
     config.mms.reportControlBlockReference = "LLN0$RP$Measurements";
     config.mms.reportDataSetReference = "LLN0$Measurements";
-    IECCommunicator communicator(config, 1, manager, attackInterface, attackInterfaceMutex);
+    IECCommunicator communicator(config, 1, manager, attackInterface);
 
     IECCommunicatorTestAccess::startReporting(communicator);
     REQUIRE_FALSE(IECCommunicatorTestAccess::reportStarted(communicator));
@@ -243,13 +242,12 @@ TEST_CASE("IEC communicator records activity only for accepted report values") {
     FakeClock clock;
     FakeAttackChannel channel;
     AttackInterface::AttackInterface attackInterface(1, channel, clock);
-    std::mutex attackInterfaceMutex;
     IEC61850Manager manager(clock);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
 
     CommunicationConfig config;
     config.mms.reportingEnabled = false;
-    IECCommunicator communicator(config, 1, manager, attackInterface, attackInterfaceMutex);
+    IECCommunicator communicator(config, 1, manager, attackInterface);
     const auto noActivity = std::chrono::system_clock::time_point{};
 
     REQUIRE(communicator.lastActivityTime() == noActivity);

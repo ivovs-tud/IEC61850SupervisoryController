@@ -25,13 +25,11 @@ const IECCommunicator::TxDescriptor IECCommunicator::TX_DESCRIPTORS[] = {
 IECCommunicator::IECCommunicator(const CommunicationConfig& config,
                                  int turbineId,
                                  IEC61850Manager& iecManager,
-                                 AttackInterface::AttackInterface& attackInterface,
-                                 std::mutex& attackInterfaceMutex)
+                                 AttackInterface::AttackInterface& attackInterface)
     : config_(config),
       turbineId_(turbineId),
       iecManager_(iecManager),
       attackInterface_(attackInterface),
-      attackInterfaceMutex_(attackInterfaceMutex),
       lastActivityTime_(),
       rxTask_(*this, config.mms.pollPeriod),
       txTask_(*this, config.mms.pollPeriod),
@@ -216,7 +214,6 @@ void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
     float floatValue = 0.0f;
     uint32_t uintValue = 0;
     void* value = nullptr;
-    float f;
     {
         auto& control = SharedData::instance().control;
         std::lock_guard<std::mutex> lock(control.mutex);
@@ -236,21 +233,10 @@ void IECCommunicator::doTxSetpoint(size_t /*idx*/, const TxDescriptor& desc)
     std::string logMsg = "[SC→WT" + std::to_string(turbineId_) + "]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + descToString(value, desc);
     DataHistorian::instance().log(logMsg);
 
-    {
-        std::lock_guard<std::mutex> lock(attackInterfaceMutex_);
-        attackInterface_.txData(turbineId_, desc.txDataType, value);
-
-        if (desc.type == TxValueType::Float) {
-            //float& f = *static_cast<float*>(value);
-            f = *static_cast<float*>(value);
-            auto bOverwrite = attackInterface_.overwrite(turbineId_, desc.txDataType, f);
-            
-            if (bOverwrite < 0) {
-                COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId_);
-            } else if (bOverwrite > 0) { // Meaning we succefully overwritten
-                value = &f;     // We do this pointer trick here to make sure the actual value is not overwritten
-            }            
-        }
+    if (desc.type == TxValueType::Float) {
+        attackInterface_.processValue(turbineId_, desc.txDataType, floatValue);
+    } else {
+        attackInterface_.processValue(turbineId_, desc.txDataType, uintValue);
     }
 
     logMsg = "[SC→WT" + std::to_string(turbineId_) + "(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + descToString(value, desc);
@@ -317,14 +303,7 @@ void IECCommunicator::processRxMeasurement(const RxDescriptor& desc, float value
             std::lock_guard<std::mutex> lock(collected.mutex);
             collected.measuredPower[turbineId_ - 1] = value;
     }
-    {
-        std::lock_guard<std::mutex> lock(attackInterfaceMutex_);
-        attackInterface_.txData(turbineId_, desc.txDataType, &value);
-
-        if (attackInterface_.overwrite(turbineId_, desc.txDataType, value) < 0) {
-            COMMTASK_ERR("Failed to get overwrite decision for " << desc.name << " from turbine " << turbineId_);
-        }
-    }
+    attackInterface_.processValue(turbineId_, desc.txDataType, value);
 
     COMMTASK_LOG_V1("Received (post-overwrite) " << desc.name << " for turbine " << turbineId_ << ": " << value << " " << desc.unit);
     logMsg = "[WT" + std::to_string(turbineId_) + "→SC(A)]" + std::to_string(getCurrentTimeMs()) + ";" + desc.name + "=" + std::to_string(value);

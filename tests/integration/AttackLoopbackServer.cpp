@@ -27,7 +27,6 @@ int main(int argc, char* argv[]) {
     AttackChannelZMQ channel(channelConfig);
     AttackInterface::AttackTiming timing;
     timing.requestLifetime = std::chrono::milliseconds(200);
-    timing.requestRetryPeriod = std::chrono::milliseconds(100);
     AttackInterface::AttackInterface attack(2, channel, sc::ports::systemClock(), timing);
 
     std::atomic<bool> running{true};
@@ -40,7 +39,7 @@ int main(int argc, char* argv[]) {
         if (slowReaderMode && event.find("event=attack_started") != std::string::npos) {
             for (int index = 0; index < 256; ++index) {
                 float yaw = static_cast<float>(index);
-                attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, &yaw);
+                attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
             }
         }
         if (event.find("event=disconnected") != std::string::npos) {
@@ -58,13 +57,13 @@ int main(int argc, char* argv[]) {
     int overwriteTimeoutCount = 0;
     while (running.load()) {
         float yaw = 7.0F;
-        attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, &yaw);
+        attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
 
         float yawSetpoint = -1.0F;
-        const auto result = attack.overwrite(1, AttackInterface::SignalType::YAW_SETPOINT, yawSetpoint);
+        const auto result = attack.processValue(
+            1, AttackInterface::SignalType::YAW_SETPOINT, yawSetpoint);
         if (result == AttackInterface::AI_OK) {
             ++overwriteSuccessCount;
-            attack.txData(1, AttackInterface::SignalType::YAW_SETPOINT, &yawSetpoint);
         } else if (result == AttackInterface::AI_TIMEOUT) {
             ++overwriteTimeoutCount;
         }

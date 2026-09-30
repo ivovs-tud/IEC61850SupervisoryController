@@ -69,7 +69,6 @@ int main(int argc, char* argv[]) {
 
     AttackInterface::AttackTiming timing;
     timing.requestLifetime = std::chrono::milliseconds(200);
-    timing.requestRetryPeriod = std::chrono::milliseconds(100);
     if (mode == Mode::LeaseTimeout) {
         timing.sessionLeaseTimeout = std::chrono::milliseconds(250);
     }
@@ -93,7 +92,7 @@ int main(int argc, char* argv[]) {
             if (mode == Mode::SlowReader) {
                 for (int index = 0; index < 256; ++index) {
                     float yaw = static_cast<float>(index);
-                    attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, &yaw);
+                    attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
                 }
             }
         }
@@ -141,14 +140,13 @@ int main(int argc, char* argv[]) {
             continue;
         }
         float yaw = 7.0F;
-        attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, &yaw);
+        attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
 
         float yawSetpoint = -1.0F;
-        const auto result = attack.overwrite(
+        const auto result = attack.processValue(
             1, AttackInterface::SignalType::YAW_SETPOINT, yawSetpoint);
         if (result == AttackInterface::AI_OK) {
             ++overwriteSuccessCount;
-            attack.txData(1, AttackInterface::SignalType::YAW_SETPOINT, &yawSetpoint);
         } else if (result == AttackInterface::AI_TIMEOUT) {
             ++overwriteTimeoutCount;
         }

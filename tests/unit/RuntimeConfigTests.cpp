@@ -28,6 +28,7 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
     REQUIRE(config.communication.attackInterface.bindAddress == "0.0.0.0");
     REQUIRE(config.communication.attackInterface.heartbeatInterval == 200ms);
     REQUIRE(config.communication.attackInterface.leaseTimeout == 750ms);
+    REQUIRE(config.communication.attackInterface.reuseLastFdiValueOnFailure);
     REQUIRE(config.communication.attackInterface.receiveBufferBytes == 64 * 1024);
     REQUIRE(config.communication.attackInterface.transmitBufferBytes == 64 * 1024);
     REQUIRE(config.communication.attackInterface.zmqHeartbeatInterval == 200ms);
@@ -73,6 +74,7 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
         "  \"communication\": {\n"
         "    \"attack_interface\": {\n"
         "      \"transport\": \"tcp\", \"bind_address\": \"127.0.0.1\",\n"
+        "      \"reuse_last_fdi_value_on_failure\": false,\n"
         "      \"receive_buffer_bytes\": 4096, \"transmit_buffer_bytes\": 8192,\n"
         "      \"tcp_user_timeout_ms\": 1200\n"
         "    },\n"
@@ -95,6 +97,7 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
     REQUIRE(config.historian.outputDirectory == parent / "logs");
     REQUIRE(config.communication.attackInterface.transport == sc::ports::AttackTransport::TCP);
     REQUIRE(config.communication.attackInterface.bindAddress == "127.0.0.1");
+    REQUIRE_FALSE(config.communication.attackInterface.reuseLastFdiValueOnFailure);
     REQUIRE(config.communication.attackInterface.receiveBufferBytes == 4096);
     REQUIRE(config.communication.attackInterface.transmitBufferBytes == 8192);
     REQUIRE(config.communication.attackInterface.tcpUserTimeout == 1200ms);

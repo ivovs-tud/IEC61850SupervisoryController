@@ -91,6 +91,7 @@ struct RuntimeConfig {
             std::chrono::milliseconds pollPeriod{10};
             std::chrono::milliseconds heartbeatInterval{200};
             std::chrono::milliseconds leaseTimeout{750};
+            bool reuseLastFdiValueOnFailure{true};
             std::size_t receiveBufferBytes{64 * 1024};
             std::size_t transmitBufferBytes{64 * 1024};
             std::chrono::milliseconds zmqHeartbeatInterval{200};

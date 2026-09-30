@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -68,8 +69,8 @@ TEST_CASE("tap control gates outgoing observations per turbine") {
 
     float firstYaw = 12.5F;
     float secondYaw = 19.0F;
-    attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, &firstYaw);
-    attack.txData(2, AttackInterface::SignalType::YAW_ANGLE, &secondYaw);
+    attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, firstYaw);
+    attack.txData(2, AttackInterface::SignalType::YAW_ANGLE, secondYaw);
 
     REQUIRE(channel.sentMessages().size() == 1);
     const auto& message = channel.sentMessages().front();
@@ -99,7 +100,7 @@ TEST_CASE("FDI request accepts a matching response through the fake channel") {
         channel.receive(sc::protocol::attack::encode(AttackInterface::AtDataMessage{
             requestBytes[1],
             readValue<AttackInterface::SignalType>(requestBytes, 4),
-            clock.unixTimeMilliseconds(),
+            readValue<AttackInterface::TimeStamp>(requestBytes, 8),
             91.25F}));
     });
 
@@ -113,12 +114,62 @@ TEST_CASE("FDI request accepts a matching response through the fake channel") {
     REQUIRE(readValue<AttackInterface::TimeStamp>(request, 16) == 25'250);
 }
 
-TEST_CASE("missing FDI value returns immediately and preserves the original value") {
+TEST_CASE("tap and FDI emit one observation before the replacement request") {
+    FakeAttackChannel channel;
+    FakeClock clock(25'000);
+    AttackInterface::AttackInterface attack(1, channel, clock);
+    configure(channel);
+
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::TAP,
+        AttackInterface::SignalType::WIND_SPEED,
+        {1}));
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::FDI,
+        AttackInterface::SignalType::WIND_SPEED,
+        {1}));
+
+    channel.setSendObserver([&](const std::vector<uint8_t>& message) {
+        if (message[0] == static_cast<uint8_t>(AttackInterface::MessageType::RQ_DATA)) {
+            channel.receive(sc::protocol::attack::encode(AttackInterface::AtDataMessage{
+                message[1],
+                readValue<AttackInterface::SignalType>(message, 4),
+                readValue<AttackInterface::TimeStamp>(message, 8),
+                12.0F}));
+        }
+    });
+
+    float value = 8.0F;
+    REQUIRE(attack.processValue(1, AttackInterface::SignalType::WIND_SPEED, value) == AttackInterface::AI_OK);
+
+    REQUIRE(value == Catch::Approx(12.0F));
+    REQUIRE(channel.sentMessages().size() == 2);
+    REQUIRE(channel.sentMessages()[0][0] == static_cast<uint8_t>(AttackInterface::MessageType::TX_DATA));
+    REQUIRE(channel.sentMessages()[1][0] == static_cast<uint8_t>(AttackInterface::MessageType::RQ_DATA));
+}
+
+TEST_CASE("process value still emits a tap observation when FDI is disabled") {
+    FakeAttackChannel channel;
+    FakeClock clock;
+    AttackInterface::AttackInterface attack(1, channel, clock);
+    configure(channel);
+
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::TAP,
+        AttackInterface::SignalType::WIND_SPEED,
+        {1}));
+
+    float value = 8.0F;
+    REQUIRE(attack.processValue(1, AttackInterface::SignalType::WIND_SPEED, value) == AttackInterface::AI_DISABLED);
+    REQUIRE(channel.sentMessages().size() == 1);
+    REQUIRE(channel.sentMessages()[0][0] == static_cast<uint8_t>(AttackInterface::MessageType::TX_DATA));
+}
+
+TEST_CASE("FDI response timeout preserves the original value") {
     FakeAttackChannel channel;
     FakeClock clock(50'000);
     AttackInterface::AttackTiming timing;
     timing.requestLifetime = std::chrono::milliseconds(20);
-    timing.requestRetryPeriod = std::chrono::milliseconds(5);
     AttackInterface::AttackInterface attack(1, channel, clock, timing);
     configure(channel);
 
@@ -138,10 +189,12 @@ TEST_CASE("missing FDI value returns immediately and preserves the original valu
     REQUIRE(readValue<AttackInterface::TimeStamp>(request, 16) == 50'020);
 }
 
-TEST_CASE("IEC-side overwrite reads a proactively supplied FDI value locally") {
+TEST_CASE("unsolicited FDI values are not applied") {
     FakeAttackChannel channel;
     FakeClock clock;
-    AttackInterface::AttackInterface attack(1, channel, clock);
+    AttackInterface::AttackTiming timing;
+    timing.requestLifetime = std::chrono::milliseconds(1);
+    AttackInterface::AttackInterface attack(1, channel, clock, timing);
     configure(channel);
     channel.receive(controlMessage(
         AttackInterface::ControlSignal::FDI,
@@ -156,10 +209,90 @@ TEST_CASE("IEC-side overwrite reads a proactively supplied FDI value locally") {
     channel.clearSentMessages();
 
     float value = 500.0F;
+    REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_TIMEOUT);
+    REQUIRE(value == Catch::Approx(500.0F));
+    REQUIRE(channel.sentMessages().size() == 1);
+}
+
+TEST_CASE("NaN and timeout can reuse the last finite FDI response") {
+    FakeAttackChannel channel;
+    FakeClock clock;
+    AttackInterface::AttackTiming timing;
+    timing.requestLifetime = std::chrono::milliseconds(1);
+    AttackInterface::AttackInterface attack(1, channel, clock, timing);
+    configure(channel);
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::FDI,
+        AttackInterface::SignalType::POWER_SETPOINT,
+        {1}));
+
+    int requestCount = 0;
+    channel.setSendObserver([&](const std::vector<uint8_t>& request) {
+        if (request[0] != static_cast<uint8_t>(AttackInterface::MessageType::RQ_DATA)) return;
+        ++requestCount;
+        if (requestCount > 2) return;
+        const float response = requestCount == 1
+            ? 91.0F
+            : std::numeric_limits<float>::quiet_NaN();
+        channel.receive(sc::protocol::attack::encode(AttackInterface::AtDataMessage{
+            request[1],
+            readValue<AttackInterface::SignalType>(request, 4),
+            readValue<AttackInterface::TimeStamp>(request, 8),
+            response}));
+    });
+
+    float value = 10.0F;
     REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_OK);
-    REQUIRE(value == Catch::Approx(125.0F));
-    REQUIRE(channel.sentMessages().empty());
-    REQUIRE(clock.steadyNow().time_since_epoch() == std::chrono::milliseconds(0));
+    REQUIRE(value == Catch::Approx(91.0F));
+
+    value = 20.0F;
+    REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_OK);
+    REQUIRE(value == Catch::Approx(91.0F));
+
+    value = 30.0F;
+    REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_OK);
+    REQUIRE(value == Catch::Approx(91.0F));
+}
+
+TEST_CASE("cached FDI fallback can be disabled") {
+    FakeAttackChannel channel;
+    FakeClock clock;
+    AttackInterface::AttackTiming timing;
+    timing.requestLifetime = std::chrono::milliseconds(1);
+    timing.reuseLastFdiValueOnFailure = false;
+    AttackInterface::AttackInterface attack(1, channel, clock, timing);
+    configure(channel);
+    channel.receive(controlMessage(
+        AttackInterface::ControlSignal::FDI,
+        AttackInterface::SignalType::POWER_SETPOINT,
+        {1}));
+
+    int requestCount = 0;
+    channel.setSendObserver([&](const std::vector<uint8_t>& request) {
+        if (request[0] != static_cast<uint8_t>(AttackInterface::MessageType::RQ_DATA)) return;
+        ++requestCount;
+        if (requestCount > 2) return;
+        const float response = requestCount == 1
+            ? 91.0F
+            : std::numeric_limits<float>::quiet_NaN();
+        channel.receive(sc::protocol::attack::encode(AttackInterface::AtDataMessage{
+            request[1],
+            readValue<AttackInterface::SignalType>(request, 4),
+            readValue<AttackInterface::TimeStamp>(request, 8),
+            response}));
+    });
+
+    float value = 10.0F;
+    REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_OK);
+    REQUIRE(value == Catch::Approx(91.0F));
+
+    value = 20.0F;
+    REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_TIMEOUT);
+    REQUIRE(value == Catch::Approx(20.0F));
+
+    value = 30.0F;
+    REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_TIMEOUT);
+    REQUIRE(value == Catch::Approx(30.0F));
 }
 
 TEST_CASE("reconfiguration and malformed control messages leave tapping disabled") {
@@ -179,7 +312,7 @@ TEST_CASE("reconfiguration and malformed control messages leave tapping disabled
 
     channel.clearSentMessages();
     float value = 8.0F;
-    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, value);
     REQUIRE(channel.sentMessages().empty());
     REQUIRE(attack.overwrite(1, AttackInterface::SignalType::WIND_SPEED, value) == AttackInterface::AI_DISABLED);
 }
@@ -204,13 +337,13 @@ TEST_CASE("heartbeat lease expiry revokes attack controls and records disconnect
     channel.checkLease();
 
     float value = 8.0F;
-    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, value);
     REQUIRE(channel.sentMessages().size() == 1);
 
     clock.advance(std::chrono::milliseconds(250));
     channel.checkLease();
     channel.clearSentMessages();
-    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, value);
     REQUIRE(channel.sentMessages().empty());
     REQUIRE(auditEvents.back().find("event=disconnected;reason=lease timeout") != std::string::npos);
 }
@@ -231,7 +364,7 @@ TEST_CASE("explicit release revokes controls through the same cleanup path") {
     channel.receive(sc::protocol::attack::encode(AttackInterface::ReleaseMessage{}));
 
     float value = 8.0F;
-    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, value);
     REQUIRE(channel.sentMessages().empty());
     REQUIRE(auditEvents.size() == eventCount);
     REQUIRE(auditEvents.back().find("event=disconnected;reason=client release") != std::string::npos);
@@ -251,7 +384,7 @@ TEST_CASE("transport disconnect revokes controls through the same cleanup path")
 
     channel.disconnect("peer closed connection");
     float value = 8.0F;
-    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, value);
 
     REQUIRE(channel.sentMessages().empty());
     REQUIRE(auditEvents.back().find(
@@ -269,11 +402,14 @@ TEST_CASE("cleanup reveals the latest authoritative value and runs only once") {
         AttackInterface::ControlSignal::FDI,
         AttackInterface::SignalType::POWER_SETPOINT,
         {1}));
-    channel.receive(sc::protocol::attack::encode(AttackInterface::AtDataMessage{
-        1,
-        AttackInterface::SignalType::POWER_SETPOINT,
-        clock.unixTimeMilliseconds(),
-        91.0F}));
+    channel.setSendObserver([&](const std::vector<uint8_t>& request) {
+        if (request[0] != static_cast<uint8_t>(AttackInterface::MessageType::RQ_DATA)) return;
+        channel.receive(sc::protocol::attack::encode(AttackInterface::AtDataMessage{
+            request[1],
+            readValue<AttackInterface::SignalType>(request, 4),
+            readValue<AttackInterface::TimeStamp>(request, 8),
+            91.0F}));
+    });
 
     float value = 10.0F;
     REQUIRE(attack.overwrite(1, AttackInterface::SignalType::POWER_SETPOINT, value) == AttackInterface::AI_OK);
@@ -314,7 +450,7 @@ TEST_CASE("a late heartbeat cannot revive an expired attack session") {
 
     channel.clearSentMessages();
     float value = 8.0F;
-    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, value);
     REQUIRE(channel.sentMessages().empty());
 }
 
@@ -335,7 +471,7 @@ TEST_CASE("configuration acknowledgement failure revokes the new session") {
 
     channel.clearSentMessages();
     float value = 8.0F;
-    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, &value);
+    attack.txData(1, AttackInterface::SignalType::WIND_SPEED, value);
     REQUIRE(channel.sentMessages().empty());
     REQUIRE(auditEvents.back().find(
         "event=disconnected;reason=configuration acknowledgement failed") != std::string::npos);
