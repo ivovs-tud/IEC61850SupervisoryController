@@ -84,14 +84,8 @@ struct SimCtrlMessage {
 struct HeartbeatMessage {};
 struct ReleaseMessage {};
 
-using Message = std::variant<TxDataMessage,
-                             RqDataMessage,
-                             AtDataMessage,
-                             CtDataMessage,
-                             CfgDataMessage,
-                             SimCtrlMessage,
-                             HeartbeatMessage,
-                             ReleaseMessage>;
+using Message = std::variant<TxDataMessage, RqDataMessage, AtDataMessage, CtDataMessage, 
+                             CfgDataMessage, SimCtrlMessage, HeartbeatMessage, ReleaseMessage>;
 
 class ProtocolError : public std::runtime_error {
 public:

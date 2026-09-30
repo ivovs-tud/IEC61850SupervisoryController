@@ -113,11 +113,7 @@ public:
      * @param port MMS port (default 102).
      */
 
-    void addTurbine(int id,
-                    const std::string& ip,
-                    int port,
-                    const std::string& logicalDevice,
-                    const std::string& iedName = "");
+    void addTurbine(int id, const std::string& ip, int port, const std::string& logicalDevice, const std::string& iedName = "");
     /**
      * @brief Register a turbine with logical-device metadata for MMS reference generation.
      * @param logicalDevice Logical Device name (e.g. "WTGLD1").
@@ -151,9 +147,7 @@ public:
 
     // ── Read / Write ────────────────────────────────────────────────────────
 
-    std::optional<float> readFloat(int turbineId,
-                                   const std::string& daReference,
-                                   int fc);
+    std::optional<float> readFloat(int turbineId, const std::string& daReference, int fc);
     /**
      * @brief Read a float value from a turbine data attribute.
      * @param turbineId   Integer turbine ID (1-based).
@@ -162,29 +156,17 @@ public:
      * @return The float value, or std::nullopt on failure.
      */
 
-    bool writeFloat(int turbineId,
-                    const std::string& daReference,
-                    int fc,
-                    float value);
+    bool writeFloat(int turbineId, const std::string& daReference, int fc, float value);
     /**
      * @brief Write a float value to a turbine data attribute.
      * @return true on success, false on failure.
      */
 
-    bool writeControlledFloat(int turbineId,
-                              const std::string& controlObjectReference,
-                              float value,
-                              bool useSelectBeforeOperate);
+    bool writeControlledFloat(int turbineId, const std::string& controlObjectReference, float value, bool useSelectBeforeOperate);
 
-    bool writeControlledInt(int turbineId,
-                            const std::string& controlObjectReference,
-                            int value,
-                            bool useSelectBeforeOperate);
+    bool writeControlledInt(int turbineId, const std::string& controlObjectReference, int value, bool useSelectBeforeOperate);
 
-    bool writeControlledEnum(int turbineId,
-                             const std::string& controlObjectReference,
-                             int enumOrdinal,
-                             bool useSelectBeforeOperate);
+    bool writeControlledEnum(int turbineId, const std::string& controlObjectReference, int enumOrdinal, bool useSelectBeforeOperate);
     /**
      * @brief Write a control value using IEC 61850 control services.
      *
@@ -200,34 +182,23 @@ public:
      * @return true on success, false on failure.
      */
 
-    std::optional<int> readInt(int turbineId,
-                               const std::string& daReference,
-                               int fc);
+    std::optional<int> readInt(int turbineId, const std::string& daReference, int fc);
     /**
      * @brief Read an integer value from a turbine data attribute.
      * @return The integer value, or std::nullopt on failure.
      */
 
-    bool writeInt(int turbineId,
-                  const std::string& daReference,
-                  int fc,
-                  int value);
+    bool writeInt(int turbineId, const std::string& daReference, int fc, int value);
     /**
      * @brief Write an integer value to a turbine data attribute.
      * @return true on success, false on failure.
      */
 
-    std::optional<std::string> readString(int turbineId,
-                                          const std::string& daReference,
-                                          int fc);
+    std::optional<std::string> readString(int turbineId, const std::string& daReference, int fc);
     /** @brief Read a string from a turbine data attribute. */
 
-    bool startPeriodicReport(int turbineId,
-                             const std::string& rcbReference,
-                             const std::string& dataSetReference,
-                             uint32_t integrityPeriodMs,
-                             const std::vector<std::string>& fallbackDataReferences,
-                             IecReportCallback callback);
+    bool startPeriodicReport(int turbineId, const std::string& rcbReference, const std::string& dataSetReference, uint32_t integrityPeriodMs, 
+                                const std::vector<std::string>& fallbackDataReferences, IecReportCallback callback);
     /**
      * @brief Configure and enable an IEC 61850 periodic integrity report.
      *
@@ -265,9 +236,7 @@ public:
 
     // ── Model interrogation ──────────────────────────────────────────────────
 
-    std::map<std::string, bool> checkSupported(int turbineId,
-                                               const std::vector<std::string>& references,
-                                               int fc);
+    std::map<std::string, bool> checkSupported(int turbineId, const std::vector<std::string>& references, int fc);
     /**
      * @brief Check whether a list of DA references are readable on a turbine.
      *
@@ -320,10 +289,7 @@ public:
     bool periodicReportActive(int turbineId, const std::string& rcbReference);
 
     bool configureGoose(const std::string& networkInterface);
-    bool addGooseSubscription(int turbineId,
-                              const std::string& controlBlockReference,
-                              GooseCallback callback,
-                              uint16_t appId = 1000);
+    bool addGooseSubscription(int turbineId, const std::string& controlBlockReference, GooseCallback callback, uint16_t appId = 1000);
     bool startGoose();
     void stopGoose();
     bool gooseRunning() const;
@@ -354,12 +320,8 @@ private:
      *        Caller must hold the turbine mutex.
      */
 
-    bool performSelectAndOperate(void* controlObjectClient,
-                                 void* mmsValue,
-                                 int turbineId,
-                                 const std::string& controlObjectReference,
-                                 const std::string& functionName,
-                                 bool useSelectBeforeOperate);
+    bool performSelectAndOperate(void* controlObjectClient, void* mmsValue, int turbineId, const std::string& controlObjectReference, 
+                                    const std::string& functionName, bool useSelectBeforeOperate);
     /**
      * @brief Common select-and-operate logic for controlled writes.
      *        Caller must hold the turbine mutex.  Passed as void* to avoid
@@ -367,11 +329,8 @@ private:
      * @return true if select+operate succeeded, false otherwise.
      */
 
-    bool writeControlledGeneric(int turbineId,
-                                const std::string& controlObjectReference,
-                                const std::string& functionName,
-                                std::function<void*()> createMmsValue,
-                                bool useSelectBeforeOperate);
+    bool writeControlledGeneric(int turbineId, const std::string& controlObjectReference, const std::string& functionName, 
+                                    std::function<void*()> createMmsValue, bool useSelectBeforeOperate);
     /**
      * @brief Generic helper for all writeControlled* variants.
      *        Handles turbine lookup, connection check, control object creation,

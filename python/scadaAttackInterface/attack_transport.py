@@ -65,43 +65,54 @@ class ZeroMqAttackTransport(AttackTransport):
             if self._context is None:
                 self._context = zmq.Context()
                 self._owns_context = True
+
             self._socket = self._context.socket(zmq.PAIR)
             self._socket.setsockopt(zmq.SNDHWM, self.MAX_MESSAGES)
             self._socket.setsockopt(zmq.RCVTIMEO, self.RECEIVE_TIMEOUT_MS)
             self._socket.setsockopt(zmq.SNDTIMEO, self.SEND_TIMEOUT_MS)
             self._socket.setsockopt(zmq.HEARTBEAT_IVL, self.HEARTBEAT_INTERVAL_MS)
             self._socket.setsockopt(zmq.HEARTBEAT_TIMEOUT, self.HEARTBEAT_TIMEOUT_MS)
+
         self._closed = False
 
     def connect(self, server_ip: str, port: int) -> None:
         try:
             self._socket.connect(f"tcp://{server_ip}:{port}")
+
         except (OSError, zmq.ZMQError) as error:
             raise AttackTransportError(f"ZeroMQ connection failed: {error}") from error
 
     def send(self, payload: bytes) -> None:
         if self._closed:
             raise AttackTransportError("ZeroMQ transport is closed")
+        
         try:
             self._socket.send(payload)
+
         except (OSError, zmq.ZMQError) as error:
             raise AttackTransportError(f"ZeroMQ send failed: {error}") from error
 
     def receive(self, timeout: float = 0.0) -> list[AttackMessage]:
         if self._closed:
             raise AttackTransportError("ZeroMQ transport is closed")
+        
         try:
             poll = getattr(self._socket, "poll", None)
             if poll is not None and not poll(max(0, int(timeout * 1000)), zmq.POLLIN):
                 return []
+            
             raw = self._socket.recv(flags=zmq.NOBLOCK)
             return [parse_message(bytes(raw))]
+        
         except (BlockingIOError, zmq.Again):
             if timeout > 0 and getattr(self._socket, "poll", None) is None:
                 time.sleep(timeout)
+
             return []
+        
         except AttackProtocolError:
             raise
+
         except (OSError, zmq.ZMQError) as error:
             raise AttackTransportError(f"ZeroMQ receive failed: {error}") from error
 
@@ -112,12 +123,15 @@ class ZeroMqAttackTransport(AttackTransport):
     def close(self) -> None:
         if self._closed:
             return
+        
         self._closed = True
         try:
             try:
                 self._socket.close(linger=0)
+
             except TypeError:
                 self._socket.close()
+
         finally:
             if self._owns_context and self._context is not None:
                 self._context.term()
@@ -128,13 +142,7 @@ class TcpAttackTransport(AttackTransport):
 
     CONNECT_TIMEOUT_SECONDS = 1.0
 
-    def __init__(
-        self,
-        num_turbines: int,
-        *,
-        receive_buffer_bytes: int = DEFAULT_BUFFER_LIMIT,
-        transmit_buffer_bytes: int = DEFAULT_BUFFER_LIMIT,
-    ) -> None:
+    def __init__(self, num_turbines: int, *, receive_buffer_bytes: int = DEFAULT_BUFFER_LIMIT, transmit_buffer_bytes: int = DEFAULT_BUFFER_LIMIT) -> None:
         if receive_buffer_bytes <= 0 or transmit_buffer_bytes <= 0:
             raise ValueError("TCP attack buffers must be positive")
         self._decoder = AttackStreamDecoder(num_turbines, receive_buffer_bytes)
@@ -150,23 +158,26 @@ class TcpAttackTransport(AttackTransport):
     def connect(self, server_ip: str, port: int) -> None:
         if self._socket is not None:
             raise AttackTransportError("TCP transport is already connected")
+        
         connection: socket_module.socket | None = None
         selector: selectors.BaseSelector | None = None
         try:
-            connection = socket_module.create_connection(
-                (server_ip, port), timeout=self.CONNECT_TIMEOUT_SECONDS
-            )
+            connection = socket_module.create_connection((server_ip, port), timeout=self.CONNECT_TIMEOUT_SECONDS)
             connection.setsockopt(socket_module.IPPROTO_TCP, socket_module.TCP_NODELAY, 1)
             connection.setsockopt(socket_module.SOL_SOCKET, socket_module.SO_KEEPALIVE, 1)
             connection.setblocking(False)
             selector = selectors.DefaultSelector()
             selector.register(connection, selectors.EVENT_READ)
+
         except OSError as error:
             if selector is not None:
                 selector.close()
+
             if connection is not None:
                 connection.close()
+
             raise AttackTransportError(f"TCP connection failed: {error}") from error
+        
         self._socket = connection
         self._selector = selector
 
@@ -174,8 +185,10 @@ class TcpAttackTransport(AttackTransport):
         self._require_connected()
         if not payload:
             raise AttackTransportError("cannot send an empty attack message")
+        
         if len(payload) > self._transmit_buffer_bytes - self._queued_bytes:
             raise AttackTransportError("TCP attack transmit buffer overflow")
+        
         self._outbound.append(bytes(payload))
         self._queued_bytes += len(payload)
         self._update_selector()
@@ -184,6 +197,7 @@ class TcpAttackTransport(AttackTransport):
         self._require_connected()
         if not self._received:
             self._service(timeout)
+
         messages = list(self._received)
         self._received.clear()
         return messages
@@ -195,7 +209,9 @@ class TcpAttackTransport(AttackTransport):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return False
+            
             self._service(remaining)
+
         return True
 
     def close(self) -> None:
@@ -207,11 +223,15 @@ class TcpAttackTransport(AttackTransport):
             try:
                 if connection is not None:
                     selector.unregister(connection)
+
             except (KeyError, ValueError):
                 pass
+
             selector.close()
+
         if connection is not None:
             connection.close()
+
         self._outbound.clear()
         self._received.clear()
         self._send_offset = 0
@@ -226,11 +246,14 @@ class TcpAttackTransport(AttackTransport):
             for _, mask in events:
                 if mask & selectors.EVENT_WRITE:
                     self._write_available()
+
                 if mask & selectors.EVENT_READ:
                     self._read_available()
+
         except AttackProtocolError:
             self.close()
             raise
+
         except (ConnectionError, OSError) as error:
             self.close()
             raise AttackTransportError(f"TCP connection failed: {error}") from error
@@ -240,13 +263,17 @@ class TcpAttackTransport(AttackTransport):
         while True:
             try:
                 data = self._socket.recv(4096)
+
             except BlockingIOError:
                 return
+            
             if not data:
                 try:
                     self._decoder.finish()
+
                 except AttackProtocolError as error:
                     raise AttackTransportError(str(error)) from error
+                
                 raise AttackTransportError("TCP attack server closed the connection")
 
             offset = 0
@@ -254,6 +281,7 @@ class TcpAttackTransport(AttackTransport):
                 available = self._receive_buffer_bytes - self._decoder.buffered_bytes
                 if available == 0:
                     raise AttackProtocolError("attack receive buffer limit exceeded")
+                
                 chunk_size = min(available, len(data) - offset)
                 self._received.extend(self._decoder.feed(data[offset : offset + chunk_size]))
                 offset += chunk_size
@@ -264,15 +292,19 @@ class TcpAttackTransport(AttackTransport):
             message = self._outbound[0]
             try:
                 sent = self._socket.send(message[self._send_offset :])
+
             except BlockingIOError:
                 return
+            
             if sent == 0:
                 raise AttackTransportError("TCP attack send returned zero")
+            
             self._send_offset += sent
             self._queued_bytes -= sent
             if self._send_offset == len(message):
                 self._outbound.popleft()
                 self._send_offset = 0
+
         self._update_selector()
 
     def _update_selector(self) -> None:
@@ -282,6 +314,7 @@ class TcpAttackTransport(AttackTransport):
         events = selectors.EVENT_READ
         if self._outbound:
             events |= selectors.EVENT_WRITE
+            
         self._selector.modify(self._socket, events)
 
     def _require_connected(self) -> None:

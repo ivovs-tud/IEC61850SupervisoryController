@@ -1,7 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-# Adapted from ivovs-tud/HackAWindFarm; substantially modified for packaging,
-# shared protocol types, dependency injection, and deterministic lifecycle.
-
 """Transport-neutral attack client with a finite, testable lifecycle."""
 
 from __future__ import annotations
@@ -16,25 +12,11 @@ from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any
 
-from .attack_protocol import (
-    AtDataMessage,
-    AttackMessage,
-    AttackProtocolError,
-    CfgDataMessage,
-    ControlSignal,
-    CtDataMessage,
-    HeartbeatMessage,
-    ReleaseMessage,
-    RqDataMessage,
-    TxDataMessage,
-    TxDataType,
-)
-from .attack_transport import (
-    AttackTransport,
-    AttackTransportError,
-    TcpAttackTransport,
-    ZeroMqAttackTransport,
-)
+from .attack_protocol import (AtDataMessage, AttackMessage, AttackProtocolError, CfgDataMessage, ControlSignal,
+                                CtDataMessage, HeartbeatMessage, ReleaseMessage, RqDataMessage, TxDataMessage, TxDataType)
+
+from .attack_transport import AttackTransport, AttackTransportError, TcpAttackTransport, ZeroMqAttackTransport
+
 
 AttackFunction = Callable[[dict[str, list[float]], dict[str, list[float]], int], None]
 
@@ -78,28 +60,23 @@ class AttackClient:
         "Power Setpoint": TxDataType.TX_SPT_PWR,
         "Generator Torque": TxDataType.TX_GENTORQ,
     }
+
     _TEXT2TYPE = SIGNAL_TYPES
     _TYPE2TEXT = {value: key for key, value in SIGNAL_TYPES.items()}
     _NORMALIZED_SIGNAL_NAMES: dict[str, str] = {}
     for _signal_name in SIGNAL_TYPES:
-        _NORMALIZED_SIGNAL_NAMES[
-            "".join(character for character in _signal_name.casefold() if character.isalnum())
-        ] = _signal_name
+        _NORMALIZED_SIGNAL_NAMES["".join(character for character in _signal_name.casefold() if character.isalnum())] = _signal_name
+
     del _signal_name
     _AttackInterfaceExcept = AttackInterfaceError
 
-    def __init__(
-        self,
-        num_turbines: int = 9,
-        *,
-        transport: str | AttackTransport = "zeromq",
-        socket: Any | None = None,
-        context: Any | None = None,
-        wall_time_ms: Callable[[], int] | None = None,
-        monotonic: Callable[[], float] | None = None,
-    ) -> None:
+    def __init__( self, num_turbines: int = 9, *, transport: str | AttackTransport = "zeromq", 
+                 socket: Any | None = None, context: Any | None = None, 
+                 wall_time_ms: Callable[[], int] | None = None, monotonic: Callable[[], float] | None = None) -> None:
+        
         if num_turbines <= 0:
             raise ValueError("num_turbines must be positive")
+        
         if socket is not None and not isinstance(transport, str):
             raise ValueError("socket injection cannot be combined with a custom transport")
 
@@ -116,17 +93,21 @@ class AttackClient:
                 self._transport = ZeroMqAttackTransport(socket=socket, context=context)
                 if socket is not None:
                     self._transport_factory = None
+
             elif transport_name == "tcp":
                 if socket is not None or context is not None:
                     raise ValueError("socket and context injection are only supported for ZeroMQ")
+                
                 self._transport_factory = lambda: TcpAttackTransport(self.num_turbines)
                 self._transport = self._transport_factory()
             else:
                 raise ValueError("transport must be 'zeromq', 'tcp', or an AttackTransport")
+            
             self.transport = transport_name
         else:
             if context is not None:
                 raise ValueError("context injection cannot be combined with a custom transport")
+            
             self._transport_factory = None
             self._transport = transport
             self.transport = transport.__class__.__name__
@@ -174,15 +155,19 @@ class AttackClient:
         self._require_open()
         if not server_ip:
             raise ValueError("server_ip must not be empty")
+        
         if port < 1 or port > 65_535:
             raise ValueError("port must be between 1 and 65535")
+        
         if self._connected:
             raise AttackInterfaceError("attack interface is already connected")
 
         try:
             self._transport.connect(server_ip, port)
+
         except AttackTransportError as error:
             raise AttackInterfaceError(str(error)) from error
+        
         self.server_ip = server_ip
         self.port = port
         self._connected = True
@@ -191,8 +176,10 @@ class AttackClient:
     def reconnect(self, server_ip: str | None = None, port: int | None = None) -> None:
         if self.running:
             raise AttackInterfaceError("stop the attack client before reconnecting")
+        
         if self._transport_factory is None:
             raise AttackInterfaceError("the injected transport cannot be recreated")
+        
         target_ip = server_ip or self.server_ip
         target_port = port or self.port
         if target_ip is None or target_port is None:
@@ -203,6 +190,7 @@ class AttackClient:
         for thread in (self._attack_thread, self._io_thread):
             if thread is not None and thread is not threading.current_thread():
                 thread.join()
+
         self._attack_thread = None
         self._io_thread = None
         self._running = False
@@ -223,12 +211,9 @@ class AttackClient:
         self._require_open()
         if self._io_thread is not None and self._io_thread.is_alive():
             raise AttackInterfaceError("configure the session before begin()")
+        
         encoded_label = label.encode("utf-8")
-        if (
-            not label.strip()
-            or len(encoded_label) > 255
-            or any(ord(character) < 0x20 or ord(character) == 0x7F for character in label)
-        ):
+        if (not label.strip() or len(encoded_label) > 255 or any(ord(character) < 0x20 or ord(character) == 0x7F for character in label)):
             raise AttackInterfaceError("label must contain 1-255 bytes of printable text")
 
         configuration = CfgDataMessage(label, 0, 0)
@@ -236,13 +221,12 @@ class AttackClient:
             self._transport.send(configuration.pack())
             if not self._transport.flush(self.SEND_COMPLETION_TIMEOUT_SECONDS):
                 raise AttackTransportError("configuration send timed out")
+            
             self._wait_for_configuration_acknowledgement(configuration)
+
         except (AttackProtocolError, AttackTransportError) as error:
             self._end_local_session()
-            raise AttackInterfaceError(
-                "attack server is unavailable or may already have an active client: "
-                f"{error}"
-            ) from error
+            raise AttackInterfaceError("attack server is unavailable or may already have an active client: " f"{error}") from error
 
         self._end_local_session()
         self.session_label = label
@@ -256,31 +240,20 @@ class AttackClient:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise AttackTransportError("configuration acknowledgement timed out")
+            
             for message in self._transport.receive(min(remaining, 0.05)):
                 if message == expected:
                     return
+                
                 self._handle_message(message)
 
-    def tap_communication(
-        self,
-        channels: str | Sequence[str],
-        turbine_ids: Sequence[int | bool],
-    ) -> None:
+    def tap_communication(self, channels: str | Sequence[str], turbine_ids: Sequence[int | bool]) -> None:
         self._set_control(ControlSignal.CTRL_TAP, channels, turbine_ids)
 
-    def fdi_communication(
-        self,
-        channels: str | Sequence[str],
-        turbine_ids: Sequence[int | bool],
-    ) -> None:
+    def fdi_communication(self, channels: str | Sequence[str], turbine_ids: Sequence[int | bool]) -> None:
         self._set_control(ControlSignal.CTRL_FDI, channels, turbine_ids)
 
-    def _set_control(
-        self,
-        signal: ControlSignal,
-        channels: str | Sequence[str],
-        turbine_ids: Sequence[int | bool],
-    ) -> None:
+    def _set_control(self, signal: ControlSignal, channels: str | Sequence[str], turbine_ids: Sequence[int | bool]) -> None:
         self._require_open()
         self._require_configured()
         names = [channels] if isinstance(channels, str) else list(channels)
@@ -292,31 +265,27 @@ class AttackClient:
             data_type = self.SIGNAL_TYPES[canonical_name]
             target[canonical_name] = enabled.copy()
             self._send(CtDataMessage(signal, data_type, tuple(enabled)))
-            logging.info(
-                "Updated %s for %s: %s",
-                "tap" if signal == ControlSignal.CTRL_TAP else "FDI",
-                canonical_name,
-                enabled,
-            )
+            logging.info("Updated %s for %s: %s", "tap" if signal == ControlSignal.CTRL_TAP else "FDI", canonical_name, enabled)
 
     @classmethod
     def _canonical_signal_name(cls, name: object) -> str:
         if not isinstance(name, str):
             raise AttackInterfaceError(f"unknown attack channel: {name!r}")
-        normalized = "".join(
-            character for character in name.casefold() if character.isalnum()
-        )
+        normalized = "".join(character for character in name.casefold() if character.isalnum())
         try:
             return cls._NORMALIZED_SIGNAL_NAMES[normalized]
+        
         except KeyError as error:
             raise AttackInterfaceError(f"unknown attack channel: {name}") from error
 
     def _validate_turbine_flags(self, turbine_ids: Sequence[int | bool]) -> list[bool]:
         if isinstance(turbine_ids, (str, bytes)):
             raise AttackInterfaceError("turbine_ids must be a sequence of flags")
+        
         enabled = [bool(value) for value in turbine_ids]
         if len(enabled) != self.num_turbines:
             raise AttackInterfaceError(f"turbine_ids must contain {self.num_turbines} values")
+        
         return enabled
 
     def begin(self, attack_func: AttackFunction | None = None) -> None:
@@ -330,19 +299,11 @@ class AttackClient:
         self._io_error = None
         self._attack_func = attack_func
         self._running = True
-        self._io_thread = threading.Thread(
-            target=self._io_loop,
-            name="attack-transport",
-            daemon=True,
-        )
+        self._io_thread = threading.Thread(target=self._io_loop, name="attack-transport", daemon=True)
         self._io_thread.start()
         logging.info("Attack client started for session '%s'", self.session_label)
         if attack_func is not None:
-            self._attack_thread = threading.Thread(
-                target=self._attack_loop,
-                name="attack-function",
-                daemon=True,
-            )
+            self._attack_thread = threading.Thread(target=self._attack_loop, name="attack-function", daemon=True)
             self._attack_thread.start()
 
     def start(self, attack_func: AttackFunction) -> None:
@@ -350,14 +311,17 @@ class AttackClient:
         self.begin(attack_func)
         try:
             self.run_forever()
+
         finally:
             self.stop()
 
     def run_forever(self) -> None:
         if not self.running:
             raise AttackInterfaceError("call begin() before run_forever()")
+        
         while not self._stop_event.wait(self.INTERVAL_SECONDS):
             self.poll_once()
+
         self._raise_io_error()
 
     def poll_once(self) -> AttackMessage | None:
@@ -370,18 +334,22 @@ class AttackClient:
         self._send_heartbeat_if_due()
         try:
             messages = self._transport.receive(0.0)
+
         except AttackProtocolError as error:
             logging.warning("Ignoring malformed attack-interface message: %s", error)
             return None
+        
         except AttackTransportError as error:
             failure = AttackInterfaceError(str(error))
             self._signal_failure(failure)
             self._transport.close()
             self._connected = False
             raise failure from error
+        
         for message in messages:
             self._handle_message(message)
             self._record_received_event(message)
+
         return messages[0] if messages else None
 
     _execute = poll_once
@@ -395,41 +363,46 @@ class AttackClient:
                 self._drain_outbound()
                 try:
                     messages = self._transport.receive(self.INTERVAL_SECONDS)
+
                 except AttackProtocolError as error:
-                    logging.warning(
-                        "Ignoring malformed attack-interface message: %s", error
-                    )
+                    logging.warning("Ignoring malformed attack-interface message: %s", error)
                     continue
+
                 for message in messages:
                     self._handle_message(message)
                     self._record_received_event(message)
                 self._drain_outbound()
+
         except AttackTransportError as error:
             transport_closed = True
             if self._configured:
                 failed = True
                 self._signal_failure(AttackInterfaceError(str(error)))
                 logging.error("Attack transport stopped: %s", error)
+
             else:
                 logging.info("Attack transport closed after session release")
+
             self._stop_event.set()
+
         except (AttackProtocolError, AttackInterfaceError) as error:
             failed = True
             self._signal_failure(AttackInterfaceError(str(error)))
             logging.error("Attack transport stopped: %s", error)
+
         finally:
             failed = failed or self._io_error is not None
             if not failed and not transport_closed:
                 try:
                     self._drain_outbound()
                     if not self._transport.flush(self.SEND_COMPLETION_TIMEOUT_SECONDS):
-                        self._signal_failure(
-                            AttackInterfaceError("attack transport flush timed out")
-                        )
+                        self._signal_failure(AttackInterfaceError("attack transport flush timed out"))
                         failed = True
+
                 except (AttackTransportError, AttackInterfaceError) as error:
                     self._signal_failure(AttackInterfaceError(str(error)))
                     failed = True
+
             if failed or transport_closed:
                 self._transport.close()
                 self._connected = False
@@ -438,15 +411,18 @@ class AttackClient:
     def _handle_message(self, message: object) -> None:
         if isinstance(message, TxDataMessage):
             self._handle_tx_data(message)
+
         elif isinstance(message, RqDataMessage):
             self._handle_rq_data(message)
 
     def _send_heartbeat_if_due(self) -> None:
         if not self._configured:
             return
+        
         now = self._monotonic()
         if now < self._next_heartbeat_at:
             return
+        
         self._send(HeartbeatMessage())
         self._publish_fdi_values()
         self._next_heartbeat_at = now + self.HEARTBEAT_INTERVAL_SECONDS
@@ -458,9 +434,7 @@ class AttackClient:
             for turbine_index, enabled in enumerate(enabled_turbines):
                 value = self.fdi_next[signal_name][turbine_index]
                 if enabled and not math.isnan(value):
-                    self._send(
-                        AtDataMessage(turbine_index + 1, signal_type, timestamp, value)
-                    )
+                    self._send(AtDataMessage(turbine_index + 1, signal_type, timestamp, value))
 
     def _handle_tx_data(self, message: TxDataMessage) -> None:
         signal_name = self._TYPE2TEXT.get(message.data_type)
@@ -471,18 +445,13 @@ class AttackClient:
     def _handle_rq_data(self, message: RqDataMessage) -> None:
         if self._wall_time_ms() > message.expiry_time_ms:
             return
+        
         signal_name = self._TYPE2TEXT.get(message.data_type)
         if signal_name is None or not self._valid_turbine(message.turbine_id):
             return
+        
         value = self.fdi_next[signal_name][message.turbine_id - 1]
-        self._send(
-            AtDataMessage(
-                message.turbine_id,
-                message.data_type,
-                self._wall_time_ms(),
-                value,
-            )
-        )
+        self._send(AtDataMessage(message.turbine_id, message.data_type, self._wall_time_ms(), value))
 
     def _attack_loop(self) -> None:
         started_at = self._monotonic()
@@ -493,22 +462,24 @@ class AttackClient:
                     elapsed_ms = int((self._monotonic() - started_at) * 1_000)
                     self._attack_func(self.last_received, self.fdi_next, elapsed_ms)
                 self._stop_event.wait(self.ATTACK_INTERVAL_SECONDS)
+
         except Exception as error:
             logging.exception("Attack function failed; stopping attack client")
-            self._signal_failure(
-                AttackInterfaceError(f"attack function failed: {error}")
-            )
+            self._signal_failure(AttackInterfaceError(f"attack function failed: {error}"))
+
         finally:
             logging.info("Attack callback stopped for session '%s'", self.session_label)
 
     def stop(self) -> None:
         if self._closed:
             return
+        
         self._stop_event.set()
 
         attack_thread = self._attack_thread
         if attack_thread is not None and attack_thread is not threading.current_thread():
             attack_thread.join()
+
         self._attack_thread = None
 
         try:
@@ -530,6 +501,7 @@ class AttackClient:
         """Release the configured attack session without closing the client."""
         if not self._configured:
             return
+        
         self._end_local_session()
         self._send(ReleaseMessage(), wait=True)
         logging.info("Released attack session '%s'", self.session_label)
@@ -546,20 +518,23 @@ class AttackClient:
         if threading.current_thread() is io_thread:
             try:
                 self._transport.send(payload)
-                if wait and not self._transport.flush(
-                    self.SEND_COMPLETION_TIMEOUT_SECONDS
-                ):
+                if wait and not self._transport.flush(self.SEND_COMPLETION_TIMEOUT_SECONDS):
                     raise AttackTransportError("attack message send timed out")
+                
             except AttackTransportError as error:
                 raise AttackInterfaceError(str(error)) from error
+            
             return
+        
         if io_thread is not None and io_thread.is_alive():
             self._enqueue_payload(payload, wait=wait)
             return
+        
         try:
             self._transport.send(payload)
             if wait and not self._transport.flush(self.SEND_COMPLETION_TIMEOUT_SECONDS):
                 raise AttackTransportError("attack message send timed out")
+            
         except AttackTransportError as error:
             raise AttackInterfaceError(str(error)) from error
 
@@ -573,14 +548,18 @@ class AttackClient:
             else:
                 self._outbound.append(item)
                 self._outbound_bytes += len(payload)
+
         if overflow:
             failure = AttackInterfaceError("attack client outbound buffer overflow")
             self._signal_failure(failure)
             raise failure
+        
         if completion is None:
             return
+        
         if not completion.wait(self.SEND_COMPLETION_TIMEOUT_SECONDS):
             raise AttackInterfaceError("attack client send timed out")
+        
         if item.error is not None:
             raise AttackInterfaceError(str(item.error)) from item.error
 
@@ -591,17 +570,18 @@ class AttackClient:
                     return
                 item = self._outbound.popleft()
                 self._outbound_bytes -= len(item.payload)
+
             try:
                 self._transport.send(item.payload)
-                if item.completion is not None and not self._transport.flush(
-                    self.SEND_COMPLETION_TIMEOUT_SECONDS
-                ):
+                if item.completion is not None and not self._transport.flush(self.SEND_COMPLETION_TIMEOUT_SECONDS):
                     raise AttackTransportError("attack message send timed out")
+                
             except Exception as error:
                 item.error = error
                 if item.completion is not None:
                     item.completion.set()
                 raise
+
             if item.completion is not None:
                 item.completion.set()
 
@@ -662,12 +642,7 @@ class AttackClient:
     def __enter__(self) -> "AttackClient":
         return self
 
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
+    def __exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None) -> None:
         self.stop()
 
 

@@ -57,9 +57,7 @@ DEFAULT_BUFFER_LIMIT = 64 * 1024
 
 def _require_size(data: bytes, expected: int, message_name: str) -> None:
     if len(data) != expected:
-        raise AttackProtocolError(
-            f"{message_name} requires {expected} bytes, received {len(data)}"
-        )
+        raise AttackProtocolError(f"{message_name} requires {expected} bytes, received {len(data)}")
 
 
 @dataclass(frozen=True)
@@ -84,6 +82,7 @@ class TxDataMessage:
         header, turbine_id, data_type, payload_length, value = _TX.unpack(data)
         if header != DataHeader.TX_DATA:
             raise AttackProtocolError("invalid TX_DATA header")
+        
         return cls(turbine_id, TxDataType(data_type), value, payload_length)
 
 
@@ -95,13 +94,7 @@ class RqDataMessage:
     expiry_time_ms: int
 
     def pack(self) -> bytes:
-        return _RQ.pack(
-            DataHeader.RQ_DATA,
-            self.turbine_id,
-            int(self.data_type),
-            self.request_time_ms,
-            self.expiry_time_ms,
-        )
+        return _RQ.pack(DataHeader.RQ_DATA, self.turbine_id, int(self.data_type), self.request_time_ms, self.expiry_time_ms)
 
     @classmethod
     def unpack(cls, data: bytes) -> "RqDataMessage":
@@ -109,6 +102,7 @@ class RqDataMessage:
         header, turbine_id, data_type, request_time, expiry_time = _RQ.unpack(data)
         if header != DataHeader.RQ_DATA:
             raise AttackProtocolError("invalid RQ_DATA header")
+        
         return cls(turbine_id, TxDataType(data_type), request_time, expiry_time)
 
 
@@ -120,13 +114,7 @@ class AtDataMessage:
     fake_value: float
 
     def pack(self) -> bytes:
-        return _AT.pack(
-            DataHeader.AT_DATA,
-            self.turbine_id,
-            int(self.data_type),
-            self.attack_time_ms,
-            self.fake_value,
-        )
+        return _AT.pack(DataHeader.AT_DATA, self.turbine_id, int(self.data_type), self.attack_time_ms, self.fake_value)
 
     @classmethod
     def unpack(cls, data: bytes) -> "AtDataMessage":
@@ -134,6 +122,7 @@ class AtDataMessage:
         header, turbine_id, data_type, attack_time, fake_value = _AT.unpack(data)
         if header != DataHeader.AT_DATA:
             raise AttackProtocolError("invalid AT_DATA header")
+        
         return cls(turbine_id, TxDataType(data_type), attack_time, fake_value)
 
 
@@ -144,26 +133,23 @@ class CtDataMessage:
     enable: tuple[bool, ...]
 
     def pack(self) -> bytes:
-        header = _CT_HEADER.pack(
-            DataHeader.CT_DATA,
-            int(self.signal),
-            int(self.data_type),
-        )
+        header = _CT_HEADER.pack(DataHeader.CT_DATA, int(self.signal), int(self.data_type))
         return header + bytes(int(value) for value in self.enable)
 
     @classmethod
     def unpack(cls, data: bytes) -> "CtDataMessage":
         if len(data) < _CT_HEADER.size:
-            raise AttackProtocolError(
-                f"{cls.__name__} requires at least {_CT_HEADER.size} bytes"
-            )
+            raise AttackProtocolError(f"{cls.__name__} requires at least {_CT_HEADER.size} bytes")
+        
         header, signal, data_type = _CT_HEADER.unpack_from(data)
         if header != DataHeader.CT_DATA:
             raise AttackProtocolError("invalid CT_DATA header")
+        
         raw_enable = data[_CT_HEADER.size :]
         if any(value not in (0, 1) for value in raw_enable):
             # Do not interpret pointer bytes from the retired native layout as flags.
             raise AttackProtocolError("invalid CT_DATA enable flag")
+        
         enable = tuple(bool(value) for value in raw_enable)
         return cls(ControlSignal(signal), TxDataType(data_type), enable)
 
@@ -177,12 +163,7 @@ class CfgDataMessage:
     def pack(self) -> bytes:
         encoded_name = self.team_name.encode("utf-8")[:255]
         encoded_name += b"\0" * (256 - len(encoded_name))
-        return _CFG.pack(
-            DataHeader.CFG_DATA,
-            encoded_name,
-            self.scenario_id,
-            self.turbine_controller,
-        )
+        return _CFG.pack(DataHeader.CFG_DATA, encoded_name, self.scenario_id, self.turbine_controller)
 
     @classmethod
     def unpack(cls, data: bytes) -> "CfgDataMessage":
@@ -190,6 +171,7 @@ class CfgDataMessage:
         header, team_name, scenario_id, turbine_controller = _CFG.unpack(data)
         if header != DataHeader.CFG_DATA:
             raise AttackProtocolError("invalid CFG_DATA header")
+        
         decoded_name = team_name.split(b"\0", 1)[0].decode("utf-8", errors="replace")
         return cls(decoded_name, scenario_id, turbine_controller)
 
@@ -207,8 +189,10 @@ class SimCtrlMessage:
         header, sim_start = _SIM_CONTROL.unpack(data)
         if header != DataHeader.SIM_CTRL:
             raise AttackProtocolError("invalid SIM_CTRL header")
+        
         if sim_start not in (0, 1):
             raise AttackProtocolError("invalid SIM_CTRL flag")
+        
         return cls(bool(sim_start))
 
 
@@ -222,6 +206,7 @@ class HeartbeatMessage:
         _require_size(data, _SESSION_CONTROL.size, cls.__name__)
         if _SESSION_CONTROL.unpack(data)[0] != DataHeader.HEARTBEAT:
             raise AttackProtocolError("invalid HEARTBEAT header")
+        
         return cls()
 
 
@@ -235,6 +220,7 @@ class ReleaseMessage:
         _require_size(data, _SESSION_CONTROL.size, cls.__name__)
         if _SESSION_CONTROL.unpack(data)[0] != DataHeader.RELEASE:
             raise AttackProtocolError("invalid RELEASE header")
+        
         return cls()
 
 
@@ -256,6 +242,7 @@ def parse_message(data: bytes) -> AttackMessage:
 
     try:
         header = DataHeader(data[0])
+
     except ValueError as error:
         raise AttackProtocolError(f"unknown message header 0x{data[0]:02x}") from error
 
@@ -269,6 +256,7 @@ def parse_message(data: bytes) -> AttackMessage:
         DataHeader.HEARTBEAT: HeartbeatMessage,
         DataHeader.RELEASE: ReleaseMessage,
     }
+
     return message_types[header].unpack(data)
 
 
@@ -276,8 +264,10 @@ def message_size(header: DataHeader | int, num_turbines: int) -> int:
     """Return the canonical byte size for a message header."""
     if num_turbines <= 0:
         raise ValueError("num_turbines must be positive")
+    
     try:
         message_header = DataHeader(header)
+
     except ValueError as error:
         raise AttackProtocolError(f"unknown message header 0x{int(header):02x}") from error
 
@@ -297,15 +287,13 @@ def message_size(header: DataHeader | int, num_turbines: int) -> int:
 class AttackStreamDecoder:
     """Split an attack TCP byte stream into validated messages."""
 
-    def __init__(
-        self,
-        num_turbines: int,
-        max_buffer_bytes: int = DEFAULT_BUFFER_LIMIT,
-    ) -> None:
+    def __init__(self, num_turbines: int, max_buffer_bytes: int = DEFAULT_BUFFER_LIMIT) -> None:
         if num_turbines <= 0:
             raise ValueError("num_turbines must be positive")
+        
         if max_buffer_bytes <= 0:
             raise ValueError("max_buffer_bytes must be positive")
+        
         self._num_turbines = num_turbines
         self._max_buffer_bytes = max_buffer_bytes
         self._buffer = bytearray()
@@ -317,6 +305,7 @@ class AttackStreamDecoder:
     def feed(self, data: bytes) -> list[AttackMessage]:
         if len(data) > self._max_buffer_bytes - len(self._buffer):
             raise AttackProtocolError("attack receive buffer limit exceeded")
+        
         self._buffer.extend(data)
 
         messages: list[AttackMessage] = []
@@ -324,9 +313,11 @@ class AttackStreamDecoder:
             expected_size = message_size(self._buffer[0], self._num_turbines)
             if len(self._buffer) < expected_size:
                 break
+
             payload = bytes(self._buffer[:expected_size])
             del self._buffer[:expected_size]
             messages.append(parse_message(payload))
+            
         return messages
 
     def finish(self) -> None:

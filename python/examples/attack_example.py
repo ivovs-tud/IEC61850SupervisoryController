@@ -32,8 +32,10 @@ def main() -> None:
 
         print("Starting attack interface. Press Ctrl+C to stop.")
         attack_interface.start(attack_function)
+        
     except KeyboardInterrupt:
         pass
+
     finally:
         attack_interface.stop()
 

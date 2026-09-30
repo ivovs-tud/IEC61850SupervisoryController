@@ -14,6 +14,21 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+add_executable(sc_utility_tests
+    unit/UtilityTests.cpp
+)
+
+target_link_libraries(sc_utility_tests PRIVATE
+    Catch2::Catch2WithMain
+    sc_util
+)
+
+catch_discover_tests(
+    sc_utility_tests
+    TEST_PREFIX "sc.utility."
+    DISCOVERY_MODE PRE_TEST
+)
+
 add_executable(sc_attack_protocol_tests
     unit/AttackProtocolTests.cpp
 )

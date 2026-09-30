@@ -11,4 +11,7 @@ target_include_directories(sc_application
 
 target_compile_features(sc_application PUBLIC cxx_std_17)
 
-target_link_libraries(sc_application PRIVATE sc::project_warnings)
+target_link_libraries(sc_application
+    PUBLIC sc_util
+    PRIVATE sc::project_warnings
+)

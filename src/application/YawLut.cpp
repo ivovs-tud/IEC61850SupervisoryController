@@ -129,6 +129,7 @@ YawLut::YawLut(const std::string& csvFilePath) {
                 if (!isWindSpeedHeader(tokens[0]) || !isWindDirectionHeader(tokens[1])) {
                     throw std::runtime_error("Yaw LUT header must start with ws/ws_bin,wd/wd_bin");
                 }
+                
                 for (std::size_t i = 2; i < tokens.size(); ++i) {
                     if (!isYawSetpointHeader(tokens[i])) {
                         throw std::runtime_error("Yaw LUT header columns after wd/wd_bin must be yaw or WT setpoints");
@@ -165,6 +166,7 @@ YawLut::YawLut(const std::string& csvFilePath) {
             windSpeedBins_.push_back(row.windSpeedBin);
             windDirectionBins_.push_back(row.windDirectionBin);
             rows.push_back(std::move(row));
+
         } catch (const std::exception&) {
             throw std::runtime_error("Failed to parse yaw LUT row at line " + std::to_string(lineNumber));
         }
@@ -177,30 +179,24 @@ YawLut::YawLut(const std::string& csvFilePath) {
     std::sort(windSpeedBins_.begin(), windSpeedBins_.end());
     windSpeedBins_.erase(std::unique(windSpeedBins_.begin(), windSpeedBins_.end()), windSpeedBins_.end());
     std::sort(windDirectionBins_.begin(), windDirectionBins_.end());
-    windDirectionBins_.erase(
-        std::unique(windDirectionBins_.begin(), windDirectionBins_.end()), windDirectionBins_.end());
+    windDirectionBins_.erase(std::unique(windDirectionBins_.begin(), windDirectionBins_.end()), windDirectionBins_.end());
 
     if (windSpeedBins_.size() < 2) {
         throw std::runtime_error("Wind-speed must contain at least two unique bins");
     }
+
     if (windDirectionBins_.size() < 2) {
         throw std::runtime_error("Wind-direction must contain at least two unique bins");
     }
 
-    yawSetpoints_.assign(
-        windSpeedBins_.size(),
-        std::vector<TurbineYawSetpoints>(windDirectionBins_.size(), TurbineYawSetpoints(turbineCount, 0.0f)));
-    std::vector<std::vector<bool>> populated(
-        windSpeedBins_.size(), std::vector<bool>(windDirectionBins_.size(), false));
+    yawSetpoints_.assign(windSpeedBins_.size(), std::vector<TurbineYawSetpoints>(windDirectionBins_.size(), TurbineYawSetpoints(turbineCount, 0.0f)));
+    std::vector<std::vector<bool>> populated(windSpeedBins_.size(), std::vector<bool>(windDirectionBins_.size(), false));
 
     for (const auto& row : rows) {
         const auto windSpeedIt = std::lower_bound(windSpeedBins_.begin(), windSpeedBins_.end(), row.windSpeedBin);
-        const auto windDirectionIt =
-            std::lower_bound(windDirectionBins_.begin(), windDirectionBins_.end(), row.windDirectionBin);
-        const std::size_t windSpeedIndex =
-            static_cast<std::size_t>(std::distance(windSpeedBins_.begin(), windSpeedIt));
-        const std::size_t windDirectionIndex =
-            static_cast<std::size_t>(std::distance(windDirectionBins_.begin(), windDirectionIt));
+        const auto windDirectionIt = std::lower_bound(windDirectionBins_.begin(), windDirectionBins_.end(), row.windDirectionBin);
+        const std::size_t windSpeedIndex = static_cast<std::size_t>(std::distance(windSpeedBins_.begin(), windSpeedIt));
+        const std::size_t windDirectionIndex = static_cast<std::size_t>(std::distance(windDirectionBins_.begin(), windDirectionIt));
 
         if (populated[windSpeedIndex][windDirectionIndex]) {
             throw std::runtime_error("Yaw LUT contains duplicate ws_bin/wd_bin combinations");
@@ -211,9 +207,7 @@ YawLut::YawLut(const std::string& csvFilePath) {
     }
 
     for (std::size_t windSpeedIndex = 0; windSpeedIndex < populated.size(); ++windSpeedIndex) {
-        for (std::size_t windDirectionIndex = 0;
-             windDirectionIndex < populated[windSpeedIndex].size();
-             ++windDirectionIndex) {
+        for (std::size_t windDirectionIndex = 0; windDirectionIndex < populated[windSpeedIndex].size(); ++windDirectionIndex) {
             if (!populated[windSpeedIndex][windDirectionIndex]) {
                 throw std::runtime_error(
                     "Yaw LUT is missing one or more wind-speed/wind-direction combinations");
@@ -226,27 +220,24 @@ YawLut::TurbineYawSetpoints YawLut::lookup(float windSpeed, float windDirection)
     const BinBracket windSpeedBracket = findBracket(windSpeedBins_, windSpeed);
     const BinBracket windDirectionBracket = findBracket(windDirectionBins_, windDirection);
 
-    const auto& setpointsLowLow =
-        yawSetpoints_[static_cast<std::size_t>(windSpeedBracket.lowIndex)]
-                     [static_cast<std::size_t>(windDirectionBracket.lowIndex)];
-    const auto& setpointsLowHigh =
-        yawSetpoints_[static_cast<std::size_t>(windSpeedBracket.lowIndex)]
-                     [static_cast<std::size_t>(windDirectionBracket.highIndex)];
-    const auto& setpointsHighLow =
-        yawSetpoints_[static_cast<std::size_t>(windSpeedBracket.highIndex)]
-                     [static_cast<std::size_t>(windDirectionBracket.lowIndex)];
-    const auto& setpointsHighHigh =
-        yawSetpoints_[static_cast<std::size_t>(windSpeedBracket.highIndex)]
-                     [static_cast<std::size_t>(windDirectionBracket.highIndex)];
+    const size_t ws_lowIdx =  static_cast<std::size_t>(windSpeedBracket.lowIndex);
+    const size_t ws_highIdx = static_cast<std::size_t>(windSpeedBracket.highIndex);
+    const size_t wd_lowIdx =  static_cast<std::size_t>(windDirectionBracket.lowIndex);
+    const size_t wd_highIdx = static_cast<std::size_t>(windDirectionBracket.highIndex);
+
+    const auto& setpointsLowLow   = yawSetpoints_[ws_lowIdx][wd_lowIdx];
+    const auto& setpointsLowHigh  = yawSetpoints_[ws_lowIdx][wd_highIdx];
+    const auto& setpointsHighLow  = yawSetpoints_[wd_highIdx][wd_lowIdx];
+    const auto& setpointsHighHigh = yawSetpoints_[ws_highIdx][wd_highIdx];
 
     TurbineYawSetpoints result(setpointsLowLow.size(), 0.0f);
     for (std::size_t i = 0; i < setpointsLowLow.size(); ++i) {
-        result[i] = setpointsLowLow[i] * (1.0f - windSpeedBracket.weight) *
-                        (1.0f - windDirectionBracket.weight) +
-                    setpointsLowHigh[i] * (1.0f - windSpeedBracket.weight) * windDirectionBracket.weight +
-                    setpointsHighLow[i] * windSpeedBracket.weight * (1.0f - windDirectionBracket.weight) +
+        result[i] = setpointsLowLow[i]   * (1.0f - windSpeedBracket.weight) * (1.0f - windDirectionBracket.weight) +
+                    setpointsLowHigh[i]  * (1.0f - windSpeedBracket.weight) * windDirectionBracket.weight +
+                    setpointsHighLow[i]  * windSpeedBracket.weight * (1.0f - windDirectionBracket.weight) +
                     setpointsHighHigh[i] * windSpeedBracket.weight * windDirectionBracket.weight;
     }
+
     return result;
 }
 
@@ -254,6 +245,7 @@ std::size_t YawLut::turbineCount() const noexcept {
     if (yawSetpoints_.empty() || yawSetpoints_.front().empty()) {
         return 0;
     }
+
     return yawSetpoints_.front().front().size();
 }
 

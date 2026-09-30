@@ -70,6 +70,7 @@ void PeriodicTask::waitStopped() {
     if (!thread_.joinable()) {
         return;
     }
+
     if (thread_.get_id() == std::this_thread::get_id()) {
         throw std::logic_error("PeriodicTask cannot join its own worker thread");
     }
@@ -121,6 +122,7 @@ void PeriodicTask::run() {
                 return !running_.load();
             });
         }
+
     } catch (...) {
         failed = true;
         running_.store(false);
@@ -153,6 +155,7 @@ void PeriodicTask::run() {
         handler = failureHandler_;
         message = describeFailure(failure_);
     }
+    
     if (handler) {
         try {
             handler(message);

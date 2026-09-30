@@ -1,10 +1,12 @@
 #include "sc/application/Monitoring.hpp"
 
 #include "sc/model/TurbineParameters.hpp"
+#include "sc/util/Angles.hpp"
+#include "sc/util/Statistics.hpp"
+#include "sc/util/Time.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <numeric>
 #include <stdexcept>
 #include <utility>
 
@@ -58,80 +60,7 @@ enum FreezeSignal : std::size_t {
     FreezeTorque
 };
 
-bool isRecent(uint64_t timestampMs, uint64_t currentTimeMs, uint64_t timeoutMs) {
-    return timestampMs != 0 && (timestampMs >= currentTimeMs || currentTimeMs - timestampMs <= timeoutMs);
-}
-
-double average(const std::vector<double>& values) {
-    if (values.empty()) return 0.0;
-    return std::accumulate(values.begin(), values.end(), 0.0) / static_cast<double>(values.size());
-}
-
-double median(std::vector<double> values) {
-    if (values.empty()) return 0.0;
-    const auto middle = values.begin() + static_cast<std::ptrdiff_t>(values.size() / 2);
-    std::nth_element(values.begin(), middle, values.end());
-    return *middle;
-}
-
-double medianAbsoluteDeviation(std::vector<double> values, double center) {
-    for (double& value : values) value = std::abs(value - center);
-    return median(std::move(values));
-}
-
-float normalizeAngleDeg(float angle) {
-    angle = std::fmod(angle, 360.0F);
-    if (angle < 0.0F) angle += 360.0F;
-    return angle;
-}
-
-float shortestAngleDiffDeg(float from, float to) {
-    float difference = normalizeAngleDeg(to) - normalizeAngleDeg(from);
-    if (difference > 180.0F) difference -= 360.0F;
-    if (difference < -180.0F) difference += 360.0F;
-    return difference;
-}
-
-float angularDistanceDeg(float first, float second) {
-    return std::abs(shortestAngleDiffDeg(first, second));
-}
-
-float circularMeanDeg(const std::vector<double>& values, std::size_t count) {
-    double sinSum = 0.0;
-    double cosSum = 0.0;
-    const std::size_t sampleCount = std::min(count, values.size());
-    for (std::size_t index = 0; index < sampleCount; ++index) {
-        const double radians = values[index] * pi / 180.0;
-        sinSum += std::sin(radians);
-        cosSum += std::cos(radians);
-    }
-    if (sinSum == 0.0 && cosSum == 0.0) return 0.0F;
-    return normalizeAngleDeg(static_cast<float>(std::atan2(sinSum, cosSum) * 180.0 / pi));
-}
-
-double linearRange(const std::vector<double>& values) {
-    if (values.empty()) return 0.0;
-    const auto [minimum, maximum] = std::minmax_element(values.begin(), values.end());
-    return *maximum - *minimum;
-}
-
-double angularSpreadDeg(const std::vector<double>& values) {
-    if (values.empty()) return 0.0;
-    const float mean = circularMeanDeg(values, values.size());
-    double spread = 0.0;
-    for (double value : values) {
-        spread = std::max(spread, static_cast<double>(angularDistanceDeg(mean, static_cast<float>(value))));
-    }
-    return spread;
-}
-
-float predictYawAtRate(float current, float setpoint, float rateDegPerSecond, float elapsedSeconds) {
-    const float difference = shortestAngleDiffDeg(current, setpoint);
-    const float maximumStep = std::max(0.0F, rateDegPerSecond * elapsedSeconds);
-    return normalizeAngleDeg(current + std::clamp(difference, -maximumStep, maximumStep));
-}
-
-void addEvidence(MonitoringResult& result, AlarmType alarm, int turbineId, double measured,
+void triggerAlarm(MonitoringResult& result, AlarmType alarm, int turbineId, double measured,
                  double expected, double threshold, uint64_t timestampMs) {
     result.active[static_cast<std::size_t>(alarm)] = true;
     result.evidence.push_back({alarm, turbineId, measured, expected, threshold, timestampMs});
@@ -143,9 +72,9 @@ void appendHistory(std::vector<double>& history, double value) {
 }
 
 double yawAdjustedAvailablePower(const TurbineMonitoringInput& turbine, const MonitoringInput& input) {
-    const double windSpeed = isRecent(turbine.windSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+    const double windSpeed = sc::util::isTimestampRecent(turbine.windSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
         ? turbine.windSpeed : static_cast<double>(input.farmWindSpeed);
-    const double windDirection = isRecent(turbine.windDirectionTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+    const double windDirection = sc::util::isTimestampRecent(turbine.windDirectionTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
         ? turbine.windDirection : static_cast<double>(input.farmWindDirection);
     if (windSpeed < sc::TurbineParameters::cutInWindSpeed || windSpeed >= sc::TurbineParameters::cutOutWindSpeed) {
         return 0.0;
@@ -156,21 +85,21 @@ double yawAdjustedAvailablePower(const TurbineMonitoringInput& turbine, const Mo
     const double aerodynamicPower = 0.5 * sc::TurbineParameters::generatorEfficiency *
         sc::TurbineParameters::airDensity * sweptArea * sc::TurbineParameters::optimalPowerCoefficient *
         windSpeed * windSpeed * windSpeed;
-    const double yaw = isRecent(turbine.yawTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+    const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
         ? turbine.yaw : static_cast<double>(turbine.yawSetpoint);
-    const double yawErrorDeg = angularDistanceDeg(static_cast<float>(windDirection), static_cast<float>(yaw));
+    const double yawErrorDeg = sc::util::angularDistanceDegrees(static_cast<float>(windDirection), static_cast<float>(yaw));
     const double yawCosine = std::max(0.0, std::cos(yawErrorDeg * pi / 180.0));
     return std::min(aerodynamicPower * yawCosine * yawCosine * yawCosine, sc::TurbineParameters::ratedPower);
 }
 
 double effectiveYawAdjustedWindSpeed(const TurbineMonitoringInput& turbine, const MonitoringInput& input) {
-    const double windSpeed = isRecent(turbine.windSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+    const double windSpeed = sc::util::isTimestampRecent(turbine.windSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
         ? turbine.windSpeed : static_cast<double>(input.farmWindSpeed);
-    const double windDirection = isRecent(turbine.windDirectionTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+    const double windDirection = sc::util::isTimestampRecent(turbine.windDirectionTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
         ? turbine.windDirection : static_cast<double>(input.farmWindDirection);
-    const double yaw = isRecent(turbine.yawTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+    const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
         ? turbine.yaw : static_cast<double>(turbine.yawSetpoint);
-    const double yawErrorDeg = angularDistanceDeg(static_cast<float>(windDirection), static_cast<float>(yaw));
+    const double yawErrorDeg = sc::util::angularDistanceDegrees(static_cast<float>(windDirection), static_cast<float>(yaw));
     return std::max(0.0, windSpeed * std::max(0.0, std::cos(yawErrorDeg * pi / 180.0)));
 }
 
@@ -324,17 +253,17 @@ void MonitoringDetectors::checkPowerBalance(const MonitoringInput& input, Monito
     double receivedPower = 0.0;
     bool hasReceivedPower = false;
     for (const auto& turbine : input.turbines) {
-        if (isRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) &&
+        if (sc::util::isTimestampRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) &&
             !turbine.powerHistory.empty()) {
-            receivedPower += average(turbine.powerHistory);
+            receivedPower += sc::util::mean(turbine.powerHistory);
             hasReceivedPower = true;
         }
     }
     if (!hasReceivedPower) return;
-    const double measuredPower = average(input.measuredTotalPowerHistory);
+    const double measuredPower = sc::util::mean(input.measuredTotalPowerHistory);
     constexpr double thresholdW = 10e6;
     if (std::abs(receivedPower - measuredPower) > thresholdW) {
-        addEvidence(result, AlarmType::PowerGeneratedVsReceived, 0, receivedPower, measuredPower,
+        triggerAlarm(result, AlarmType::PowerGeneratedVsReceived, 0, receivedPower, measuredPower,
                     thresholdW, input.currentTimeMs);
     }
 }
@@ -352,7 +281,7 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
         }
 
         appendHistory(expectedPowerHistory_[index], expectedPower);
-        const double expectedAverage = average(expectedPowerHistory_[index]);
+        const double expectedAverage = sc::util::mean(expectedPowerHistory_[index]);
         const double tolerance = std::max(powerTrackingAbsoluteToleranceW,
             powerTrackingRelativeTolerance * std::max(expectedAverage, 0.0));
         if (lastExpectedPower_[index] < 0.0 || std::abs(expectedAverage - lastExpectedPower_[index]) > tolerance) {
@@ -360,8 +289,8 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
             lastExpectedPower_[index] = expectedAverage;
         }
 
-        const double measuredAverage = isRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) &&
-            !turbine.powerHistory.empty() ? average(turbine.powerHistory) : 0.0;
+        const double measuredAverage = sc::util::isTimestampRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) &&
+            !turbine.powerHistory.empty() ? sc::util::mean(turbine.powerHistory) : 0.0;
         if (std::abs(measuredAverage - expectedAverage) <= tolerance) {
             powerMismatchStartTime_[index] = 0;
             continue;
@@ -371,7 +300,7 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
             continue;
         }
         if (input.currentTimeMs - powerMismatchStartTime_[index] >= powerTrackingGracePeriodMs) {
-            addEvidence(result, AlarmType::MeasuredPowerVsExpected, static_cast<int>(index + 1),
+            triggerAlarm(result, AlarmType::MeasuredPowerVsExpected, static_cast<int>(index + 1),
                         measuredAverage, expectedAverage, tolerance, input.currentTimeMs);
         }
     }
@@ -380,28 +309,28 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
 void MonitoringDetectors::checkOrientation(const MonitoringInput& input, MonitoringResult& result) {
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& turbine = input.turbines[index];
-        const bool freshMeasurement = isRecent(turbine.yawTimeMs, input.currentTimeMs, yawMeasurementTimeoutMs);
+        const bool freshMeasurement = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, yawMeasurementTimeoutMs);
         if (lastOrientationPredictionTime_[index] == 0) {
             if (!freshMeasurement) continue;
-            orientation_[index] = normalizeAngleDeg(static_cast<float>(turbine.yaw));
+            orientation_[index] = sc::util::normalizeAngleDegrees(static_cast<float>(turbine.yaw));
             lastOrientationPredictionTime_[index] = input.currentTimeMs;
             lastYawMeasurementTime_[index] = turbine.yawTimeMs;
             continue;
         }
 
         const float elapsedSeconds = static_cast<float>(input.currentTimeMs - lastOrientationPredictionTime_[index]) / 1000.0F;
-        const float predicted = predictYawAtRate(orientation_[index], turbine.yawSetpoint,
+        const float predicted = sc::util::moveTowardsAngleDegrees(orientation_[index], turbine.yawSetpoint,
             static_cast<float>(sc::TurbineParameters::yawingRate), elapsedSeconds);
         lastOrientationPredictionTime_[index] = input.currentTimeMs;
         if (freshMeasurement && turbine.yawTimeMs > lastYawMeasurementTime_[index]) {
-            const float error = angularDistanceDeg(predicted, static_cast<float>(turbine.yaw));
+            const float error = sc::util::angularDistanceDegrees(predicted, static_cast<float>(turbine.yaw));
             if (error > orientationThresholdDeg) {
-                addEvidence(result, AlarmType::OrientationMisalignment, static_cast<int>(index + 1),
+                triggerAlarm(result, AlarmType::OrientationMisalignment, static_cast<int>(index + 1),
                             turbine.yaw, predicted, orientationThresholdDeg, input.currentTimeMs);
             }
             lastYawMeasurementTime_[index] = turbine.yawTimeMs;
-            const float signedError = shortestAngleDiffDeg(predicted, static_cast<float>(turbine.yaw));
-            orientation_[index] = normalizeAngleDeg(predicted + orientationObserverGain * signedError);
+            const float signedError = sc::util::signedAngleDifferenceDegrees(predicted, static_cast<float>(turbine.yaw));
+            orientation_[index] = sc::util::normalizeAngleDegrees(predicted + orientationObserverGain * signedError);
         } else {
             orientation_[index] = predicted;
         }
@@ -419,7 +348,7 @@ void MonitoringDetectors::checkPowerTorqueRotorSpeed(const MonitoringInput& inpu
         const double expectedPower = sc::TurbineParameters::generatorEfficiency * turbine.rotorSpeed *
             2.0 * pi / 60.0 * turbine.generatorTorque * sc::TurbineParameters::gearboxRatio;
         if (std::abs(turbine.power - expectedPower) > thresholdW) {
-            addEvidence(result, AlarmType::PowerTorqueRotorSpeed, static_cast<int>(index + 1),
+            triggerAlarm(result, AlarmType::PowerTorqueRotorSpeed, static_cast<int>(index + 1),
                         turbine.power, expectedPower, thresholdW, input.currentTimeMs);
         }
     }
@@ -428,10 +357,10 @@ void MonitoringDetectors::checkPowerTorqueRotorSpeed(const MonitoringInput& inpu
 void MonitoringDetectors::checkWindDirection(const MonitoringInput& input, MonitoringResult& result) const {
     constexpr double thresholdDeg = 25.0;
     for (std::size_t index = 0; index < turbineCount_; ++index) {
-        const double difference = angularDistanceDeg(static_cast<float>(input.turbines[index].windDirection),
+        const double difference = sc::util::angularDistanceDegrees(static_cast<float>(input.turbines[index].windDirection),
                                                      input.farmWindDirection);
         if (difference > thresholdDeg) {
-            addEvidence(result, AlarmType::WindDirection, static_cast<int>(index + 1),
+            triggerAlarm(result, AlarmType::WindDirection, static_cast<int>(index + 1),
                         input.turbines[index].windDirection, input.farmWindDirection, thresholdDeg,
                         input.currentTimeMs);
         }
@@ -445,20 +374,20 @@ void MonitoringDetectors::checkWindDirectionChange(const MonitoringInput& input,
             windDirectionChangeStrikes_[index] = 0;
             continue;
         }
-        const float priorMean = circularMeanDeg(history, history.size() - 1);
+        const float priorMean = sc::util::circularMeanDegrees(history, history.size() - 1);
         const float newest = static_cast<float>(history.back());
-        const float allMean = circularMeanDeg(history, history.size());
+        const float allMean = sc::util::circularMeanDegrees(history, history.size());
         double maximumDistance = 0.0;
         for (double value : history) {
             maximumDistance = std::max(maximumDistance,
-                static_cast<double>(angularDistanceDeg(allMean, static_cast<float>(value))));
+                static_cast<double>(sc::util::angularDistanceDegrees(allMean, static_cast<float>(value))));
         }
-        const double step = angularDistanceDeg(priorMean, newest);
+        const double step = sc::util::angularDistanceDegrees(priorMean, newest);
         const bool suspicious = step > windDirectionStepThresholdDeg &&
                                 maximumDistance > windDirectionRangeThresholdDeg;
         windDirectionChangeStrikes_[index] = suspicious ? windDirectionChangeStrikes_[index] + 1 : 0;
         if (windDirectionChangeStrikes_[index] >= windChangeRequiredStrikes) {
-            addEvidence(result, AlarmType::WindDirectionChange, static_cast<int>(index + 1), newest,
+            triggerAlarm(result, AlarmType::WindDirectionChange, static_cast<int>(index + 1), newest,
                         priorMean, windDirectionStepThresholdDeg, input.currentTimeMs);
         }
     }
@@ -472,12 +401,12 @@ void MonitoringDetectors::checkWindSpeedChange(const MonitoringInput& input, Mon
             continue;
         }
         std::vector<double> priorValues(history.begin(), history.end() - 1);
-        const double priorMedian = median(std::move(priorValues));
+        const double priorMedian = sc::util::median(std::move(priorValues));
         const double step = std::abs(history.back() - priorMedian);
-        const bool suspicious = step > windSpeedStepThresholdMs && linearRange(history) > windSpeedRangeThresholdMs;
+        const bool suspicious = step > windSpeedStepThresholdMs && sc::util::valueRange(history) > windSpeedRangeThresholdMs;
         windSpeedChangeStrikes_[index] = suspicious ? windSpeedChangeStrikes_[index] + 1 : 0;
         if (windSpeedChangeStrikes_[index] >= windChangeRequiredStrikes) {
-            addEvidence(result, AlarmType::WindSpeedChange, static_cast<int>(index + 1), history.back(),
+            triggerAlarm(result, AlarmType::WindSpeedChange, static_cast<int>(index + 1), history.back(),
                         priorMedian, windSpeedStepThresholdMs, input.currentTimeMs);
         }
     }
@@ -488,9 +417,9 @@ void MonitoringDetectors::checkTelemetryFreeze(const MonitoringInput& input, Mon
                                  const std::vector<double>& history, uint64_t timestampMs,
                                  double value, double minimumActiveValue, bool angular) {
         auto& startTime = freezeStartTime_[turbineIndex][signal];
-        const double observedRange = angular ? angularSpreadDeg(history) : linearRange(history);
+        const double observedRange = angular ? sc::util::angularSpreadDegrees(history) : sc::util::valueRange(history);
         const bool frozen = history.size() >= freezeWindowSamples &&
-            isRecent(timestampMs, input.currentTimeMs, freezeMeasurementTimeoutMs) &&
+            sc::util::isTimestampRecent(timestampMs, input.currentTimeMs, freezeMeasurementTimeoutMs) &&
             value > minimumActiveValue && observedRange <= 0.0;
         if (!frozen) {
             startTime = 0;
@@ -501,7 +430,7 @@ void MonitoringDetectors::checkTelemetryFreeze(const MonitoringInput& input, Mon
             return;
         }
         if (input.currentTimeMs - startTime >= freezePersistenceMs) {
-            addEvidence(result, AlarmType::TelemetryFreeze, static_cast<int>(turbineIndex + 1),
+            triggerAlarm(result, AlarmType::TelemetryFreeze, static_cast<int>(turbineIndex + 1),
                         observedRange, 0.0, 0.0, input.currentTimeMs);
         }
     };
@@ -545,8 +474,8 @@ void MonitoringDetectors::checkDrivetrainResponse(const MonitoringInput& input, 
             continue;
         }
 
-        const bool hasRecentRpm = isRecent(turbine.rotorSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs);
-        const bool hasRecentTorque = isRecent(turbine.generatorTorqueTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs);
+        const bool hasRecentRpm = sc::util::isTimestampRecent(turbine.rotorSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs);
+        const bool hasRecentTorque = sc::util::isTimestampRecent(turbine.generatorTorqueTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs);
         const bool rpmCollapsed = !hasRecentRpm || turbine.rotorSpeed < drivetrainCollapsedRpmFraction * expectedRpm;
         const bool torqueCollapsed = !hasRecentTorque || std::abs(turbine.generatorTorque) <
             std::max(drivetrainCollapsedTorqueNm, drivetrainCollapsedTorqueFraction * aerodynamicTorque);
@@ -565,7 +494,7 @@ void MonitoringDetectors::checkDrivetrainResponse(const MonitoringInput& input, 
         const uint64_t gracePeriod = aerodynamicCollapse ? drivetrainCollapseGracePeriodMs
                                                           : drivetrainUnderResponseGracePeriodMs;
         if (input.currentTimeMs - drivetrainUnderResponseStartTime_[index] >= gracePeriod) {
-            addEvidence(result, AlarmType::DrivetrainUnderResponse, static_cast<int>(index + 1),
+            triggerAlarm(result, AlarmType::DrivetrainUnderResponse, static_cast<int>(index + 1),
                         turbine.rotorSpeed, expectedRpm, drivetrainRpmLowFraction * expectedRpm,
                         input.currentTimeMs);
         }
@@ -575,10 +504,10 @@ void MonitoringDetectors::checkDrivetrainResponse(const MonitoringInput& input, 
 void MonitoringDetectors::checkStaticBounds(const MonitoringInput& input, MonitoringResult& result) const {
     const auto checkRange = [&](std::size_t index, uint64_t timestampMs, double value,
                                 double minimum, double maximum) {
-        if (!isRecent(timestampMs, input.currentTimeMs, staticBoundsMeasurementTimeoutMs)) return;
+        if (!sc::util::isTimestampRecent(timestampMs, input.currentTimeMs, staticBoundsMeasurementTimeoutMs)) return;
         if (value < minimum || value > maximum) {
             const double violatedBound = value < minimum ? minimum : maximum;
-            addEvidence(result, AlarmType::StaticTelemetryBounds, static_cast<int>(index + 1),
+            triggerAlarm(result, AlarmType::StaticTelemetryBounds, static_cast<int>(index + 1),
                         value, violatedBound, 0.0, input.currentTimeMs);
         }
     };
@@ -588,11 +517,11 @@ void MonitoringDetectors::checkStaticBounds(const MonitoringInput& input, Monito
         checkRange(index, turbine.windSpeedTimeMs, turbine.windSpeed, 0.0, staticBoundsWindSpeedMaxMs);
         checkRange(index, turbine.windDirectionTimeMs, turbine.windDirection, 0.0, 360.0);
         checkRange(index, turbine.yawTimeMs, turbine.yaw, 0.0, 360.0);
-        if (isRecent(turbine.yawTimeMs, input.currentTimeMs, staticBoundsMeasurementTimeoutMs) &&
+        if (sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, staticBoundsMeasurementTimeoutMs) &&
             input.farmWindSpeed >= sc::TurbineParameters::cutInWindSpeed) {
-            const double error = angularDistanceDeg(static_cast<float>(turbine.yaw), input.farmWindDirection);
+            const double error = sc::util::angularDistanceDegrees(static_cast<float>(turbine.yaw), input.farmWindDirection);
             if (error > staticBoundsOrientationWindowDeg) {
-                addEvidence(result, AlarmType::StaticTelemetryBounds, static_cast<int>(index + 1),
+                triggerAlarm(result, AlarmType::StaticTelemetryBounds, static_cast<int>(index + 1),
                             turbine.yaw, input.farmWindDirection, staticBoundsOrientationWindowDeg,
                             input.currentTimeMs);
             }
@@ -622,8 +551,8 @@ void MonitoringDetectors::checkFleetPeerOutliers(const MonitoringInput& input, M
     std::vector<double> rpmRatios;
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& turbine = input.turbines[index];
-        if (!isRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
-            !isRecent(turbine.rotorSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)) continue;
+        if (!sc::util::isTimestampRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
+            !sc::util::isTimestampRecent(turbine.rotorSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)) continue;
         double expectedPower = 0.0;
         double availablePower = 0.0;
         if (!expectedPowerForController(turbine, input, expectedPower, availablePower) ||
@@ -639,12 +568,12 @@ void MonitoringDetectors::checkFleetPeerOutliers(const MonitoringInput& input, M
         std::fill(fleetPeerOutlierStartTime_.begin(), fleetPeerOutlierStartTime_.end(), 0);
         return;
     }
-    const double medianPowerRatio = median(powerRatios);
-    const double medianRpmRatio = median(rpmRatios);
+    const double medianPowerRatio = sc::util::median(powerRatios);
+    const double medianRpmRatio = sc::util::median(rpmRatios);
     const double powerThreshold = std::max(fleetPeerPowerRatioThreshold,
-        4.0 * medianAbsoluteDeviation(powerRatios, medianPowerRatio));
+        4.0 * sc::util::medianAbsoluteDeviation(powerRatios, medianPowerRatio));
     const double rpmThreshold = std::max(fleetPeerRpmRatioThreshold,
-        4.0 * medianAbsoluteDeviation(rpmRatios, medianRpmRatio));
+        4.0 * sc::util::medianAbsoluteDeviation(rpmRatios, medianRpmRatio));
     std::vector<bool> hasMetric(turbineCount_, false);
     for (std::size_t metric = 0; metric < indices.size(); ++metric) {
         const std::size_t index = indices[metric];
@@ -661,7 +590,7 @@ void MonitoringDetectors::checkFleetPeerOutliers(const MonitoringInput& input, M
         }
         if (input.currentTimeMs - fleetPeerOutlierStartTime_[index] >= fleetPeerOutlierGracePeriodMs) {
             const bool powerIsWorse = powerDifference / powerThreshold >= rpmDifference / rpmThreshold;
-            addEvidence(result, AlarmType::FleetPeerOutlier, static_cast<int>(index + 1),
+            triggerAlarm(result, AlarmType::FleetPeerOutlier, static_cast<int>(index + 1),
                         powerIsWorse ? powerRatios[metric] : rpmRatios[metric],
                         powerIsWorse ? medianPowerRatio : medianRpmRatio,
                         powerIsWorse ? powerThreshold : rpmThreshold, input.currentTimeMs);

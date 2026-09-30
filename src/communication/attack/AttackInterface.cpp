@@ -36,19 +36,10 @@ using ReleaseMessage = sc::protocol::attack::ReleaseMessage;
 
 class AttackInterface::Impl {
 public:
-    Impl(int numTurbines,
-         sc::ports::AttackChannel& channel,
-         sc::ports::Clock& clock,
-         AttackTiming timing)
-        : numTurbines_(numTurbines),
-          channel_(channel),
-          clock_(clock),
-          timing_(timing),
-          sessionManager_(numTurbines, supportedSignalTypes(), clock, timing.sessionLeaseTimeout) {
+    Impl(int numTurbines, sc::ports::AttackChannel& channel, sc::ports::Clock& clock, AttackTiming timing)
+        : numTurbines_(numTurbines), channel_(channel), clock_(clock), timing_(timing), sessionManager_(numTurbines, supportedSignalTypes(), clock, timing.sessionLeaseTimeout) {
         publishResourceUsage();
-        channel_.setReceiveHandler([this](const uint8_t* data, size_t length) {
-            handleMessage(data, length);
-        });
+        channel_.setReceiveHandler([this](const uint8_t* data, size_t length) {handleMessage(data, length);});
         channel_.setLeaseCheckHandler([this]() { checkSessionLease(); });
         channel_.setDisconnectHandler([this](const std::string& reason) { endSession(reason); });
     }
@@ -64,7 +55,10 @@ public:
 
     void checkSessionLease() {
         const auto expired = sessionManager_.expireSession();
-        if (!expired) return;
+        if (!expired) {
+            return;
+        }
+
         cancelPendingOverwrite();
         attackStarted_.store(false);
         publishResourceUsage();
@@ -72,15 +66,20 @@ public:
     }
 
     void txData(unsigned int turbineId, SignalType signalType, void* value) {
-        if (signalType == SignalType::NONE) return;
+        if (signalType == SignalType::NONE) {
+            return;
+        }
+
         if (!validTurbine(turbineId)) {
             ATTACK_ERR("Invalid turbine ID: " << turbineId);
             return;
         }
-        if (!sessionManager_.tapEnabled(static_cast<int>(turbineId), signalType)) return;
 
-        const auto message = sc::protocol::attack::encode(TxDataMessage{
-            static_cast<uint8_t>(turbineId), signalType, 1, *static_cast<float*>(value)});
+        if (!sessionManager_.tapEnabled(static_cast<int>(turbineId), signalType)) {
+            return;
+        }
+
+        const auto message = sc::protocol::attack::encode(TxDataMessage{static_cast<uint8_t>(turbineId), signalType, 1, *static_cast<float*>(value)});
         channel_.send(message.data(), message.size());
     }
 

@@ -23,24 +23,13 @@ TcpServer::Config makeTcpConfig(const AttackChannelTCP::Config& config) {
 
 } // namespace
 
-AttackChannelTCP::AttackChannelTCP(Config config)
-    : PeriodicTask(config.pollPeriod),
-      config_(std::move(config)),
-      decoder_(config_.turbineCount, config_.receiveBufferBytes),
-      tcpServer_(makeTcpConfig(config_)) {
-    tcpServer_.setConnectedHandler([this](TcpServer::ClientId clientId) {
-        clientConnected(clientId);
-    });
-    tcpServer_.setDataHandler([this](TcpServer::ClientId clientId, const uint8_t* data, std::size_t size) {
-        bytesReceived(clientId, data, size);
-    });
-    tcpServer_.setDisconnectedHandler([this](TcpServer::ClientId clientId, const std::string& reason) {
-        clientDisconnected(clientId, reason);
-    });
-    tcpServer_.setRejectedHandler([](const std::string& reason) {
-        (void)reason;
-        SOCKET_AT_LOG_V1("Rejecting raw TCP attack client: " << reason);
-    });
+AttackChannelTCP::AttackChannelTCP(Config config): PeriodicTask(config.pollPeriod), config_(std::move(config)), 
+                    decoder_(config_.turbineCount, config_.receiveBufferBytes), tcpServer_(makeTcpConfig(config_)) {
+
+    tcpServer_.setConnectedHandler([this](TcpServer::ClientId clientId) {clientConnected(clientId);});
+    tcpServer_.setDataHandler([this](TcpServer::ClientId clientId, const uint8_t* data, std::size_t size) {bytesReceived(clientId, data, size);});
+    tcpServer_.setDisconnectedHandler([this](TcpServer::ClientId clientId, const std::string& reason) {clientDisconnected(clientId, reason);});
+    tcpServer_.setRejectedHandler([](const std::string& reason) {(void) reason; SOCKET_AT_LOG_V1("Rejecting raw TCP attack client: " << reason);});
 }
 
 void AttackChannelTCP::setReceiveHandler(sc::ports::AttackReceiveHandler handler) {
@@ -71,7 +60,9 @@ void AttackChannelTCP::onStart() {
 }
 
 void AttackChannelTCP::execute() {
-    if (leaseCheckHandler_) leaseCheckHandler_();
+    if (leaseCheckHandler_) {
+        leaseCheckHandler_();
+    }
     tcpServer_.poll();
 }
 
@@ -94,12 +85,17 @@ void AttackChannelTCP::bytesReceived(TcpServer::ClientId clientId, const uint8_t
         std::size_t offset = 0;
         while (offset < size) {
             const std::size_t available = config_.receiveBufferBytes - decoder_.bufferedBytes();
-            if (available == 0) throw sc::protocol::attack::ProtocolError("attack receive buffer limit exceeded");
+            if (available == 0) {
+                throw sc::protocol::attack::ProtocolError("attack receive buffer limit exceeded");
+            }
+            
             const std::size_t chunkSize = (std::min)(available, size - offset);
             const auto messages = decoder_.push(data + offset, chunkSize);
             offset += chunkSize;
             for (const auto& message : messages) {
-                if (receiveHandler_) receiveHandler_(message.data(), message.size());
+                if (receiveHandler_) {
+                    receiveHandler_(message.data(), message.size());
+                }
             }
         }
     } catch (const std::exception& error) {
@@ -109,11 +105,14 @@ void AttackChannelTCP::bytesReceived(TcpServer::ClientId clientId, const uint8_t
 
 void AttackChannelTCP::clientDisconnected(TcpServer::ClientId clientId, const std::string& reason) {
     TcpServer::ClientId expected = clientId;
-    if (!activeClient_.compare_exchange_strong(expected, 0)) return;
-    const std::string disconnectReason = decoder_.bufferedBytes() == 0
-        ? reason
-        : "protocol error: truncated attack message";
+    if (!activeClient_.compare_exchange_strong(expected, 0)) {
+        return;
+    }
+
+    const std::string disconnectReason = decoder_.bufferedBytes() == 0 ? reason : "protocol error: truncated attack message";
     decoder_.reset();
     SOCKET_AT_ST("Raw TCP attack client disconnected: " << disconnectReason);
-    if (disconnectHandler_) disconnectHandler_(disconnectReason);
+    if (disconnectHandler_) {
+        disconnectHandler_(disconnectReason);
+    }
 }

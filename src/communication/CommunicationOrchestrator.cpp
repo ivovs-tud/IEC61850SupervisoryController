@@ -63,9 +63,7 @@ HmiConfig makeHmiConfig(const CommunicationConfig& config) {
 CommunicationOrchestrator::CommunicationOrchestrator(const CommunicationConfig& config)
     : config_(config),
       hmiInterface_(makeHmiConfig(config), config.hmi.period),
-      iecManager_(sc::ports::systemClock(),
-                  config.mms.reconnectInitialDelay,
-                  config.mms.reconnectMaxDelay),
+      iecManager_(sc::ports::systemClock(), config.mms.reconnectInitialDelay, config.mms.reconnectMaxDelay),
       operatorServer_(makeOperatorConfig(config)),
       tcpAttackChannel_(makeTcpAttackConfig(config)),
       zmqAttackChannel_(makeZmqAttackConfig(config)),

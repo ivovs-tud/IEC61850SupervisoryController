@@ -41,10 +41,7 @@ using AuditCallback = std::function<void(const std::string&)>;
 
 class AttackInterface {
 public:
-    AttackInterface(int numTurbines,
-                    sc::ports::AttackChannel& channel,
-                    sc::ports::Clock& clock = sc::ports::systemClock(),
-                    AttackTiming timing = {});
+    AttackInterface(int numTurbines, sc::ports::AttackChannel& channel, sc::ports::Clock& clock = sc::ports::systemClock(), AttackTiming timing = {});
     ~AttackInterface();
 
     AttackInterface(const AttackInterface&) = delete;

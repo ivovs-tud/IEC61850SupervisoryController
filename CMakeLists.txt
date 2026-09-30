@@ -86,6 +86,7 @@ elseif(SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS)
     endif()
 endif()
 
+add_subdirectory(src/util)
 add_subdirectory(src/runtime)
 add_subdirectory(src/application)
 add_subdirectory(src/communication)

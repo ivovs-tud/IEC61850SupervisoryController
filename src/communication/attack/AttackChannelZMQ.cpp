@@ -6,11 +6,11 @@
 #include <stdexcept>
 #include <utility>
 
-AttackChannelZMQ::AttackChannelZMQ(Config config)
-    : PeriodicTask(config.pollPeriod), config_(config) {
+AttackChannelZMQ::AttackChannelZMQ(Config config) : PeriodicTask(config.pollPeriod), config_(config) {
     if (config_.port < 1024 || config_.port > 65535) {
         throw std::invalid_argument("invalid ZeroMQ attack channel port");
     }
+
     if (config_.receiveBufferBytes == 0 || config_.transmitBufferBytes == 0) {
         throw std::invalid_argument("attack channel buffers must not be empty");
     }
@@ -29,10 +29,15 @@ void AttackChannelZMQ::setDisconnectHandler(sc::ports::AttackDisconnectHandler h
 }
 
 bool AttackChannelZMQ::send(const uint8_t* data, std::size_t size) {
-    if (!isRunning() || data == nullptr || size == 0) return false;
+    if (!isRunning() || data == nullptr || size == 0) {
+        return false;
+    }
 
     std::lock_guard<std::mutex> lock(outboundMutex_);
-    if (!isRunning()) return false;
+    if (!isRunning()) {
+        return false;
+    }
+
     if (size > config_.transmitBufferBytes - queuedBytes_) {
         SOCKET_AT_ERR("Attack interface outbound buffer is full");
         outboundQueue_.clear();
@@ -63,7 +68,9 @@ void AttackChannelZMQ::execute() {
     if (received) {
         if (message.size() > config_.receiveBufferBytes) {
             SOCKET_AT_ERR("Attack interface message exceeds receive buffer limit");
-            if (disconnectHandler_) disconnectHandler_("receive buffer overflow");
+            if (disconnectHandler_) {
+                disconnectHandler_("receive buffer overflow");
+            }
         } else if (receiveHandler_) {
             receiveHandler_(static_cast<const uint8_t*>(message.data()), message.size());
         }
@@ -75,18 +82,24 @@ void AttackChannelZMQ::execute() {
 void AttackChannelZMQ::drainOutboundQueue() {
     for (std::size_t sent = 0; sent < kMaxSendsPerCycle; ++sent) {
         std::lock_guard<std::mutex> lock(outboundMutex_);
-        if (outboundQueue_.empty()) return;
+        if (outboundQueue_.empty()) {
+            return;
+        }
 
         const auto& pending = outboundQueue_.front();
         zmq::message_t message(pending.size());
         std::memcpy(message.data(), pending.data(), pending.size());
         try {
-            if (!socket_->send(message, zmq::send_flags::dontwait)) return;
+            if (!socket_->send(message, zmq::send_flags::dontwait)) {
+                return;
+            }
             queuedBytes_ -= pending.size();
             outboundQueue_.pop_front();
         } catch (const zmq::error_t& error) {
             SOCKET_AT_ERR("Failed to send attack interface message: " << error.what());
-            if (disconnectHandler_) disconnectHandler_("transport send failure");
+            if (disconnectHandler_) {
+                disconnectHandler_("transport send failure");
+            }
             throw;
         }
     }
