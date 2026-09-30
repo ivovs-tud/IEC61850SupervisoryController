@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sc/communication/attack/AttackChannel.hpp"
+#include "sc/communication/attack/AttackProtocol.hpp"
 #include "sc/runtime/PeriodicTask.hpp"
 
 #include <chrono>
@@ -18,8 +19,9 @@ public:
     struct Config {
         int port{9002};
         std::chrono::milliseconds pollPeriod{10};
-        std::size_t receiveBufferBytes{64 * 1024};
-        std::size_t transmitBufferBytes{64 * 1024};
+        std::size_t turbineCount{9};
+        std::size_t receiveBufferBytes{sc::protocol::attack::DEFAULT_BUFFER_LIMIT};
+        std::size_t transmitBufferBytes{sc::protocol::attack::DEFAULT_BUFFER_LIMIT};
         std::chrono::milliseconds heartbeatInterval{200};
         std::chrono::milliseconds heartbeatTimeout{750};
     };
@@ -40,6 +42,7 @@ protected:
 private:
     static constexpr std::size_t kMaxSendsPerCycle = 8;
 
+    void drainInboundQueue();
     void drainOutboundQueue();
 
     Config config_;
@@ -51,4 +54,5 @@ private:
     std::mutex outboundMutex_;
     std::deque<std::vector<uint8_t>> outboundQueue_;
     std::size_t queuedBytes_{0};
+    int receiveHighWaterMark_{1};
 };

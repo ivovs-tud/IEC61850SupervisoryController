@@ -35,6 +35,7 @@ AttackChannelZMQ::Config makeZmqAttackConfig(const CommunicationConfig& config) 
     AttackChannelZMQ::Config zmq;
     zmq.port = config.attackInterface.port;
     zmq.pollPeriod = config.attackInterface.pollPeriod;
+    zmq.turbineCount = config.mms.turbines.size();
     zmq.receiveBufferBytes = config.attackInterface.receiveBufferBytes;
     zmq.transmitBufferBytes = config.attackInterface.transmitBufferBytes;
     zmq.heartbeatInterval = config.attackInterface.zmqHeartbeatInterval;

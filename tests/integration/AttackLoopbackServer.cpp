@@ -10,11 +10,12 @@
 
 int main(int argc, char* argv[]) {
     if (argc < 2 || argc > 3) {
-        std::cerr << "usage: sc_attack_loopback_server <port> [slow-reader]\n";
+        std::cerr << "usage: sc_attack_loopback_server <port> [slow-reader|burst]\n";
         return 2;
     }
     const bool slowReaderMode = argc == 3 && std::string(argv[2]) == "slow-reader";
-    if (argc == 3 && !slowReaderMode) {
+    const bool burstMode = argc == 3 && std::string(argv[2]) == "burst";
+    if (argc == 3 && !slowReaderMode && !burstMode) {
         std::cerr << "unknown attack loopback mode: " << argv[2] << '\n';
         return 2;
     }
@@ -22,7 +23,8 @@ int main(int argc, char* argv[]) {
     const int port = std::atoi(argv[1]);
     AttackChannelZMQ::Config channelConfig;
     channelConfig.port = port;
-    channelConfig.pollPeriod = std::chrono::milliseconds(1);
+    channelConfig.pollPeriod = std::chrono::milliseconds(burstMode ? 100 : 1);
+    channelConfig.turbineCount = 2;
     channelConfig.transmitBufferBytes = slowReaderMode ? 1024 : 64 * 1024;
     AttackChannelZMQ channel(channelConfig);
     AttackInterface::AttackTiming timing;
@@ -32,6 +34,8 @@ int main(int argc, char* argv[]) {
     std::atomic<bool> running{true};
     std::atomic<int> configurationCount{0};
     std::atomic<int> disconnectCount{0};
+    std::atomic<int> controlChangeCount{0};
+    std::atomic<bool> releasedByClient{false};
     attack.setAuditCallback([&](const std::string& event) {
         if (event.find("event=connected") != std::string::npos) {
             configurationCount.fetch_add(1);
@@ -42,7 +46,12 @@ int main(int argc, char* argv[]) {
                 attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
             }
         }
+        if (event.find("event=tap;") != std::string::npos ||
+            event.find("event=fdi;") != std::string::npos) {
+            controlChangeCount.fetch_add(1);
+        }
         if (event.find("event=disconnected") != std::string::npos) {
+            releasedByClient.store(event.find("reason=client release") != std::string::npos);
             disconnectCount.fetch_add(1);
             running.store(false);
         }
@@ -56,6 +65,11 @@ int main(int argc, char* argv[]) {
     int overwriteSuccessCount = 0;
     int overwriteTimeoutCount = 0;
     while (running.load()) {
+        if (burstMode) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+
         float yaw = 7.0F;
         attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
 
@@ -80,6 +94,8 @@ int main(int argc, char* argv[]) {
               << " disconnects=" << disconnectCount.load()
               << " overwrite_successes=" << overwriteSuccessCount
               << " overwrite_timeouts=" << overwriteTimeoutCount
+              << " control_changes=" << controlChangeCount.load()
+              << " client_release=" << static_cast<int>(releasedByClient.load())
               << " restored=" << static_cast<int>(restored) << '\n';
     return 0;
 }

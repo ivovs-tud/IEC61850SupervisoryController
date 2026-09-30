@@ -2,17 +2,42 @@
 
 #include "sc/runtime/Logging.hpp"
 
+#include <algorithm>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
-AttackChannelZMQ::AttackChannelZMQ(Config config) : PeriodicTask(config.pollPeriod), config_(config) {
+namespace {
+
+std::size_t largestInboundMessage(std::size_t turbineCount) {
+    return std::max(sc::protocol::attack::CFG_DATA_SIZE,
+                    sc::protocol::attack::CT_DATA_PREFIX_SIZE + turbineCount);
+}
+
+int receiveHighWaterMark(const AttackChannelZMQ::Config& config) {
+    const std::size_t frames = config.receiveBufferBytes / largestInboundMessage(config.turbineCount);
+    return static_cast<int>(std::min(frames, static_cast<std::size_t>((std::numeric_limits<int>::max)())));
+}
+
+} // namespace
+
+AttackChannelZMQ::AttackChannelZMQ(Config config)
+    : PeriodicTask(config.pollPeriod),
+      config_(config),
+      receiveHighWaterMark_(receiveHighWaterMark(config_)) {
     if (config_.port < 1024 || config_.port > 65535) {
         throw std::invalid_argument("invalid ZeroMQ attack channel port");
     }
 
-    if (config_.receiveBufferBytes == 0 || config_.transmitBufferBytes == 0) {
-        throw std::invalid_argument("attack channel buffers must not be empty");
+    if (config_.turbineCount == 0) {
+        throw std::invalid_argument("number of turbines must be positive");
+    }
+    if (receiveHighWaterMark_ == 0) {
+        throw std::invalid_argument("attack receive buffer is too small for a complete message");
+    }
+    if (config_.transmitBufferBytes == 0) {
+        throw std::invalid_argument("attack transmit buffer must not be empty");
     }
 }
 
@@ -52,7 +77,7 @@ bool AttackChannelZMQ::send(const uint8_t* data, std::size_t size) {
 
 void AttackChannelZMQ::onStart() {
     socket_.emplace(context_, zmq::socket_type::pair);
-    socket_->set(zmq::sockopt::rcvhwm, 3);
+    socket_->set(zmq::sockopt::rcvhwm, receiveHighWaterMark_);
     socket_->set(zmq::sockopt::heartbeat_ivl, static_cast<int>(config_.heartbeatInterval.count()));
     socket_->set(zmq::sockopt::heartbeat_timeout, static_cast<int>(config_.heartbeatTimeout.count()));
     socket_->bind("tcp://*:" + std::to_string(config_.port));
@@ -63,20 +88,31 @@ void AttackChannelZMQ::execute() {
     if (!socket_) return;
     if (leaseCheckHandler_) leaseCheckHandler_();
 
-    zmq::message_t message;
-    const auto received = socket_->recv(message, zmq::recv_flags::dontwait);
-    if (received) {
-        if (message.size() > config_.receiveBufferBytes) {
-            SOCKET_AT_ERR("Attack interface message exceeds receive buffer limit");
+    drainInboundQueue();
+    drainOutboundQueue();
+}
+
+void AttackChannelZMQ::drainInboundQueue() {
+    std::size_t receivedBytes = 0;
+    for (int receivedMessages = 0; receivedMessages < receiveHighWaterMark_; ++receivedMessages) {
+        zmq::message_t message;
+        if (!socket_->recv(message, zmq::recv_flags::dontwait)) {
+            return;
+        }
+
+        if (message.size() > config_.receiveBufferBytes - receivedBytes) {
+            SOCKET_AT_ERR("Attack interface receive buffer is full");
             if (disconnectHandler_) {
                 disconnectHandler_("receive buffer overflow");
             }
-        } else if (receiveHandler_) {
+            return;
+        }
+
+        receivedBytes += message.size();
+        if (receiveHandler_) {
             receiveHandler_(static_cast<const uint8_t*>(message.data()), message.size());
         }
     }
-
-    drainOutboundQueue();
 }
 
 void AttackChannelZMQ::drainOutboundQueue() {
