@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <utility>
 
+using sc::communication::COMM_CONNECTED;
+using sc::communication::COMM_CONNECTING;
+using sc::communication::COMM_DISCONNECTED;
+
 const IECCommunicator::RxDescriptor IECCommunicator::RX_DESCRIPTORS[] = {
     { "V", "m/s", IEC_STRINGS::WS_MEAS, "WMET1$MX$HorWdSpd", AttackInterface::SignalType::WIND_SPEED, &CollectedData::lastWS, &CollectedData::wsHistory, &CollectedData::lastWS_t, 500 },
     { "D", "deg", IEC_STRINGS::WD_MEAS, "WMET1$MX$HorWdDir", AttackInterface::SignalType::WIND_DIRECTION, &CollectedData::lastWD, &CollectedData::wdHistory, &CollectedData::lastWD_t, 500 },
@@ -25,7 +29,7 @@ const IECCommunicator::EnumTxDescriptor IECCommunicator::ENUM_TX_DESCRIPTORS[] =
     { "TUR_CTL", &ControlData::turbineController, IEC_STRINGS::WTUR_TURCTL, IEC_STRINGS::WTUR_TURCTL_VAL, 5000 },
 };
 
-IECCommunicator::IECCommunicator(const CommunicationConfig& config,
+IECCommunicator::IECCommunicator(const sc::communication::CommunicationConfig& config,
                                  int turbineId,
                                  IEC61850Manager& iecManager,
                                  AttackInterface::AttackInterface& attackInterface)

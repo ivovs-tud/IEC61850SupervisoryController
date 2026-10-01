@@ -5,8 +5,8 @@ set_target_properties(wind_farm_scada PROPERTIES
 )
 
 target_link_libraries(wind_farm_scada PRIVATE
-    sc_communication
-    sc_tasks
+    sc::communication
+    sc::tasks
     Threads::Threads
     sc::project_warnings
 )
@@ -14,7 +14,7 @@ target_link_libraries(wind_farm_scada PRIVATE
 if(WIN32)
     add_custom_command(TARGET wind_farm_scada POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:sc_libiec61850>
+                $<TARGET_FILE:libiec61850::iec61850>
                 $<TARGET_FILE_DIR:wind_farm_scada>
         COMMENT "Copying libiec61850 runtime"
     )

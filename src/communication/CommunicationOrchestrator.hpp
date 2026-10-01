@@ -11,14 +11,16 @@
 #include "sc/runtime/DataHistorian.hpp"
 #include "sc/communication/CommunicationConfig.hpp"
 #include "sc/communication/attack/AttackChannelTCP.hpp"
-#include "sc/communication/attack/AttackChannelZMQ.hpp"
+#include "attack/AttackChannelZMQ.hpp"
 #include "sc/communication/attack/AttackInterface.hpp"
 #include "sc/communication/data_historian/DataHistorianServer.hpp"
-#include "sc/communication/hmi/HmiInterface.hpp"
+#include "hmi/HmiInterface.hpp"
 #include "sc/communication/iec61850/IEC61850Manager.hpp"
-#include "sc/communication/operator/OperatorServer.hpp"
+#include "operator/OperatorServer.hpp"
 
 class IECCommunicator;
+
+namespace sc::communication {
 
 class CommunicationOrchestrator
 {
@@ -44,7 +46,7 @@ public:
 
     using FailureHandler = std::function<void(const std::string&)>;
 
-    explicit CommunicationOrchestrator(const CommunicationConfig& config = CommunicationConfig{});
+    explicit CommunicationOrchestrator(const CommunicationConfig& config);
     ~CommunicationOrchestrator();
 
     StartupResult init();
@@ -91,3 +93,5 @@ private:
     bool gooseStarted_{false};
     std::size_t communicatorStartCount_{0};
 };
+
+} // namespace sc::communication

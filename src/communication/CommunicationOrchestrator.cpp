@@ -1,4 +1,4 @@
-#include "sc/communication/CommunicationOrchestrator.hpp"
+#include "CommunicationOrchestrator.hpp"
 #include "sc/communication/iec61850/IECCommunicator.hpp"
 #include "sc/communication/attack/AttackInterface.hpp"
 #include "sc/runtime/Logging.hpp"
@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <type_traits>
 #include <utility>
+
+namespace sc::communication {
 
 namespace {
 
@@ -382,3 +384,5 @@ CommunicationStatus CommunicationOrchestrator::iecStatus() const
     }
     return COMM_CONNECTING;
 }
+
+} // namespace sc::communication

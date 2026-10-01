@@ -239,7 +239,7 @@ if(TARGET sc_iec61850)
     if(WIN32)
         add_custom_command(TARGET sc_iec_lifecycle_tests POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    $<TARGET_FILE:iec61850>
+                    $<TARGET_FILE:libiec61850::iec61850>
                     $<TARGET_FILE_DIR:sc_iec_lifecycle_tests>
         )
         if(TARGET libzmq)
@@ -304,6 +304,23 @@ if(TARGET sc_hmi)
     catch_discover_tests(
         sc_hmi_tests
         TEST_PREFIX "sc.hmi."
+        DISCOVERY_MODE PRE_TEST
+    )
+endif()
+
+if(TARGET sc_communication)
+    add_executable(sc_communication_config_tests
+        unit/CommunicationConfigTests.cpp
+    )
+
+    target_link_libraries(sc_communication_config_tests PRIVATE
+        Catch2::Catch2WithMain
+        sc::communication
+    )
+
+    catch_discover_tests(
+        sc_communication_config_tests
+        TEST_PREFIX "sc.communication_config."
         DISCOVERY_MODE PRE_TEST
     )
 endif()

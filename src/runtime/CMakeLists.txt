@@ -3,9 +3,11 @@ add_library(sc_runtime STATIC
     PeriodicTask.cpp
     RuntimeConfig.cpp
 )
+add_library(sc::runtime ALIAS sc_runtime)
 
 target_include_directories(sc_runtime PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
 target_compile_features(sc_runtime PUBLIC cxx_std_17)

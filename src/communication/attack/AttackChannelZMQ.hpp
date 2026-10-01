@@ -27,7 +27,7 @@ public:
     };
 
     explicit AttackChannelZMQ(Config config);
-    ~AttackChannelZMQ() override { stop(); }
+    ~AttackChannelZMQ() override;
 
     void setReceiveHandler(sc::ports::AttackReceiveHandler handler) override;
     void setLeaseCheckHandler(sc::ports::AttackLeaseCheckHandler handler) override;

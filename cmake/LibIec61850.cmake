@@ -3,41 +3,78 @@ function(sc_configure_libiec61850)
         return()
     endif()
 
-    if(WIN32)
-        set(_sc_libiec_default "H:/libiec61850")
-    else()
-        set(_sc_libiec_default "/home/ivovs/TestbedProjects/libiec61850")
+    find_package(libiec61850 CONFIG QUIET)
+    if(TARGET libiec61850::iec61850)
+        return()
+    elseif(TARGET iec61850::iec61850)
+        add_library(libiec61850::iec61850 ALIAS iec61850::iec61850)
+        return()
+    elseif(TARGET iec61850)
+        add_library(libiec61850::iec61850 ALIAS iec61850)
+        return()
     endif()
-    set(LIBIEC61850_DIR "${_sc_libiec_default}" CACHE PATH "Path to libiec61850 source")
 
-    add_library(sc_libiec61850 SHARED IMPORTED GLOBAL)
-    add_library(libiec61850::iec61850 ALIAS sc_libiec61850)
+    set(SC_LIBIEC61850_ROOT "" CACHE PATH
+        "libiec61850 installation prefix or source tree containing an existing build")
 
-    set(_sc_libiec_includes
-        "${LIBIEC61850_DIR}/src/common/inc"
-        "${LIBIEC61850_DIR}/src/iec61850/inc"
-        "${LIBIEC61850_DIR}/src/mms/inc"
-        "${LIBIEC61850_DIR}/src/goose"
-        "${LIBIEC61850_DIR}/src/r_session"
-        "${LIBIEC61850_DIR}/hal/inc"
-        "${LIBIEC61850_DIR}/src/logging"
+    set(_sc_libiec_hints)
+    if(SC_LIBIEC61850_ROOT)
+        list(APPEND _sc_libiec_hints "${SC_LIBIEC61850_ROOT}")
+    endif()
+
+    find_path(SC_LIBIEC61850_INCLUDE_DIR
+        NAMES iec61850_client.h
+        HINTS ${_sc_libiec_hints}
+        PATH_SUFFIXES include src/iec61850/inc
+    )
+    find_library(SC_LIBIEC61850_LIBRARY
+        NAMES iec61850 libiec61850
+        HINTS ${_sc_libiec_hints}
+        PATH_SUFFIXES lib build build/src build/src/Debug build/src/Release
     )
 
-    if(WIN32)
-        set_target_properties(sc_libiec61850 PROPERTIES
-            IMPORTED_LOCATION "${LIBIEC61850_DIR}/build/src/Debug/iec61850.dll"
-            IMPORTED_IMPLIB "${LIBIEC61850_DIR}/build/src/Debug/iec61850.lib"
-            INTERFACE_INCLUDE_DIRECTORIES "${_sc_libiec_includes}"
+    if(NOT SC_LIBIEC61850_INCLUDE_DIR OR NOT SC_LIBIEC61850_LIBRARY)
+        message(FATAL_ERROR
+            "libiec61850 was not found. Install a CMake package that provides "
+            "libiec61850::iec61850, or configure with "
+            "-DSC_LIBIEC61850_ROOT=/path/to/libiec61850.")
+    endif()
+
+    set(_sc_libiec_includes "${SC_LIBIEC61850_INCLUDE_DIR}")
+    if(SC_LIBIEC61850_ROOT AND EXISTS "${SC_LIBIEC61850_ROOT}/src/iec61850/inc/iec61850_client.h")
+        list(APPEND _sc_libiec_includes
+            "${SC_LIBIEC61850_ROOT}/src/common/inc"
+            "${SC_LIBIEC61850_ROOT}/src/iec61850/inc"
+            "${SC_LIBIEC61850_ROOT}/src/mms/inc"
+            "${SC_LIBIEC61850_ROOT}/src/goose"
+            "${SC_LIBIEC61850_ROOT}/src/r_session"
+            "${SC_LIBIEC61850_ROOT}/hal/inc"
+            "${SC_LIBIEC61850_ROOT}/src/logging"
         )
-    elseif(APPLE)
+    endif()
+
+    if(WIN32)
+        find_file(SC_LIBIEC61850_RUNTIME_LIBRARY
+            NAMES iec61850.dll libiec61850.dll
+            HINTS ${_sc_libiec_hints}
+            PATH_SUFFIXES bin build/src/Debug build/src/Release
+        )
+    endif()
+
+    if(WIN32 AND SC_LIBIEC61850_RUNTIME_LIBRARY)
+        add_library(sc_libiec61850 SHARED IMPORTED GLOBAL)
         set_target_properties(sc_libiec61850 PROPERTIES
-            IMPORTED_LOCATION "${LIBIEC61850_DIR}/build/src/libiec61850.dylib"
+            IMPORTED_IMPLIB "${SC_LIBIEC61850_LIBRARY}"
+            IMPORTED_LOCATION "${SC_LIBIEC61850_RUNTIME_LIBRARY}"
             INTERFACE_INCLUDE_DIRECTORIES "${_sc_libiec_includes}"
         )
     else()
+        add_library(sc_libiec61850 UNKNOWN IMPORTED GLOBAL)
         set_target_properties(sc_libiec61850 PROPERTIES
-            IMPORTED_LOCATION "${LIBIEC61850_DIR}/build/src/libiec61850.so"
+            IMPORTED_LOCATION "${SC_LIBIEC61850_LIBRARY}"
             INTERFACE_INCLUDE_DIRECTORIES "${_sc_libiec_includes}"
         )
     endif()
+
+    add_library(libiec61850::iec61850 ALIAS sc_libiec61850)
 endfunction()

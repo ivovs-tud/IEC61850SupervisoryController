@@ -3,9 +3,11 @@ add_library(sc_util STATIC
     Statistics.cpp
     Time.cpp
 )
+add_library(sc::util ALIAS sc_util)
 
 target_include_directories(sc_util PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
 target_compile_features(sc_util PUBLIC cxx_std_17)

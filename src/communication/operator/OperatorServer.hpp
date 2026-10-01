@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sc/communication/operator/OperatorCommand.hpp"
+#include "OperatorCommand.hpp"
 #include "sc/runtime/PeriodicTask.hpp"
 
 #include <chrono>
@@ -19,7 +19,7 @@ public:
     using CommandHandler = std::function<void(const OperatorCommand&)>;
 
     explicit OperatorServer(Config config);
-    ~OperatorServer() override { stop(); }
+    ~OperatorServer() override;
 
     void setCommandHandler(CommandHandler handler);
 

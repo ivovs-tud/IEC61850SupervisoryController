@@ -24,7 +24,7 @@ struct IECCommunicatorTestAccess;
 class IECCommunicator
 {
 public:
-    explicit IECCommunicator(const CommunicationConfig& config,
+    explicit IECCommunicator(const sc::communication::CommunicationConfig& config,
                              int turbineId,
                              IEC61850Manager& iecManager,
                              AttackInterface::AttackInterface& attackInterface);
@@ -35,7 +35,7 @@ public:
     void setFailureHandler(PeriodicTask::FailureHandler handler);
 
     int turbineId() const { return turbineId_; }
-    CommunicationStatus status() const { return iecStatus_.load(); }
+    sc::communication::CommunicationStatus status() const { return iecStatus_.load(); }
     std::chrono::system_clock::time_point lastActivityTime() const;
 
 private:
@@ -120,12 +120,12 @@ private:
     std::vector<std::string> reportFallbackReferences() const;
     std::optional<size_t> findRxDescriptorByReference(const std::string& reference) const;
 
-    const CommunicationConfig& config_;
+    const sc::communication::CommunicationConfig& config_;
     int turbineId_;
     IEC61850Manager& iecManager_;
     AttackInterface::AttackInterface& attackInterface_;
 
-    std::atomic<CommunicationStatus> iecStatus_{COMM_DISCONNECTED};
+    std::atomic<sc::communication::CommunicationStatus> iecStatus_{sc::communication::COMM_DISCONNECTED};
     std::chrono::system_clock::time_point lastActivityTime_;
     mutable std::mutex lastActivityTimeMutex_;
     RxTask rxTask_;

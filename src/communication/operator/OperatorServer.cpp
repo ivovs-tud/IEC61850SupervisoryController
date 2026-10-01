@@ -1,4 +1,4 @@
-#include "sc/communication/operator/OperatorServer.hpp"
+#include "OperatorServer.hpp"
 
 #include "sc/runtime/Logging.hpp"
 
@@ -34,6 +34,10 @@ OperatorServer::OperatorServer(Config config)
     if (config_.port < 1024 || config_.port > 65535) {
         throw std::invalid_argument("invalid operator server port");
     }
+}
+
+OperatorServer::~OperatorServer() {
+    stop();
 }
 
 void OperatorServer::setCommandHandler(CommandHandler handler) {

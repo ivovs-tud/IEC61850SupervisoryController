@@ -6,7 +6,7 @@
 #include <thread>
 
 #include "sc/communication/attack/AttackInterface.hpp"
-#include "sc/communication/attack/AttackChannelZMQ.hpp"
+#include "AttackChannelZMQ.hpp"
 
 int main(int argc, char* argv[]) {
     if (argc < 2 || argc > 3) {

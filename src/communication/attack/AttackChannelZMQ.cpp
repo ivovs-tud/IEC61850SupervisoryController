@@ -1,4 +1,4 @@
-#include "sc/communication/attack/AttackChannelZMQ.hpp"
+#include "AttackChannelZMQ.hpp"
 
 #include "sc/runtime/Logging.hpp"
 
@@ -43,6 +43,10 @@ AttackChannelZMQ::AttackChannelZMQ(Config config)
         config_.heartbeatTimeout <= config_.heartbeatInterval) {
         throw std::invalid_argument("invalid ZeroMQ heartbeat timing");
     }
+}
+
+AttackChannelZMQ::~AttackChannelZMQ() {
+    stop();
 }
 
 void AttackChannelZMQ::setReceiveHandler(sc::ports::AttackReceiveHandler handler) {

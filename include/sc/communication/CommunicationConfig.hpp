@@ -9,6 +9,12 @@
 #include "sc/communication/attack/AttackProtocol.hpp"
 #include "sc/communication/attack/AttackTransport.hpp"
 
+namespace sc::runtime {
+struct RuntimeConfig;
+}
+
+namespace sc::communication {
+
 enum CommunicationStatus {
     COMM_DISCONNECTED = -1,
     COMM_CONNECTING   = 0,
@@ -20,13 +26,8 @@ struct CommunicationConfig
     struct Hmi {
         std::chrono::milliseconds period{500};
         int windowSize{300};
-#ifdef _WIN32
-        std::string publisherEndpoint{"tcp://127.0.0.1:5555"};
-        std::string commandEndpoint{"tcp://127.0.0.1:5556"};
-#else
-        std::string publisherEndpoint{"ipc:///tmp/supervisory_controller_hmi.sock"};
-        std::string commandEndpoint{"ipc:///tmp/supervisory_controller_hmi_cmd.sock"};
-#endif
+        std::string publisherEndpoint;
+        std::string commandEndpoint;
         bool alarmAcknowledgementEnabled{false};
     } hmi;
 
@@ -71,3 +72,7 @@ struct CommunicationConfig
         std::string               networkInterface{"veth1"};
     } goose;
 };
+
+CommunicationConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& runtime);
+
+} // namespace sc::communication

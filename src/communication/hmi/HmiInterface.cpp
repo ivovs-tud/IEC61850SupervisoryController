@@ -1,4 +1,4 @@
-#include "sc/communication/hmi/HmiInterface.hpp"
+#include "HmiInterface.hpp"
 #include "sc/runtime/Logging.hpp"
 
 #include <algorithm>
@@ -235,6 +235,11 @@ HmiInterface::HmiInterface(HmiConfig config, std::chrono::milliseconds period)
     : PeriodicTask(period)
     , config_(std::move(config))
 {}
+
+HmiInterface::~HmiInterface()
+{
+    stop();
+}
 
 void HmiInterface::onStart()
 {

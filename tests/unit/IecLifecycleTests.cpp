@@ -224,7 +224,7 @@ TEST_CASE("IEC communicator falls back to polling while its report is pending") 
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
     REQUIRE(manager.connectTurbine(1));
 
-    CommunicationConfig config;
+    sc::communication::CommunicationConfig config;
     config.mms.reportingEnabled = true;
     config.mms.reportControlBlockReference = "LLN0$RP$Measurements";
     config.mms.reportDataSetReference = "LLN0$Measurements";
@@ -250,7 +250,7 @@ TEST_CASE("IEC communicator records activity only for accepted report values") {
     IEC61850Manager manager(clock);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
 
-    CommunicationConfig config;
+    sc::communication::CommunicationConfig config;
     config.mms.reportingEnabled = false;
     IECCommunicator communicator(config, 1, manager, attackInterface);
     const auto noActivity = std::chrono::system_clock::time_point{};
@@ -265,7 +265,7 @@ TEST_CASE("IEC communicator records activity only for accepted report values") {
 
     IECCommunicatorTestAccess::handleReportValues(communicator, 1, mappedReport());
     REQUIRE(communicator.lastActivityTime() != noActivity);
-    REQUIRE(communicator.status() == COMM_CONNECTED);
+    REQUIRE(communicator.status() == sc::communication::COMM_CONNECTED);
     REQUIRE(IECCommunicatorTestAccess::bufferedReportCount(communicator) == 1);
 }
 
@@ -297,7 +297,7 @@ TEST_CASE("IEC communicator maps typed control fields to their attack signals") 
 
     IEC61850Manager manager(clock);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
-    CommunicationConfig config;
+    sc::communication::CommunicationConfig config;
     IECCommunicator communicator(config, 1, manager, attackInterface);
 
     IECCommunicatorTestAccess::executeTx(communicator);
