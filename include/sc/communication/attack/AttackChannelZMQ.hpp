@@ -22,8 +22,8 @@ public:
         std::size_t turbineCount{9};
         std::size_t receiveBufferBytes{sc::protocol::attack::DEFAULT_BUFFER_LIMIT};
         std::size_t transmitBufferBytes{sc::protocol::attack::DEFAULT_BUFFER_LIMIT};
-        std::chrono::milliseconds heartbeatInterval{200};
-        std::chrono::milliseconds heartbeatTimeout{750};
+        std::chrono::milliseconds heartbeatInterval{sc::protocol::attack::DEFAULT_HEARTBEAT_INTERVAL};
+        std::chrono::milliseconds heartbeatTimeout{sc::protocol::attack::DEFAULT_HEARTBEAT_TIMEOUT};
     };
 
     explicit AttackChannelZMQ(Config config);

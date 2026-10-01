@@ -36,7 +36,6 @@
     "flush_period_ms": 5000
   },
   "communication": {
-    "orchestration_period_ms": 10,
     "operator": {"port": 9001, "poll_period_ms": 10},
     "attack_interface": {
       "transport": "zeromq",
@@ -49,8 +48,6 @@
       "receive_buffer_bytes": 65536,
       "transmit_buffer_bytes": 65536,
       "configuration_timeout_ms": 1000,
-      "zmq_heartbeat_interval_ms": 200,
-      "zmq_heartbeat_timeout_ms": 750,
       "tcp_user_timeout_ms": 0
     },
     "data_historian": {"port": 9003, "poll_period_ms": 10},
@@ -66,13 +63,6 @@
           "dataset_reference": "WPPD1$ds01",
           "control_block_reference": "WPPD1$RP$urcb01",
           "data_references": [],
-          "trigger_options": {
-            "data_change": true,
-            "quality_change": true,
-            "data_update": false,
-            "integrity": true,
-            "general_interrogation": true
-          },
           "extensions": {}
         },
         {
@@ -82,7 +72,6 @@
           "dataset_reference": "WPPD1$diagnostics",
           "control_block_reference": "WPPD1$RP$diagnostics",
           "data_references": [],
-          "trigger_options": {},
           "extensions": {}
         }
       ],
@@ -90,8 +79,7 @@
     },
     "goose": {
       "enabled": false,
-      "network_interface": "veth1",
-      "poll_period_ms": 4
+      "network_interface": "veth1"
     },
     "extensions": {}
   },

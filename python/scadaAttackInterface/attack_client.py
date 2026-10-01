@@ -12,7 +12,8 @@ from types import TracebackType
 from typing import Any
 
 from .attack_protocol import (AtDataMessage, AttackMessage, AttackProtocolError, CfgDataMessage, ControlSignal,
-                                CtDataMessage, HeartbeatMessage, ReleaseMessage, RqDataMessage, TxDataMessage, TxDataType)
+                                CtDataMessage, DEFAULT_HEARTBEAT_INTERVAL_MS, HeartbeatMessage, ReleaseMessage,
+                                RqDataMessage, TxDataMessage, TxDataType)
 
 from .attack_transport import AttackTransport, AttackTransportError, TcpAttackTransport, ZeroMqAttackTransport
 
@@ -44,7 +45,7 @@ class AttackClient:
     ZEROMQ_MAX_MESSAGES = ZeroMqAttackTransport.MAX_MESSAGES
     RECV_TIMEOUT_MS = ZeroMqAttackTransport.RECEIVE_TIMEOUT_MS
     SEND_TIMEOUT_MS = ZeroMqAttackTransport.SEND_TIMEOUT_MS
-    HEARTBEAT_INTERVAL_SECONDS = 0.2
+    HEARTBEAT_INTERVAL_SECONDS = DEFAULT_HEARTBEAT_INTERVAL_MS / 1_000
     ZEROMQ_HEARTBEAT_INTERVAL_MS = ZeroMqAttackTransport.HEARTBEAT_INTERVAL_MS
     ZEROMQ_HEARTBEAT_TIMEOUT_MS = ZeroMqAttackTransport.HEARTBEAT_TIMEOUT_MS
 

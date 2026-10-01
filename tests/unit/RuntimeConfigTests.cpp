@@ -32,8 +32,6 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
     REQUIRE(config.communication.attackInterface.receiveBufferBytes == 64 * 1024);
     REQUIRE(config.communication.attackInterface.transmitBufferBytes == 64 * 1024);
     REQUIRE(config.communication.attackInterface.configurationTimeout == 1000ms);
-    REQUIRE(config.communication.attackInterface.zmqHeartbeatInterval == 200ms);
-    REQUIRE(config.communication.attackInterface.zmqHeartbeatTimeout == 750ms);
     REQUIRE(config.communication.mms.reconnectInitialDelay == 100ms);
     REQUIRE(config.communication.mms.reconnectMaxDelay == 5000ms);
     REQUIRE_FALSE(config.communication.goose.enabled);
@@ -130,8 +128,7 @@ TEST_CASE("runtime JSON accepts future turbine metadata and named report definit
         "      \"integrity_period_ms\": 750,\n"
         "      \"dataset_reference\": \"LD0$dataset\",\n"
         "      \"control_block_reference\": \"LD0$RP$report\",\n"
-        "      \"data_references\": [\"WTUR1$MX$W\"],\n"
-        "      \"trigger_options\": {\"data_update\": true}\n"
+        "      \"data_references\": [\"WTUR1$MX$W\"]\n"
         "    },\n"
         "    {\"name\": \"diagnostics\", \"enabled\": false}\n"
         "  ]}},\n"
@@ -149,7 +146,6 @@ TEST_CASE("runtime JSON accepts future turbine metadata and named report definit
     REQUIRE(config.communication.mms.reports[0].integrityPeriod == 750ms);
     REQUIRE(config.communication.mms.reports[0].dataReferences ==
             std::vector<std::string>{"WTUR1$MX$W"});
-    REQUIRE(config.communication.mms.reports[0].triggerOptions.dataUpdate);
     REQUIRE_FALSE(config.communication.mms.reports[1].enabled);
 }
 
@@ -162,6 +158,21 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
     SECTION("empty turbine list") {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.turbines.clear();
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("attack protocol limits the turbine count to uint8 identifiers") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.turbines.resize(256, config.turbines.front());
+        for (std::size_t index = 0; index < config.turbines.size(); ++index) {
+            config.turbines[index].id = "WT" + std::to_string(index + 1);
+        }
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+    }
+
+    SECTION("controller servers cannot use privileged ports") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.communication.operatorServer.port = 1023;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
@@ -204,13 +215,6 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.transport = sc::ports::AttackTransport::TCP;
         config.communication.attackInterface.bindAddress = "localhost";
-        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
-    }
-
-    SECTION("ZeroMQ heartbeat timeout must exceed its interval") {
-        auto config = sc::runtime::defaultRuntimeConfig();
-        config.communication.attackInterface.zmqHeartbeatTimeout =
-            config.communication.attackInterface.zmqHeartbeatInterval;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 

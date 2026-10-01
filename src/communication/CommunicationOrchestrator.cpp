@@ -39,8 +39,8 @@ AttackChannelZMQ::Config makeZmqAttackConfig(const CommunicationConfig& config) 
     zmq.turbineCount = config.mms.turbines.size();
     zmq.receiveBufferBytes = config.attackInterface.receiveBufferBytes;
     zmq.transmitBufferBytes = config.attackInterface.transmitBufferBytes;
-    zmq.heartbeatInterval = config.attackInterface.zmqHeartbeatInterval;
-    zmq.heartbeatTimeout = config.attackInterface.zmqHeartbeatTimeout;
+    zmq.heartbeatInterval = config.attackInterface.heartbeatInterval;
+    zmq.heartbeatTimeout = config.attackInterface.leaseTimeout;
     return zmq;
 }
 

@@ -4,6 +4,7 @@
 #include <boost/property_tree/ptree.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <set>
 #include <sstream>
@@ -157,19 +158,12 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
             config.communication.attackInterface.transmitBufferBytes);
         loadMilliseconds(root, "communication.attack_interface.configuration_timeout_ms",
                          config.communication.attackInterface.configurationTimeout);
-        loadMilliseconds(root, "communication.attack_interface.zmq_heartbeat_interval_ms",
-                         config.communication.attackInterface.zmqHeartbeatInterval);
-        loadMilliseconds(root, "communication.attack_interface.zmq_heartbeat_timeout_ms",
-                         config.communication.attackInterface.zmqHeartbeatTimeout);
         loadMilliseconds(root, "communication.attack_interface.tcp_user_timeout_ms",
                          config.communication.attackInterface.tcpUserTimeout);
         config.communication.dataHistorian.port = root.get<int>(
             "communication.data_historian.port", config.communication.dataHistorian.port);
         loadMilliseconds(root, "communication.data_historian.poll_period_ms",
                          config.communication.dataHistorian.pollPeriod);
-        loadMilliseconds(root, "communication.orchestration_period_ms",
-                         config.communication.orchestrationPeriod);
-
         loadMilliseconds(root, "communication.mms.poll_period_ms",
                          config.communication.mms.pollPeriod);
         loadMilliseconds(root, "communication.mms.reconnect_initial_delay_ms",
@@ -197,17 +191,6 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
                             reference.second.get_value<std::string>());
                     }
                 }
-                report.triggerOptions.dataChange = node.get<bool>(
-                    "trigger_options.data_change", report.triggerOptions.dataChange);
-                report.triggerOptions.qualityChange = node.get<bool>(
-                    "trigger_options.quality_change", report.triggerOptions.qualityChange);
-                report.triggerOptions.dataUpdate = node.get<bool>(
-                    "trigger_options.data_update", report.triggerOptions.dataUpdate);
-                report.triggerOptions.integrity = node.get<bool>(
-                    "trigger_options.integrity", report.triggerOptions.integrity);
-                report.triggerOptions.generalInterrogation = node.get<bool>(
-                    "trigger_options.general_interrogation",
-                    report.triggerOptions.generalInterrogation);
                 config.communication.mms.reports.push_back(std::move(report));
                 ++reportIndex;
             }
@@ -237,8 +220,6 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
         config.communication.goose.networkInterface = root.get<std::string>(
             "communication.goose.network_interface",
             config.communication.goose.networkInterface);
-        loadMilliseconds(root, "communication.goose.poll_period_ms",
-                         config.communication.goose.pollPeriod);
     } catch (const std::exception& error) {
         throw std::runtime_error(
             "Failed to load runtime configuration '" + jsonPath.string() + "': " + error.what());
@@ -256,8 +237,8 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
     if (config.turbines.empty()) {
         throw std::runtime_error("turbines must contain at least one endpoint");
     }
-    if (config.turbines.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
-        throw std::runtime_error("turbines contains too many endpoints");
+    if (config.turbines.size() > std::numeric_limits<uint8_t>::max()) {
+        throw std::runtime_error("turbines must contain at most 255 endpoints");
     }
     std::set<std::string> turbineIds;
     for (std::size_t index = 0; index < config.turbines.size(); ++index) {
@@ -320,6 +301,13 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
         throw std::runtime_error(
             "communication.attack_interface.lease_timeout_ms must exceed heartbeat_interval_ms");
     }
+    if (config.communication.attackInterface.heartbeatInterval.count() >
+            std::numeric_limits<int>::max() ||
+        config.communication.attackInterface.leaseTimeout.count() >
+            std::numeric_limits<int>::max()) {
+        throw std::runtime_error(
+            "communication.attack_interface heartbeat values exceed the socket option range");
+    }
     if (config.communication.attackInterface.transport == sc::ports::AttackTransport::TCP &&
         !isIpv4Address(config.communication.attackInterface.bindAddress)) {
         throw std::runtime_error(
@@ -337,23 +325,6 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
     }
     requirePositive(config.communication.attackInterface.configurationTimeout,
                     "communication.attack_interface.configuration_timeout_ms");
-    requirePositive(config.communication.attackInterface.zmqHeartbeatInterval,
-                    "communication.attack_interface.zmq_heartbeat_interval_ms");
-    requirePositive(config.communication.attackInterface.zmqHeartbeatTimeout,
-                    "communication.attack_interface.zmq_heartbeat_timeout_ms");
-    if (config.communication.attackInterface.zmqHeartbeatTimeout <=
-        config.communication.attackInterface.zmqHeartbeatInterval) {
-        throw std::runtime_error(
-            "communication.attack_interface.zmq_heartbeat_timeout_ms must exceed "
-            "zmq_heartbeat_interval_ms");
-    }
-    if (config.communication.attackInterface.zmqHeartbeatInterval.count() >
-            std::numeric_limits<int>::max() ||
-        config.communication.attackInterface.zmqHeartbeatTimeout.count() >
-            std::numeric_limits<int>::max()) {
-        throw std::runtime_error(
-            "communication.attack_interface ZeroMQ heartbeat values exceed the socket option range");
-    }
     if (config.communication.attackInterface.tcpUserTimeout.count() < 0) {
         throw std::runtime_error(
             "communication.attack_interface.tcp_user_timeout_ms must not be negative");
@@ -373,8 +344,6 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
         throw std::runtime_error("communication server ports must be distinct");
     }
 
-    requirePositive(config.communication.orchestrationPeriod,
-                    "communication.orchestration_period_ms");
     requirePositive(config.communication.mms.pollPeriod,
                     "communication.mms.poll_period_ms");
     requirePositive(config.communication.mms.reconnectInitialDelay,
@@ -420,8 +389,6 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
     if (config.communication.goose.enabled && config.communication.goose.networkInterface.empty()) {
         throw std::runtime_error("communication.goose.network_interface must not be empty");
     }
-    requirePositive(config.communication.goose.pollPeriod,
-                    "communication.goose.poll_period_ms");
 }
 
 void validateRuntimeConfig(const RuntimeConfig& config, std::size_t yawLutTurbineCount) {

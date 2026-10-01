@@ -1,14 +1,15 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 #include "sc/tasks/ControlTask.hpp"
 #include "sc/model/SharedData.hpp"
 #include "sc/runtime/Logging.hpp"
 #include "sc/application/ControlCalculation.hpp"
 
-ControlTask::ControlTask(Config config)
-    : PeriodicTask(config.period), yawLut_(config.yawLutCsvPath), numTurbines_(config.numTurbines) {}
+ControlTask::ControlTask(Config config, sc::application::YawLut yawLut)
+    : PeriodicTask(config.period), yawLut_(std::move(yawLut)), numTurbines_(config.numTurbines) {}
 
 void ControlTask::execute() {
     sc::application::ControlInputs inputs;

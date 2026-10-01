@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sc/communication/attack/AttackSignalType.hpp"
+#include "sc/communication/attack/AttackProtocol.hpp"
 #include "sc/runtime/Clock.hpp"
 
 #include <chrono>
@@ -41,7 +42,7 @@ struct ClosedAttackSession {
 // Tracks the active attack client and its per-turbine controls.
 class AttackSessionManager {
 public:
-    AttackSessionManager(int numTurbines, std::vector<AttackInterface::SignalType> signalTypes, sc::ports::Clock& clock, std::chrono::milliseconds leaseTimeout = std::chrono::milliseconds(750));
+    AttackSessionManager(int numTurbines, std::vector<AttackInterface::SignalType> signalTypes, sc::ports::Clock& clock, std::chrono::milliseconds leaseTimeout = sc::protocol::attack::DEFAULT_HEARTBEAT_TIMEOUT);
     /**
      * Creates attack state for all configured turbine links.
      * @param numTurbines Number of turbine links.

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "sc/communication/attack/AttackTransport.hpp"
+#include "sc/communication/attack/AttackProtocol.hpp"
 
 namespace sc::runtime {
 
@@ -17,14 +18,6 @@ struct TurbineEndpointConfig {
     int port{102};
     std::string iedName{"WTURBINE"};
     std::string logicalDevice{"LD0"};
-};
-
-struct ReportTriggerOptions {
-    bool dataChange{true};
-    bool qualityChange{true};
-    bool dataUpdate{false};
-    bool integrity{true};
-    bool generalInterrogation{true};
 };
 
 struct ReportConfig {
@@ -37,7 +30,6 @@ struct ReportConfig {
     std::string dataSetReference{"WPPD1$ds01"};
     std::string controlBlockReference{"WPPD1$RP$urcb01"};
     std::vector<std::string> dataReferences;
-    ReportTriggerOptions triggerOptions;
 };
 
 struct RuntimeConfig {
@@ -89,14 +81,12 @@ struct RuntimeConfig {
             std::string bindAddress{"0.0.0.0"};
             int port{9002};
             std::chrono::milliseconds pollPeriod{10};
-            std::chrono::milliseconds heartbeatInterval{200};
-            std::chrono::milliseconds leaseTimeout{750};
+            std::chrono::milliseconds heartbeatInterval{sc::protocol::attack::DEFAULT_HEARTBEAT_INTERVAL};
+            std::chrono::milliseconds leaseTimeout{sc::protocol::attack::DEFAULT_HEARTBEAT_TIMEOUT};
             bool reuseLastFdiValueOnFailure{true};
             std::size_t receiveBufferBytes{64 * 1024};
             std::size_t transmitBufferBytes{64 * 1024};
             std::chrono::milliseconds configurationTimeout{1000};
-            std::chrono::milliseconds zmqHeartbeatInterval{200};
-            std::chrono::milliseconds zmqHeartbeatTimeout{750};
             std::chrono::milliseconds tcpUserTimeout{0};
         } attackInterface;
         SocketServer dataHistorian{9003};
@@ -111,10 +101,7 @@ struct RuntimeConfig {
         struct Goose {
             bool enabled{false};
             std::string networkInterface{"veth1"};
-            std::chrono::milliseconds pollPeriod{4};
         } goose;
-
-        std::chrono::milliseconds orchestrationPeriod{10};
     } communication;
 };
 

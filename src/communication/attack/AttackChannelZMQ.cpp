@@ -39,6 +39,10 @@ AttackChannelZMQ::AttackChannelZMQ(Config config)
     if (config_.transmitBufferBytes == 0) {
         throw std::invalid_argument("attack transmit buffer must not be empty");
     }
+    if (config_.heartbeatInterval <= std::chrono::milliseconds::zero() ||
+        config_.heartbeatTimeout <= config_.heartbeatInterval) {
+        throw std::invalid_argument("invalid ZeroMQ heartbeat timing");
+    }
 }
 
 void AttackChannelZMQ::setReceiveHandler(sc::ports::AttackReceiveHandler handler) {

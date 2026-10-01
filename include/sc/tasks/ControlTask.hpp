@@ -1,7 +1,6 @@
 #pragma once
 
 #include <chrono>
-#include <string>
 
 #include "sc/runtime/PeriodicTask.hpp"
 #include "sc/application/YawLut.hpp"
@@ -14,10 +13,9 @@ public:
     struct Config {
         int numTurbines;
         std::chrono::milliseconds period{std::chrono::milliseconds(10)};
-        std::string yawLutCsvPath{"config/yaw_lut.csv"};
     };
 
-    explicit ControlTask(Config config);
+    ControlTask(Config config, sc::application::YawLut yawLut);
 
     /// Worker shutdown before referenced dependencies are destroyed
     ~ControlTask() override { stop(); }

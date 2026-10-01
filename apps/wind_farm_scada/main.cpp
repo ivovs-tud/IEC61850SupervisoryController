@@ -124,8 +124,6 @@ CommunicationConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& ru
     config.attackInterface.receiveBufferBytes = runtime.communication.attackInterface.receiveBufferBytes;
     config.attackInterface.transmitBufferBytes = runtime.communication.attackInterface.transmitBufferBytes;
     config.attackInterface.configurationTimeout = runtime.communication.attackInterface.configurationTimeout;
-    config.attackInterface.zmqHeartbeatInterval = runtime.communication.attackInterface.zmqHeartbeatInterval;
-    config.attackInterface.zmqHeartbeatTimeout = runtime.communication.attackInterface.zmqHeartbeatTimeout;
     config.attackInterface.tcpUserTimeout = runtime.communication.attackInterface.tcpUserTimeout;
     config.dataHistorian.port = runtime.communication.dataHistorian.port;
     config.dataHistorian.pollPeriod = runtime.communication.dataHistorian.pollPeriod;
@@ -156,8 +154,6 @@ CommunicationConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& ru
     }
     config.goose.enabled = runtime.communication.goose.enabled;
     config.goose.networkInterface = runtime.communication.goose.networkInterface;
-    config.goose.pollPeriod = runtime.communication.goose.pollPeriod;
-    config.orchestrationPeriod = runtime.communication.orchestrationPeriod;
     return config;
 }
 
@@ -192,7 +188,7 @@ int main(int argc, char* argv[]) {
         }
 
         sc::runtime::validateRuntimeConfig(runtime);
-        const sc::application::YawLut yawLut(runtime.control.yawLutCsvPath.string());
+        sc::application::YawLut yawLut(runtime.control.yawLutCsvPath.string());
         sc::runtime::validateRuntimeConfig(runtime, yawLut.turbineCount());
 
         const int numTurbines = static_cast<int>(runtime.turbines.size());
@@ -200,13 +196,12 @@ int main(int argc, char* argv[]) {
 
         ControlTask::Config controlConfig;
         controlConfig.period = runtime.tasks.controlPeriod;
-        controlConfig.yawLutCsvPath = runtime.control.yawLutCsvPath.string();
         controlConfig.numTurbines = numTurbines;
 
         const CommunicationConfig communicationConfig = makeCommunicationConfig(runtime);
 
         // All validation and dynamic state sizing is complete before any worker starts.
-        ControlTask controlTask(controlConfig);
+        ControlTask controlTask(controlConfig, std::move(yawLut));
         SignalProcessingTask signalTask(runtime.tasks.signalProcessingPeriod);
         MonitoringTask monitoringTask(runtime.tasks.monitoringPeriod, numTurbines,
                                       runtime.monitoring.alarmAcknowledgementEnabled);

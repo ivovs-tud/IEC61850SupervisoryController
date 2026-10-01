@@ -33,7 +33,7 @@ using ReleaseMessage = sc::protocol::attack::ReleaseMessage;
 
 struct AttackTiming {
     std::chrono::milliseconds requestLifetime{250};
-    std::chrono::milliseconds sessionLeaseTimeout{750};
+    std::chrono::milliseconds sessionLeaseTimeout{sc::protocol::attack::DEFAULT_HEARTBEAT_TIMEOUT};
     bool reuseLastFdiValueOnFailure{true};
 };
 

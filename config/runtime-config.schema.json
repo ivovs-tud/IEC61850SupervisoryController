@@ -10,6 +10,7 @@
     "turbines": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 255,
       "items": {"$ref": "#/$defs/turbine"}
     },
     "tasks": {
@@ -58,7 +59,6 @@
     "communication": {
       "type": "object",
       "properties": {
-        "orchestration_period_ms": {"type": "integer", "minimum": 1},
         "operator": {"$ref": "#/$defs/socketServer"},
         "attack_interface": {"$ref": "#/$defs/attackInterfaceServer"},
         "data_historian": {"$ref": "#/$defs/socketServer"},
@@ -81,11 +81,6 @@
           "properties": {
             "enabled": {"type": "boolean"},
             "network_interface": {"type": "string", "minLength": 1},
-            "poll_period_ms": {"type": "integer", "minimum": 1},
-            "subscriptions": {
-              "type": "array",
-              "items": {"type": "object", "additionalProperties": true}
-            },
             "extensions": {"$ref": "#/$defs/extensions"}
           },
           "additionalProperties": true
@@ -105,7 +100,7 @@
     "socketServer": {
       "type": "object",
       "properties": {
-        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
         "poll_period_ms": {"type": "integer", "minimum": 1},
         "extensions": {"$ref": "#/$defs/extensions"}
       },
@@ -116,17 +111,15 @@
       "properties": {
         "transport": {"enum": ["zeromq", "tcp"]},
         "bind_address": {"type": "string", "minLength": 1},
-        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
         "poll_period_ms": {"type": "integer", "minimum": 1},
-        "heartbeat_interval_ms": {"type": "integer", "minimum": 1},
-        "lease_timeout_ms": {"type": "integer", "minimum": 1},
+        "heartbeat_interval_ms": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "lease_timeout_ms": {"type": "integer", "minimum": 1, "maximum": 2147483647},
         "reuse_last_fdi_value_on_failure": {"type": "boolean"},
         "receive_buffer_bytes": {"type": "integer", "minimum": 268},
         "transmit_buffer_bytes": {"type": "integer", "minimum": 268},
         "configuration_timeout_ms": {"type": "integer", "minimum": 1},
-        "zmq_heartbeat_interval_ms": {"type": "integer", "minimum": 1},
-        "zmq_heartbeat_timeout_ms": {"type": "integer", "minimum": 1},
-        "tcp_user_timeout_ms": {"type": "integer", "minimum": 0},
+        "tcp_user_timeout_ms": {"type": "integer", "minimum": 0, "maximum": 2147483647},
         "extensions": {"$ref": "#/$defs/extensions"}
       },
       "additionalProperties": true
@@ -182,17 +175,6 @@
         "data_references": {
           "type": "array",
           "items": {"type": "string", "minLength": 1}
-        },
-        "trigger_options": {
-          "type": "object",
-          "properties": {
-            "data_change": {"type": "boolean"},
-            "quality_change": {"type": "boolean"},
-            "data_update": {"type": "boolean"},
-            "integrity": {"type": "boolean"},
-            "general_interrogation": {"type": "boolean"}
-          },
-          "additionalProperties": true
         },
         "extensions": {"$ref": "#/$defs/extensions"}
       },

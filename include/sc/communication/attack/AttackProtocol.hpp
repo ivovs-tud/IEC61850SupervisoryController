@@ -3,6 +3,7 @@
 #include "sc/communication/attack/AttackSignalType.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -45,6 +46,8 @@ inline constexpr std::size_t SIM_CTRL_SIZE = 2;
 inline constexpr std::size_t HEARTBEAT_SIZE = 1;
 inline constexpr std::size_t RELEASE_SIZE = 1;
 inline constexpr std::size_t DEFAULT_BUFFER_LIMIT = 64 * 1024;
+inline constexpr auto DEFAULT_HEARTBEAT_INTERVAL = std::chrono::milliseconds(200);
+inline constexpr auto DEFAULT_HEARTBEAT_TIMEOUT = std::chrono::milliseconds(750);
 
 struct TxDataMessage {
     uint8_t turbineId{0};

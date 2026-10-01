@@ -16,6 +16,8 @@ from .attack_protocol import (
     AttackProtocolError,
     AttackStreamDecoder,
     DEFAULT_BUFFER_LIMIT,
+    DEFAULT_HEARTBEAT_INTERVAL_MS,
+    DEFAULT_HEARTBEAT_TIMEOUT_MS,
     parse_message,
 )
 
@@ -54,8 +56,8 @@ class ZeroMqAttackTransport(AttackTransport):
     MAX_MESSAGES = 10
     RECEIVE_TIMEOUT_MS = 500
     SEND_TIMEOUT_MS = 500
-    HEARTBEAT_INTERVAL_MS = 200
-    HEARTBEAT_TIMEOUT_MS = 750
+    HEARTBEAT_INTERVAL_MS = DEFAULT_HEARTBEAT_INTERVAL_MS
+    HEARTBEAT_TIMEOUT_MS = DEFAULT_HEARTBEAT_TIMEOUT_MS
 
     def __init__(self, *, socket: Any | None = None, context: Any | None = None) -> None:
         self._context = context
