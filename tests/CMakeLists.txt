@@ -280,6 +280,34 @@ set_tests_properties(sc.python_attack_client PROPERTIES
     ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/python;PYTHONDONTWRITEBYTECODE=1"
 )
 
+add_test(
+    NAME sc.python_hmi_endpoints
+    COMMAND ${Python3_EXECUTABLE} -m unittest discover
+            -s ${CMAKE_CURRENT_SOURCE_DIR}/protocol
+            -p test_hmi_endpoints.py
+)
+
+set_tests_properties(sc.python_hmi_endpoints PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/apps/wind_farm_hmi;PYTHONDONTWRITEBYTECODE=1"
+)
+
+if(TARGET sc_hmi)
+    add_executable(sc_hmi_tests
+        unit/HmiTests.cpp
+    )
+
+    target_link_libraries(sc_hmi_tests PRIVATE
+        Catch2::Catch2WithMain
+        sc_hmi
+    )
+
+    catch_discover_tests(
+        sc_hmi_tests
+        TEST_PREFIX "sc.hmi."
+        DISCOVERY_MODE PRE_TEST
+    )
+endif()
+
 if(SC_BUILD_INTEGRATION_TESTS)
     execute_process(
         COMMAND ${Python3_EXECUTABLE} -c "import zmq"

@@ -58,6 +58,14 @@ TEST_CASE("shipped versioned JSON example loads and matches its yaw LUT") {
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, yawLut.turbineCount()));
 }
 
+TEST_CASE("Windows local configuration binds the HMI to loopback") {
+    const auto config = sc::runtime::loadRuntimeConfig(
+        std::filesystem::path(SC_SOURCE_DIR) / "config/windows-local.json");
+
+    REQUIRE(config.hmi.publisherEndpoint == "tcp://127.0.0.1:5555");
+    REQUIRE(config.hmi.commandEndpoint == "tcp://127.0.0.1:5556");
+}
+
 TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
     const sc::test::TemporaryCsv file(
         "{\n"

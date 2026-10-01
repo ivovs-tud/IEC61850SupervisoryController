@@ -8,7 +8,7 @@
     "output_directory": "../data"
   },
   "hmi": {
-    "publisher_endpoint": "tcp://*:5555",
-    "command_endpoint": "tcp://*:5556"
+    "publisher_endpoint": "tcp://127.0.0.1:5555",
+    "command_endpoint": "tcp://127.0.0.1:5556"
   }
 }

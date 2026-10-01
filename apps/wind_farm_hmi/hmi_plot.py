@@ -11,8 +11,9 @@ Dependencies:
 
 Usage:
     python apps/wind_farm_hmi/hmi_plot.py
-    python apps/wind_farm_hmi/hmi_plot.py tcp://localhost:9004
-    python apps/wind_farm_hmi/hmi_plot.py ipc:///tmp/supervisory_controller_hmi.sock   # default
+    python apps/wind_farm_hmi/hmi_plot.py localhost
+    python apps/wind_farm_hmi/hmi_plot.py tcp://localhost:5555 tcp://localhost:5556
+    python apps/wind_farm_hmi/hmi_plot.py ipc:///tmp/supervisory_controller_hmi.sock
 """
 
 import os
@@ -31,21 +32,15 @@ import pyqtgraph as pg
 import zmq
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
+from hmi_endpoints import resolve_hmi_endpoints
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-if len(sys.argv) > 1:
-    IP = sys.argv[1] 
-    ENDPOINT = f"tcp://{IP}:5555"
-    COMMAND_ENDPOINT = f"tcp://{IP}:5556"
-else:
-    if sys.platform == "win32":  # covers both 32 and 64-bit Windows
-        ENDPOINT = "tcp://172.19.3.214:5555"
-        COMMAND_ENDPOINT = "tcp://172.19.3.214:5556"
-    else:
-        ENDPOINT = "ipc:///tmp/supervisory_controller_hmi.sock"
-        COMMAND_ENDPOINT = sys.argv[2] if len(sys.argv) > 2 else "ipc:///tmp/supervisory_controller_hmi_cmd.sock"
-#"ipc:///tmp/supervisory_controller_hmi.sock"
+try:
+    ENDPOINT, COMMAND_ENDPOINT = resolve_hmi_endpoints(sys.argv[1:], sys.platform)
+except ValueError as error:
+    raise SystemExit(f"Invalid HMI endpoint: {error}") from error
 
 POLL_INTERVAL_MS = 50  # how often the Qt timer checks for new ZMQ messages
 DEFAULT_SAMPLE_PERIOD_MS = 500

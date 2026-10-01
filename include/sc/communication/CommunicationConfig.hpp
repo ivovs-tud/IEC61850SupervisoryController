@@ -20,8 +20,13 @@ struct CommunicationConfig
     struct Hmi {
         std::chrono::milliseconds period{500};
         int windowSize{300};
+#ifdef _WIN32
+        std::string publisherEndpoint{"tcp://127.0.0.1:5555"};
+        std::string commandEndpoint{"tcp://127.0.0.1:5556"};
+#else
         std::string publisherEndpoint{"ipc:///tmp/supervisory_controller_hmi.sock"};
         std::string commandEndpoint{"ipc:///tmp/supervisory_controller_hmi_cmd.sock"};
+#endif
         bool alarmAcknowledgementEnabled{false};
     } hmi;
 
