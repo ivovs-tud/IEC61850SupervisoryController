@@ -49,7 +49,8 @@ void DataHistorian::startNewRunUnlocked(std::string experimentName) {
     }
 
     // Append mode prevents an unexpected filesystem race from truncating an existing run.
-    file_.open(filePath_, std::ios::out | std::ios::app);
+    // Binary mode keeps the log format on LF line endings on Windows.
+    file_.open(filePath_, std::ios::out | std::ios::app | std::ios::binary);
     if (!file_.is_open()) {
         throw std::runtime_error("DataHistorian failed to open file: " + filePath_.string());
     }
