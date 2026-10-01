@@ -37,6 +37,7 @@ void SignalProcessingTask::execute() {
                 data.collected.lastWD_t[i],
                 data.collected.lastPower[i],
                 data.collected.measuredPower[i],
+                data.collected.lastPower_t[i],
                 *std::max_element(timestamps.begin(), timestamps.end())});
         }
     }
@@ -45,6 +46,8 @@ void SignalProcessingTask::execute() {
         std::lock_guard<std::mutex> lock(data.processed.mutex);
         input.previousWindSpeed = data.processed.windSpeed;
         input.previousWindDirection = data.processed.windDirection;
+        input.previousFilteredWindSpeeds = data.processed.filteredWindSpeeds;
+        input.previousFilteredWindSpeedTimeMs = data.processed.filteredWindSpeedTimeMs;
     }
 
     const auto result = sc::application::processSignals(input);
@@ -55,6 +58,8 @@ void SignalProcessingTask::execute() {
         }
         data.processed.connectedTurbines = result.connectedTurbines;
         data.processed.availablePower = result.availablePower;
+        data.processed.filteredWindSpeeds = result.filteredWindSpeeds;
+        data.processed.filteredWindSpeedTimeMs = result.filteredWindSpeedTimeMs;
         data.processed.totalReceivedPower = result.totalReceivedPower;
         data.processed.measuredTotalPowerHistory.push_back(result.totalMeasuredPower);
         data.processed.windSpeed = result.windSpeed;

@@ -54,7 +54,7 @@ float circularMeanDegrees(const std::vector<double>& values, std::size_t count) 
         sinSum += std::sin(radians);
         cosSum += std::cos(radians);
     }
-    if (sinSum == 0.0 && cosSum == 0.0) return 0.0F;
+    if (sampleCount == 0 || std::hypot(sinSum, cosSum) <= 1e-12 * static_cast<double>(sampleCount)) return 0.0F;
     return normalizeAngleDegrees(static_cast<float>(std::atan2(sinSum, cosSum) * 180.0 / pi));
 }
 

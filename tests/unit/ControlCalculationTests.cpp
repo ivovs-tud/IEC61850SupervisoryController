@@ -1,6 +1,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 #include "sc/application/ControlCalculation.hpp"
@@ -117,4 +119,20 @@ TEST_CASE("control calculation returns no setpoints for zero turbines") {
 
     REQUIRE(setpoints.turbinePower.empty());
     REQUIRE(setpoints.turbineYaw.empty());
+}
+
+TEST_CASE("control calculation validates counts and finite numeric inputs") {
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+
+    inputs.turbineCount = -1;
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.windDirection = std::numeric_limits<float>::quiet_NaN();
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.requestedReferencePower = std::numeric_limits<float>::infinity();
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
 }

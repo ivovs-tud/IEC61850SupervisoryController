@@ -26,6 +26,12 @@ TEST_CASE("circular statistics handle wraparound") {
     REQUIRE(sc::util::angularSpreadDegrees({359.0, 1.0}) == Catch::Approx(1.0).margin(0.001));
 }
 
+TEST_CASE("circular mean handles cancelling directions") {
+    REQUIRE(sc::util::circularMeanDegrees({0.0, 180.0}, 2) == Catch::Approx(0.0F));
+    REQUIRE(sc::util::circularMeanDegrees({0.0, 120.0, 240.0}, 3) == Catch::Approx(0.0F));
+    REQUIRE(sc::util::angularSpreadDegrees({0.0, 180.0}) == Catch::Approx(180.0));
+}
+
 TEST_CASE("angles blend and move across zero") {
     REQUIRE(sc::util::blendAnglesDegrees(350.0F, 10.0F, 0.5F) == Catch::Approx(0.0F));
     REQUIRE(sc::util::moveTowardsAngleDegrees(350.0F, 10.0F, 5.0F, 1.0F) == Catch::Approx(355.0F));
@@ -49,6 +55,6 @@ TEST_CASE("median preserves the existing upper-middle behavior") {
 TEST_CASE("timestamp recency handles missing future and expired measurements") {
     REQUIRE_FALSE(sc::util::isTimestampRecent(0, 1000, 100));
     REQUIRE(sc::util::isTimestampRecent(950, 1000, 100));
-    REQUIRE(sc::util::isTimestampRecent(1050, 1000, 100));
+    REQUIRE_FALSE(sc::util::isTimestampRecent(1050, 1000, 100));
     REQUIRE_FALSE(sc::util::isTimestampRecent(899, 1000, 100));
 }

@@ -12,6 +12,7 @@ struct TurbineSignalInput {
     uint64_t windDirectionTimeMs{0};
     double receivedPower{0.0};
     double measuredPower{0.0};
+    uint64_t powerTimeMs{0};
     uint64_t newestMeasurementTimeMs{0};
 };
 
@@ -19,6 +20,8 @@ struct SignalProcessingInput {
     uint64_t currentTimeMs{0};
     float previousWindSpeed{0.0F};
     float previousWindDirection{0.0F};
+    std::vector<double> previousFilteredWindSpeeds;
+    std::vector<uint64_t> previousFilteredWindSpeedTimeMs;
     std::vector<TurbineSignalInput> turbines;
 };
 
@@ -35,6 +38,8 @@ struct SignalProcessingResult {
     double totalMeasuredPower{0.0};
     float windSpeed{0.0F};
     float windDirection{0.0F};
+    std::vector<double> filteredWindSpeeds;
+    std::vector<uint64_t> filteredWindSpeedTimeMs;
 };
 
 double calculateAvailablePower(double windSpeed);

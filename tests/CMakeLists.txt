@@ -150,6 +150,23 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+if(TARGET sc_tasks)
+    add_executable(sc_monitoring_task_tests
+        unit/MonitoringTaskTests.cpp
+    )
+
+    target_link_libraries(sc_monitoring_task_tests PRIVATE
+        Catch2::Catch2WithMain
+        sc_tasks
+    )
+
+    catch_discover_tests(
+        sc_monitoring_task_tests
+        TEST_PREFIX "sc.monitoring_task."
+        DISCOVERY_MODE PRE_TEST
+    )
+endif()
+
 add_executable(sc_runtime_config_tests
     unit/RuntimeConfigTests.cpp
 )

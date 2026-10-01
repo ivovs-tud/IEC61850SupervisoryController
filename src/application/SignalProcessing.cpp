@@ -8,6 +8,7 @@
 #include <cmath>
 #include <functional>
 #include <numeric>
+#include <stdexcept>
 
 namespace sc::application {
 namespace {
@@ -17,6 +18,7 @@ constexpr double pi = 3.14159265358979323846;
 } // namespace
 
 double calculateAvailablePower(double windSpeed) {
+    if (!std::isfinite(windSpeed)) return 0.0;
     if (windSpeed < sc::TurbineParameters::cutInWindSpeed || windSpeed >= sc::TurbineParameters::cutOutWindSpeed) {
         return 0.0;
     }
@@ -28,8 +30,27 @@ double calculateAvailablePower(double windSpeed) {
 }
 
 SignalProcessingResult processSignals(const SignalProcessingInput& input, const SignalProcessingConfig& config) {
+    if (!std::isfinite(input.previousWindSpeed) || !std::isfinite(input.previousWindDirection) ||
+        !std::isfinite(config.windSpeedUpdateWeight) || !std::isfinite(config.windDirectionUpdateWeight) ||
+        config.windSpeedUpdateWeight < 0.0F || config.windSpeedUpdateWeight > 1.0F ||
+        config.windDirectionUpdateWeight < 0.0F || config.windDirectionUpdateWeight > 1.0F) {
+        throw std::invalid_argument("signal-processing state and update weights must be finite and valid");
+    }
+    const bool hasPreviousTurbineWind = !input.previousFilteredWindSpeeds.empty() ||
+                                        !input.previousFilteredWindSpeedTimeMs.empty();
+    if (hasPreviousTurbineWind &&
+        (input.previousFilteredWindSpeeds.size() != input.turbines.size() ||
+         input.previousFilteredWindSpeedTimeMs.size() != input.turbines.size())) {
+        throw std::invalid_argument("previous turbine wind-speed state does not match turbine count");
+    }
     SignalProcessingResult result;
     result.availablePower.reserve(input.turbines.size());
+    result.filteredWindSpeeds.assign(input.turbines.size(), 0.0);
+    result.filteredWindSpeedTimeMs.assign(input.turbines.size(), 0);
+    if (hasPreviousTurbineWind) {
+        result.filteredWindSpeeds = input.previousFilteredWindSpeeds;
+        result.filteredWindSpeedTimeMs = input.previousFilteredWindSpeedTimeMs;
+    }
     result.windSpeed = input.previousWindSpeed;
     result.windDirection = sc::util::normalizeAngleDegrees(input.previousWindDirection);
 
@@ -39,17 +60,39 @@ SignalProcessingResult processSignals(const SignalProcessingInput& input, const 
     double directionCosSum = 0.0;
     std::size_t directionCount = 0;
 
-    for (const auto& turbine : input.turbines) {
+    for (std::size_t index = 0; index < input.turbines.size(); ++index) {
+        const auto& turbine = input.turbines[index];
         const bool connected = sc::util::isTimestampRecent(turbine.newestMeasurementTimeMs, input.currentTimeMs, config.measurementTimeoutMs);
-        const bool windSpeedFresh = sc::util::isTimestampRecent(turbine.windSpeedTimeMs, input.currentTimeMs, config.measurementTimeoutMs);
-        const bool windDirectionFresh = sc::util::isTimestampRecent(turbine.windDirectionTimeMs, input.currentTimeMs, config.measurementTimeoutMs);
+        const bool windSpeedFresh = std::isfinite(turbine.windSpeed) &&
+            sc::util::isTimestampRecent(turbine.windSpeedTimeMs, input.currentTimeMs, config.measurementTimeoutMs);
+        const bool windDirectionFresh = std::isfinite(turbine.windDirection) &&
+            sc::util::isTimestampRecent(turbine.windDirectionTimeMs, input.currentTimeMs, config.measurementTimeoutMs);
+        const bool powerFresh = sc::util::isTimestampRecent(
+            turbine.powerTimeMs, input.currentTimeMs, config.measurementTimeoutMs);
 
         if (connected) {
             ++result.connectedTurbines;
         }
-        result.totalReceivedPower += turbine.receivedPower;
-        result.totalMeasuredPower += turbine.measuredPower;
-        result.availablePower.push_back(windSpeedFresh ? calculateAvailablePower(turbine.windSpeed) : 0.0);
+        if (powerFresh && std::isfinite(turbine.receivedPower)) {
+            result.totalReceivedPower += turbine.receivedPower;
+        }
+        if (powerFresh && std::isfinite(turbine.measuredPower)) {
+            result.totalMeasuredPower += turbine.measuredPower;
+        }
+        if (windSpeedFresh) {
+            const bool previousIsFresh = hasPreviousTurbineWind && sc::util::isTimestampRecent(
+                input.previousFilteredWindSpeedTimeMs[index], input.currentTimeMs, config.measurementTimeoutMs);
+            result.filteredWindSpeeds[index] = previousIsFresh
+                ? (1.0 - config.windSpeedUpdateWeight) * input.previousFilteredWindSpeeds[index] +
+                    config.windSpeedUpdateWeight * turbine.windSpeed
+                : turbine.windSpeed;
+            result.filteredWindSpeedTimeMs[index] = turbine.windSpeedTimeMs;
+        }
+        const bool filteredWindSpeedFresh = std::isfinite(result.filteredWindSpeeds[index]) &&
+            sc::util::isTimestampRecent(result.filteredWindSpeedTimeMs[index],
+                                        input.currentTimeMs, config.measurementTimeoutMs);
+        result.availablePower.push_back(filteredWindSpeedFresh
+            ? calculateAvailablePower(result.filteredWindSpeeds[index]) : 0.0);
 
         if (!windSpeedFresh || turbine.windSpeed <= 0.0) {
             continue;

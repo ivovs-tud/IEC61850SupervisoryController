@@ -4,6 +4,9 @@
 #include "sc/application/SignalProcessing.hpp"
 #include "sc/model/TurbineParameters.hpp"
 
+#include <limits>
+#include <stdexcept>
+
 namespace {
 
 sc::application::TurbineSignalInput turbine(double windSpeed,
@@ -16,6 +19,7 @@ sc::application::TurbineSignalInput turbine(double windSpeed,
     input.windDirectionTimeMs = timestampMs;
     input.receivedPower = windSpeed * 10.0;
     input.measuredPower = windSpeed * 20.0;
+    input.powerTimeMs = timestampMs;
     input.newestMeasurementTimeMs = timestampMs;
     return input;
 }
@@ -42,8 +46,8 @@ TEST_CASE("signal processing excludes stale wind data") {
     REQUIRE(result.availablePower == std::vector<double>{0.0});
     REQUIRE(result.windSpeed == Catch::Approx(7.0F));
     REQUIRE(result.windDirection == Catch::Approx(42.0F));
-    REQUIRE(result.totalReceivedPower == Catch::Approx(120.0));
-    REQUIRE(result.totalMeasuredPower == Catch::Approx(240.0));
+    REQUIRE(result.totalReceivedPower == Catch::Approx(0.0));
+    REQUIRE(result.totalMeasuredPower == Catch::Approx(0.0));
 }
 
 TEST_CASE("signal processing averages fewer than three fresh turbines") {
@@ -56,6 +60,22 @@ TEST_CASE("signal processing averages fewer than three fresh turbines") {
 
     REQUIRE(result.connectedTurbines == 2);
     REQUIRE(result.windSpeed == Catch::Approx(9.0F));
+}
+
+TEST_CASE("signal processing maintains filtered wind speed for each turbine") {
+    auto input = sc::application::SignalProcessingInput{};
+    input.currentTimeMs = 1000;
+    input.previousFilteredWindSpeeds = {6.0};
+    input.previousFilteredWindSpeedTimeMs = {900};
+    input.turbines.push_back(turbine(10.0, 90.0, 1000));
+    auto config = immediateUpdates();
+    config.windSpeedUpdateWeight = 0.5F;
+
+    const auto result = sc::application::processSignals(input, config);
+
+    REQUIRE(result.filteredWindSpeeds == std::vector<double>{8.0});
+    REQUIRE(result.filteredWindSpeedTimeMs == std::vector<uint64_t>{1000});
+    REQUIRE(result.availablePower[0] == Catch::Approx(sc::application::calculateAvailablePower(8.0)));
 }
 
 TEST_CASE("signal processing handles wind direction wraparound") {
@@ -97,4 +117,25 @@ TEST_CASE("signal processing preserves filter state without turbines") {
     REQUIRE(result.availablePower.empty());
     REQUIRE(result.windSpeed == Catch::Approx(6.0F));
     REQUIRE(result.windDirection == Catch::Approx(270.0F));
+}
+
+TEST_CASE("signal processing excludes non-finite telemetry and validates filter inputs") {
+    auto input = sc::application::SignalProcessingInput{};
+    input.currentTimeMs = 1000;
+    input.previousWindSpeed = 6.0F;
+    input.previousWindDirection = 270.0F;
+    input.turbines.push_back(turbine(
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity(), 1000));
+
+    const auto result = sc::application::processSignals(input, immediateUpdates());
+    REQUIRE(result.availablePower == std::vector<double>{0.0});
+    REQUIRE(result.windSpeed == Catch::Approx(6.0F));
+    REQUIRE(result.windDirection == Catch::Approx(270.0F));
+    REQUIRE(result.totalReceivedPower == Catch::Approx(0.0));
+    REQUIRE(result.totalMeasuredPower == Catch::Approx(0.0));
+
+    auto config = immediateUpdates();
+    config.windSpeedUpdateWeight = 1.5F;
+    REQUIRE_THROWS_AS(sc::application::processSignals(input, config), std::invalid_argument);
 }

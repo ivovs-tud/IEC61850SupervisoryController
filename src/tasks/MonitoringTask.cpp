@@ -28,6 +28,7 @@ sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int
         std::lock_guard<std::mutex> lock(data.collected.mutex);
         for (int index = 0; index < turbineCount; ++index) {
             auto& target = input.turbines[static_cast<std::size_t>(index)];
+            // Raw local wind signals remain inputs to telemetry-consistency detectors.
             target.windSpeed = data.collected.lastWS[index];
             target.windSpeedTimeMs = data.collected.lastWS_t[index];
             target.windDirection = data.collected.lastWD[index];
@@ -54,6 +55,14 @@ sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int
         input.farmWindSpeed = data.processed.windSpeed;
         input.farmWindDirection = data.processed.windDirection;
         input.measuredTotalPowerHistory = copyHistory(data.processed.measuredTotalPowerHistory);
+        if (data.processed.filteredWindSpeeds.size() != input.turbines.size() ||
+            data.processed.filteredWindSpeedTimeMs.size() != input.turbines.size()) {
+            throw std::logic_error("processed wind-speed count does not match configured turbines");
+        }
+        for (std::size_t index = 0; index < input.turbines.size(); ++index) {
+            input.turbines[index].filteredWindSpeed = data.processed.filteredWindSpeeds[index];
+            input.turbines[index].filteredWindSpeedTimeMs = data.processed.filteredWindSpeedTimeMs[index];
+        }
     }
 
     {
@@ -114,18 +123,6 @@ void MonitoringTask::execute() {
         return;
     }
 
-    alarms.alarmWRecMeas |= result.isActive(sc::application::AlarmType::PowerGeneratedVsReceived);
-    alarms.alarmPowerExpected |= result.isActive(sc::application::AlarmType::MeasuredPowerVsExpected);
-    alarms.alarmOrientationMisalign |= result.isActive(sc::application::AlarmType::OrientationMisalignment);
-    alarms.alarmWTorqueRotSpd |= result.isActive(sc::application::AlarmType::PowerTorqueRotorSpeed);
-    alarms.alarmHorWdDir |= result.isActive(sc::application::AlarmType::WindDirection);
-    alarms.alarmHorWdDirChg |= result.isActive(sc::application::AlarmType::WindDirectionChange);
-    alarms.alarmHorWdSpdChg |= result.isActive(sc::application::AlarmType::WindSpeedChange);
-    alarms.alarmTelemetryFreezeReplay |= result.isActive(sc::application::AlarmType::TelemetryFreeze);
-    alarms.alarmDrivetrainUnderResponse |= result.isActive(sc::application::AlarmType::DrivetrainUnderResponse);
-    alarms.alarmStaticBounds |= result.isActive(sc::application::AlarmType::StaticTelemetryBounds);
-    alarms.alarmFleetPeerOutlier |= result.isActive(sc::application::AlarmType::FleetPeerOutlier);
-
     // Preserve the legacy clear interval until operator acknowledgement semantics are chosen.
     if (currentTimeMs - lastAlarmResetMs_ >= 3000) {
         alarms.alarmWRecMeas = false;
@@ -141,6 +138,18 @@ void MonitoringTask::execute() {
         alarms.alarmFleetPeerOutlier = false;
         lastAlarmResetMs_ = currentTimeMs;
     }
+
+    alarms.alarmWRecMeas |= result.isActive(sc::application::AlarmType::PowerGeneratedVsReceived);
+    alarms.alarmPowerExpected |= result.isActive(sc::application::AlarmType::MeasuredPowerVsExpected);
+    alarms.alarmOrientationMisalign |= result.isActive(sc::application::AlarmType::OrientationMisalignment);
+    alarms.alarmWTorqueRotSpd |= result.isActive(sc::application::AlarmType::PowerTorqueRotorSpeed);
+    alarms.alarmHorWdDir |= result.isActive(sc::application::AlarmType::WindDirection);
+    alarms.alarmHorWdDirChg |= result.isActive(sc::application::AlarmType::WindDirectionChange);
+    alarms.alarmHorWdSpdChg |= result.isActive(sc::application::AlarmType::WindSpeedChange);
+    alarms.alarmTelemetryFreezeReplay |= result.isActive(sc::application::AlarmType::TelemetryFreeze);
+    alarms.alarmDrivetrainUnderResponse |= result.isActive(sc::application::AlarmType::DrivetrainUnderResponse);
+    alarms.alarmStaticBounds |= result.isActive(sc::application::AlarmType::StaticTelemetryBounds);
+    alarms.alarmFleetPeerOutlier |= result.isActive(sc::application::AlarmType::FleetPeerOutlier);
 }
 
 void MonitoringTask::onGooseMessage(void* subscriber, void* parameter) {

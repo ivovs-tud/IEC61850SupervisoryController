@@ -10,6 +10,8 @@ namespace sc::application {
 struct TurbineMonitoringInput {
     double windSpeed{0.0};
     uint64_t windSpeedTimeMs{0};
+    double filteredWindSpeed{0.0};
+    uint64_t filteredWindSpeedTimeMs{0};
     double windDirection{0.0};
     uint64_t windDirectionTimeMs{0};
     double yaw{0.0};

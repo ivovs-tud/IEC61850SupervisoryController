@@ -57,6 +57,8 @@ struct ProcessedData {
     mutable std::mutex mutex;
     int connectedTurbines{0};
     std::vector<double> availablePower = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
+    std::vector<double> filteredWindSpeeds = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
+    std::vector<uint64_t> filteredWindSpeedTimeMs = std::vector<uint64_t>(DEFAULT_TURBINE_COUNT, 0);
     double totalReceivedPower{0.0};
     float windSpeed{0.0f};
     float windDirection{270.0f};
@@ -151,6 +153,8 @@ struct SharedData {
         collected.measuredPower.assign(turbineCount, 0.0);
 
         processed.availablePower.assign(turbineCount, 0.0);
+        processed.filteredWindSpeeds.assign(turbineCount, 0.0);
+        processed.filteredWindSpeedTimeMs.assign(turbineCount, 0);
 
         control.powerSetpoints.assign(turbineCount, -1.0f);
         control.yawSetpoints.assign(turbineCount, 0.0f);
@@ -182,6 +186,8 @@ struct SharedData {
 
         processed.connectedTurbines = 0;
         std::fill(processed.availablePower.begin(), processed.availablePower.end(), 0.0);
+        std::fill(processed.filteredWindSpeeds.begin(), processed.filteredWindSpeeds.end(), 0.0);
+        std::fill(processed.filteredWindSpeedTimeMs.begin(), processed.filteredWindSpeedTimeMs.end(), 0);
         processed.totalReceivedPower = 0.0;
         processed.windSpeed = 0.0f;
         processed.windDirection = 0.0f;

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -15,13 +16,13 @@ namespace {
 
 constexpr double pi = 3.14159265358979323846;
 constexpr std::size_t expectedPowerHistoryCapacity = 20;
-constexpr uint64_t powerMeasurementTimeoutMs = 2000;
+constexpr uint64_t powerMeasurementTimeoutMs = 20000;
 constexpr uint64_t powerTrackingGracePeriodMs = 5000;
 constexpr double powerTrackingAbsoluteToleranceW = 2e6;
 constexpr double powerTrackingRelativeTolerance = 0.1;
 constexpr float orientationThresholdDeg = 8.0F;
 constexpr float orientationObserverGain = 0.5F;
-constexpr uint64_t yawMeasurementTimeoutMs = 1000;
+constexpr uint64_t yawMeasurementTimeoutMs = 20000;
 constexpr double windSpeedStepThresholdMs = 3.0;
 constexpr double windSpeedRangeThresholdMs = 4.0;
 constexpr double windDirectionStepThresholdDeg = 25.0;
@@ -29,7 +30,7 @@ constexpr double windDirectionRangeThresholdDeg = 40.0;
 constexpr int windChangeRequiredStrikes = 3;
 constexpr std::size_t freezeWindowSamples = 8;
 constexpr uint64_t freezePersistenceMs = 1500;
-constexpr uint64_t freezeMeasurementTimeoutMs = 3000;
+constexpr uint64_t freezeMeasurementTimeoutMs = 10000;
 constexpr uint64_t drivetrainUnderResponseGracePeriodMs = 5000;
 constexpr uint64_t drivetrainCollapseGracePeriodMs = 1500;
 constexpr double drivetrainMinimumExpectedPowerW = 5.0e5;
@@ -39,7 +40,7 @@ constexpr double drivetrainTorqueLowFraction = 0.60;
 constexpr double drivetrainCollapsedRpmFraction = 0.15;
 constexpr double drivetrainCollapsedTorqueFraction = 0.15;
 constexpr double drivetrainCollapsedTorqueNm = 200.0;
-constexpr uint64_t staticBoundsMeasurementTimeoutMs = 3000;
+constexpr uint64_t staticBoundsMeasurementTimeoutMs = 8000;
 constexpr double staticBoundsWindSpeedMaxMs = 1.5 * sc::TurbineParameters::cutOutWindSpeed;
 constexpr double staticBoundsOrientationWindowDeg = 60.0;
 constexpr double staticBoundsRpmMax = 1.5 * sc::TurbineParameters::ratedRotorSpeed;
@@ -71,11 +72,22 @@ void appendHistory(std::vector<double>& history, double value) {
     history.push_back(value);
 }
 
+bool hasOnlyFiniteValues(const std::vector<double>& values) {
+    return std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); });
+}
+
+bool isRecentFinite(double value, uint64_t timestampMs, uint64_t currentTimeMs, uint64_t timeoutMs) {
+    return std::isfinite(value) && sc::util::isTimestampRecent(timestampMs, currentTimeMs, timeoutMs);
+}
+
 double yawAdjustedAvailablePower(const TurbineMonitoringInput& turbine, const MonitoringInput& input) {
-    const double windSpeed = sc::util::isTimestampRecent(turbine.windSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
-        ? turbine.windSpeed : static_cast<double>(input.farmWindSpeed);
-    const double windDirection = sc::util::isTimestampRecent(turbine.windDirectionTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
-        ? turbine.windDirection : static_cast<double>(input.farmWindDirection);
+    const double windSpeed = sc::util::isTimestampRecent(
+        turbine.filteredWindSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+        ? turbine.filteredWindSpeed : static_cast<double>(input.farmWindSpeed);
+    const double windDirection = static_cast<double>(input.farmWindDirection);
+    const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+        ? turbine.yaw : static_cast<double>(turbine.yawSetpoint);
+    if (!std::isfinite(windSpeed) || !std::isfinite(windDirection) || !std::isfinite(yaw)) return 0.0;
     if (windSpeed < sc::TurbineParameters::cutInWindSpeed || windSpeed >= sc::TurbineParameters::cutOutWindSpeed) {
         return 0.0;
     }
@@ -85,20 +97,19 @@ double yawAdjustedAvailablePower(const TurbineMonitoringInput& turbine, const Mo
     const double aerodynamicPower = 0.5 * sc::TurbineParameters::generatorEfficiency *
         sc::TurbineParameters::airDensity * sweptArea * sc::TurbineParameters::optimalPowerCoefficient *
         windSpeed * windSpeed * windSpeed;
-    const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
-        ? turbine.yaw : static_cast<double>(turbine.yawSetpoint);
     const double yawErrorDeg = sc::util::angularDistanceDegrees(static_cast<float>(windDirection), static_cast<float>(yaw));
     const double yawCosine = std::max(0.0, std::cos(yawErrorDeg * pi / 180.0));
     return std::min(aerodynamicPower * yawCosine * yawCosine * yawCosine, sc::TurbineParameters::ratedPower);
 }
 
 double effectiveYawAdjustedWindSpeed(const TurbineMonitoringInput& turbine, const MonitoringInput& input) {
-    const double windSpeed = sc::util::isTimestampRecent(turbine.windSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
-        ? turbine.windSpeed : static_cast<double>(input.farmWindSpeed);
-    const double windDirection = sc::util::isTimestampRecent(turbine.windDirectionTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
-        ? turbine.windDirection : static_cast<double>(input.farmWindDirection);
+    const double windSpeed = sc::util::isTimestampRecent(
+        turbine.filteredWindSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
+        ? turbine.filteredWindSpeed : static_cast<double>(input.farmWindSpeed);
+    const double windDirection = static_cast<double>(input.farmWindDirection);
     const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
         ? turbine.yaw : static_cast<double>(turbine.yawSetpoint);
+    if (!std::isfinite(windSpeed) || !std::isfinite(windDirection) || !std::isfinite(yaw)) return 0.0;
     const double yawErrorDeg = sc::util::angularDistanceDegrees(static_cast<float>(windDirection), static_cast<float>(yaw));
     return std::max(0.0, windSpeed * std::max(0.0, std::cos(yawErrorDeg * pi / 180.0)));
 }
@@ -128,6 +139,8 @@ bool expectedPowerForController(const TurbineMonitoringInput& turbine, const Mon
     expectedPower = 0.0;
     availablePower = 0.0;
     if (turbine.commandedOff) return true;
+    if (!std::isfinite(turbine.powerSetpoint) || !std::isfinite(turbine.yawSetpoint) ||
+        !std::isfinite(input.farmWindSpeed) || !std::isfinite(input.farmWindDirection)) return false;
     availablePower = yawAdjustedAvailablePower(turbine, input);
     if (turbine.maximumPowerMode) {
         expectedPower = availablePower;
@@ -190,6 +203,9 @@ bool AlarmStateTracker::visible(AlarmType alarm) const {
 
 MonitoringDetectors::MonitoringDetectors(std::size_t turbineCount) : turbineCount_(turbineCount) {
     if (turbineCount_ == 0) throw std::invalid_argument("MonitoringDetectors requires at least one turbine");
+    if (turbineCount_ > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        throw std::invalid_argument("MonitoringDetectors turbine count exceeds supported range");
+    }
     reset();
 }
 
@@ -211,6 +227,10 @@ MonitoringResult MonitoringDetectors::evaluate(const MonitoringInput& input) {
     if (input.turbines.size() != turbineCount_) {
         throw std::invalid_argument("monitoring input does not match configured turbine count");
     }
+    if (input.connectedTurbines < 0 ||
+        static_cast<std::size_t>(input.connectedTurbines) > turbineCount_) {
+        throw std::invalid_argument("monitoring connected turbine count is out of range");
+    }
     MonitoringResult result;
     checkPowerBalance(input, result);
     checkPowerTracking(input, result);
@@ -229,6 +249,10 @@ MonitoringResult MonitoringDetectors::evaluate(const MonitoringInput& input) {
 MonitoringResult MonitoringDetectors::evaluateDetector(AlarmType alarm, const MonitoringInput& input) {
     if (input.turbines.size() != turbineCount_) {
         throw std::invalid_argument("monitoring input does not match configured turbine count");
+    }
+    if (input.connectedTurbines < 0 ||
+        static_cast<std::size_t>(input.connectedTurbines) > turbineCount_) {
+        throw std::invalid_argument("monitoring connected turbine count is out of range");
     }
     MonitoringResult result;
     switch (alarm) {
@@ -249,12 +273,12 @@ MonitoringResult MonitoringDetectors::evaluateDetector(AlarmType alarm, const Mo
 }
 
 void MonitoringDetectors::checkPowerBalance(const MonitoringInput& input, MonitoringResult& result) const {
-    if (input.measuredTotalPowerHistory.empty()) return;
+    if (input.measuredTotalPowerHistory.empty() || !hasOnlyFiniteValues(input.measuredTotalPowerHistory)) return;
     double receivedPower = 0.0;
     bool hasReceivedPower = false;
     for (const auto& turbine : input.turbines) {
         if (sc::util::isTimestampRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) &&
-            !turbine.powerHistory.empty()) {
+            !turbine.powerHistory.empty() && hasOnlyFiniteValues(turbine.powerHistory)) {
             receivedPower += sc::util::mean(turbine.powerHistory);
             hasReceivedPower = true;
         }
@@ -271,6 +295,11 @@ void MonitoringDetectors::checkPowerBalance(const MonitoringInput& input, Monito
 void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, MonitoringResult& result) {
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& turbine = input.turbines[index];
+        if (!isRecentFinite(turbine.power, turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
+            turbine.powerHistory.empty() || !hasOnlyFiniteValues(turbine.powerHistory)) {
+            powerMismatchStartTime_[index] = 0;
+            continue;
+        }
         double expectedPower = 0.0;
         double availablePower = 0.0;
         if (!expectedPowerForController(turbine, input, expectedPower, availablePower)) {
@@ -289,8 +318,7 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
             lastExpectedPower_[index] = expectedAverage;
         }
 
-        const double measuredAverage = sc::util::isTimestampRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) &&
-            !turbine.powerHistory.empty() ? sc::util::mean(turbine.powerHistory) : 0.0;
+        const double measuredAverage = sc::util::mean(turbine.powerHistory);
         if (std::abs(measuredAverage - expectedAverage) <= tolerance) {
             powerMismatchStartTime_[index] = 0;
             continue;
@@ -309,7 +337,9 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
 void MonitoringDetectors::checkOrientation(const MonitoringInput& input, MonitoringResult& result) {
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& turbine = input.turbines[index];
-        const bool freshMeasurement = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, yawMeasurementTimeoutMs);
+        const bool freshMeasurement = isRecentFinite(turbine.yaw, turbine.yawTimeMs,
+            input.currentTimeMs, yawMeasurementTimeoutMs);
+        if (!std::isfinite(turbine.yawSetpoint)) continue;
         if (lastOrientationPredictionTime_[index] == 0) {
             if (!freshMeasurement) continue;
             orientation_[index] = sc::util::normalizeAngleDegrees(static_cast<float>(turbine.yaw));
@@ -342,6 +372,10 @@ void MonitoringDetectors::checkPowerTorqueRotorSpeed(const MonitoringInput& inpu
     constexpr double thresholdW = 4e5;
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& turbine = input.turbines[index];
+        if (!isRecentFinite(turbine.power, turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
+            !isRecentFinite(turbine.rotorSpeed, turbine.rotorSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
+            !isRecentFinite(turbine.generatorTorque, turbine.generatorTorqueTimeMs,
+                            input.currentTimeMs, powerMeasurementTimeoutMs)) continue;
         const uint64_t difference = turbine.powerTimeMs > turbine.rotorSpeedTimeMs
             ? turbine.powerTimeMs - turbine.rotorSpeedTimeMs : turbine.rotorSpeedTimeMs - turbine.powerTimeMs;
         if (difference > maximumTimestampDifferenceMs) continue;
@@ -356,7 +390,11 @@ void MonitoringDetectors::checkPowerTorqueRotorSpeed(const MonitoringInput& inpu
 
 void MonitoringDetectors::checkWindDirection(const MonitoringInput& input, MonitoringResult& result) const {
     constexpr double thresholdDeg = 25.0;
+    if (!std::isfinite(input.farmWindDirection)) return;
     for (std::size_t index = 0; index < turbineCount_; ++index) {
+        if (!isRecentFinite(input.turbines[index].windDirection,
+                            input.turbines[index].windDirectionTimeMs,
+                            input.currentTimeMs, staticBoundsMeasurementTimeoutMs)) continue;
         const double difference = sc::util::angularDistanceDegrees(static_cast<float>(input.turbines[index].windDirection),
                                                      input.farmWindDirection);
         if (difference > thresholdDeg) {
@@ -370,7 +408,9 @@ void MonitoringDetectors::checkWindDirection(const MonitoringInput& input, Monit
 void MonitoringDetectors::checkWindDirectionChange(const MonitoringInput& input, MonitoringResult& result) {
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& history = input.turbines[index].windDirectionHistory;
-        if (history.size() < 5) {
+        if (!sc::util::isTimestampRecent(input.turbines[index].windDirectionTimeMs,
+                                         input.currentTimeMs, staticBoundsMeasurementTimeoutMs) ||
+            history.size() < 5 || !hasOnlyFiniteValues(history)) {
             windDirectionChangeStrikes_[index] = 0;
             continue;
         }
@@ -396,7 +436,9 @@ void MonitoringDetectors::checkWindDirectionChange(const MonitoringInput& input,
 void MonitoringDetectors::checkWindSpeedChange(const MonitoringInput& input, MonitoringResult& result) {
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& history = input.turbines[index].windSpeedHistory;
-        if (history.size() < 5) {
+        if (!sc::util::isTimestampRecent(input.turbines[index].windSpeedTimeMs,
+                                         input.currentTimeMs, staticBoundsMeasurementTimeoutMs) ||
+            history.size() < 5 || !hasOnlyFiniteValues(history)) {
             windSpeedChangeStrikes_[index] = 0;
             continue;
         }
@@ -417,6 +459,10 @@ void MonitoringDetectors::checkTelemetryFreeze(const MonitoringInput& input, Mon
                                  const std::vector<double>& history, uint64_t timestampMs,
                                  double value, double minimumActiveValue, bool angular) {
         auto& startTime = freezeStartTime_[turbineIndex][signal];
+        if (!std::isfinite(value) || !hasOnlyFiniteValues(history)) {
+            startTime = 0;
+            return;
+        }
         const double observedRange = angular ? sc::util::angularSpreadDegrees(history) : sc::util::valueRange(history);
         const bool frozen = history.size() >= freezeWindowSamples &&
             sc::util::isTimestampRecent(timestampMs, input.currentTimeMs, freezeMeasurementTimeoutMs) &&
@@ -474,15 +520,21 @@ void MonitoringDetectors::checkDrivetrainResponse(const MonitoringInput& input, 
             continue;
         }
 
-        const bool hasRecentRpm = sc::util::isTimestampRecent(turbine.rotorSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs);
-        const bool hasRecentTorque = sc::util::isTimestampRecent(turbine.generatorTorqueTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs);
-        const bool rpmCollapsed = !hasRecentRpm || turbine.rotorSpeed < drivetrainCollapsedRpmFraction * expectedRpm;
-        const bool torqueCollapsed = !hasRecentTorque || std::abs(turbine.generatorTorque) <
+        const bool hasRecentRpm = isRecentFinite(turbine.rotorSpeed, turbine.rotorSpeedTimeMs,
+                                                 input.currentTimeMs, powerMeasurementTimeoutMs);
+        const bool hasRecentTorque = isRecentFinite(turbine.generatorTorque, turbine.generatorTorqueTimeMs,
+                                                    input.currentTimeMs, powerMeasurementTimeoutMs);
+        if (!hasRecentRpm || !hasRecentTorque) {
+            drivetrainUnderResponseStartTime_[index] = 0;
+            continue;
+        }
+        const bool rpmCollapsed = turbine.rotorSpeed < drivetrainCollapsedRpmFraction * expectedRpm;
+        const bool torqueCollapsed = std::abs(turbine.generatorTorque) <
             std::max(drivetrainCollapsedTorqueNm, drivetrainCollapsedTorqueFraction * aerodynamicTorque);
         const bool aerodynamicCollapse = rpmCollapsed && torqueCollapsed;
-        const bool rpmTooLow = !hasRecentRpm || turbine.rotorSpeed < drivetrainRpmLowFraction * expectedRpm;
+        const bool rpmTooLow = turbine.rotorSpeed < drivetrainRpmLowFraction * expectedRpm;
         const bool torqueTooLow = expectedPower >= drivetrainMinimumExpectedPowerW && commandedTorque > 0.0 &&
-            (!hasRecentTorque || turbine.generatorTorque < drivetrainTorqueLowFraction * commandedTorque);
+            turbine.generatorTorque < drivetrainTorqueLowFraction * commandedTorque;
         if (!aerodynamicCollapse && !rpmTooLow && !torqueTooLow) {
             drivetrainUnderResponseStartTime_[index] = 0;
             continue;
@@ -505,7 +557,7 @@ void MonitoringDetectors::checkStaticBounds(const MonitoringInput& input, Monito
     const auto checkRange = [&](std::size_t index, uint64_t timestampMs, double value,
                                 double minimum, double maximum) {
         if (!sc::util::isTimestampRecent(timestampMs, input.currentTimeMs, staticBoundsMeasurementTimeoutMs)) return;
-        if (value < minimum || value > maximum) {
+        if (!std::isfinite(value) || value < minimum || value > maximum) {
             const double violatedBound = value < minimum ? minimum : maximum;
             triggerAlarm(result, AlarmType::StaticTelemetryBounds, static_cast<int>(index + 1),
                         value, violatedBound, 0.0, input.currentTimeMs);
@@ -517,7 +569,9 @@ void MonitoringDetectors::checkStaticBounds(const MonitoringInput& input, Monito
         checkRange(index, turbine.windSpeedTimeMs, turbine.windSpeed, 0.0, staticBoundsWindSpeedMaxMs);
         checkRange(index, turbine.windDirectionTimeMs, turbine.windDirection, 0.0, 360.0);
         checkRange(index, turbine.yawTimeMs, turbine.yaw, 0.0, 360.0);
-        if (sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, staticBoundsMeasurementTimeoutMs) &&
+        if (isRecentFinite(turbine.yaw, turbine.yawTimeMs, input.currentTimeMs,
+                           staticBoundsMeasurementTimeoutMs) &&
+            std::isfinite(input.farmWindSpeed) && std::isfinite(input.farmWindDirection) &&
             input.farmWindSpeed >= sc::TurbineParameters::cutInWindSpeed) {
             const double error = sc::util::angularDistanceDegrees(static_cast<float>(turbine.yaw), input.farmWindDirection);
             if (error > staticBoundsOrientationWindowDeg) {
@@ -552,7 +606,8 @@ void MonitoringDetectors::checkFleetPeerOutliers(const MonitoringInput& input, M
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& turbine = input.turbines[index];
         if (!sc::util::isTimestampRecent(turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
-            !sc::util::isTimestampRecent(turbine.rotorSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)) continue;
+            !sc::util::isTimestampRecent(turbine.rotorSpeedTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
+            !std::isfinite(turbine.power) || !std::isfinite(turbine.rotorSpeed)) continue;
         double expectedPower = 0.0;
         double availablePower = 0.0;
         if (!expectedPowerForController(turbine, input, expectedPower, availablePower) ||
