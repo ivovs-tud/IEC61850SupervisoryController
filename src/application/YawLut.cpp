@@ -23,39 +23,42 @@ struct BinBracket {
     float weight;
 };
 
-std::string trim(std::string value) {
-    const auto first = std::find_if_not(value.begin(), value.end(),
-                                        [](unsigned char ch) { return std::isspace(ch) != 0; });
-    const auto last = std::find_if_not(value.rbegin(), value.rend(),
-                                       [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
+std::string trim(std::string value)
+{
+    const auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
+    const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
     if (first >= last) {
         return {};
     }
     return std::string(first, last);
 }
 
-std::string toLower(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+std::string toLower(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
     return value;
 }
 
-bool isWindSpeedHeader(const std::string& token) {
+bool isWindSpeedHeader(const std::string& token)
+{
     const std::string value = toLower(token);
     return value == "ws" || value == "ws_bin";
 }
 
-bool isWindDirectionHeader(const std::string& token) {
+bool isWindDirectionHeader(const std::string& token)
+{
     const std::string value = toLower(token);
     return value == "wd" || value == "wd_bin";
 }
 
-bool isYawSetpointHeader(const std::string& token) {
+bool isYawSetpointHeader(const std::string& token)
+{
     const std::string value = toLower(token);
     return !value.empty() && (value.rfind("yaw", 0) == 0 || value.rfind("wt", 0) == 0);
 }
 
-float parseFloat(const std::string& token) {
+float parseFloat(const std::string& token)
+{
     std::size_t parsedCharacters = 0;
     const float value = std::stof(token, &parsedCharacters);
     if (parsedCharacters != token.size()) {
@@ -64,7 +67,8 @@ float parseFloat(const std::string& token) {
     return value;
 }
 
-BinBracket findBracket(const std::vector<float>& bins, float value) {
+BinBracket findBracket(const std::vector<float>& bins, float value)
+{
     const float clamped = std::clamp(value, bins.front(), bins.back());
     if (clamped <= bins.front()) {
         return {0, 0, 0.0f};
@@ -88,7 +92,8 @@ BinBracket findBracket(const std::vector<float>& bins, float value) {
 
 } // namespace
 
-YawLut::YawLut(const std::string& csvFilePath) {
+YawLut::YawLut(const std::string& csvFilePath)
+{
     std::ifstream csvFile(csvFilePath);
     if (!csvFile.is_open()) {
         throw std::runtime_error("Failed to open yaw LUT CSV: " + csvFilePath);
@@ -129,7 +134,7 @@ YawLut::YawLut(const std::string& csvFilePath) {
                 if (!isWindSpeedHeader(tokens[0]) || !isWindDirectionHeader(tokens[1])) {
                     throw std::runtime_error("Yaw LUT header must start with ws/ws_bin,wd/wd_bin");
                 }
-                
+
                 for (std::size_t i = 2; i < tokens.size(); ++i) {
                     if (!isYawSetpointHeader(tokens[i])) {
                         throw std::runtime_error("Yaw LUT header columns after wd/wd_bin must be yaw or WT setpoints");
@@ -159,8 +164,7 @@ YawLut::YawLut(const std::string& csvFilePath) {
             if (turbineCount == 0) {
                 turbineCount = row.yawValues.size();
             } else if (row.yawValues.size() != turbineCount) {
-                throw std::runtime_error(
-                    "Inconsistent yaw setpoint column count at line " + std::to_string(lineNumber));
+                throw std::runtime_error("Inconsistent yaw setpoint column count at line " + std::to_string(lineNumber));
             }
 
             windSpeedBins_.push_back(row.windSpeedBin);
@@ -189,7 +193,8 @@ YawLut::YawLut(const std::string& csvFilePath) {
         throw std::runtime_error("Wind-direction must contain at least two unique bins");
     }
 
-    yawSetpoints_.assign(windSpeedBins_.size(), std::vector<TurbineYawSetpoints>(windDirectionBins_.size(), TurbineYawSetpoints(turbineCount, 0.0f)));
+    yawSetpoints_.assign(windSpeedBins_.size(),
+                         std::vector<TurbineYawSetpoints>(windDirectionBins_.size(), TurbineYawSetpoints(turbineCount, 0.0f)));
     std::vector<std::vector<bool>> populated(windSpeedBins_.size(), std::vector<bool>(windDirectionBins_.size(), false));
 
     for (const auto& row : rows) {
@@ -209,40 +214,41 @@ YawLut::YawLut(const std::string& csvFilePath) {
     for (std::size_t windSpeedIndex = 0; windSpeedIndex < populated.size(); ++windSpeedIndex) {
         for (std::size_t windDirectionIndex = 0; windDirectionIndex < populated[windSpeedIndex].size(); ++windDirectionIndex) {
             if (!populated[windSpeedIndex][windDirectionIndex]) {
-                throw std::runtime_error(
-                    "Yaw LUT is missing one or more wind-speed/wind-direction combinations");
+                throw std::runtime_error("Yaw LUT is missing one or more wind-speed/wind-direction combinations");
             }
         }
     }
 }
 
-YawLut::TurbineYawSetpoints YawLut::lookup(float windSpeed, float windDirection) const {
+YawLut::TurbineYawSetpoints YawLut::lookup(float windSpeed, float windDirection) const
+{
     const BinBracket windSpeedBracket = findBracket(windSpeedBins_, windSpeed);
     const BinBracket windDirectionBracket = findBracket(windDirectionBins_, windDirection);
 
-    const size_t ws_lowIdx =  static_cast<std::size_t>(windSpeedBracket.lowIndex);
+    const size_t ws_lowIdx = static_cast<std::size_t>(windSpeedBracket.lowIndex);
     const size_t ws_highIdx = static_cast<std::size_t>(windSpeedBracket.highIndex);
-    const size_t wd_lowIdx =  static_cast<std::size_t>(windDirectionBracket.lowIndex);
+    const size_t wd_lowIdx = static_cast<std::size_t>(windDirectionBracket.lowIndex);
     const size_t wd_highIdx = static_cast<std::size_t>(windDirectionBracket.highIndex);
 
     // Wind speed indexes the outer dimension; wind direction indexes the inner dimension.
-    const auto& setpointsLowLow   = yawSetpoints_[ws_lowIdx][wd_lowIdx];
-    const auto& setpointsLowHigh  = yawSetpoints_[ws_lowIdx][wd_highIdx];
-    const auto& setpointsHighLow  = yawSetpoints_[ws_highIdx][wd_lowIdx];
+    const auto& setpointsLowLow = yawSetpoints_[ws_lowIdx][wd_lowIdx];
+    const auto& setpointsLowHigh = yawSetpoints_[ws_lowIdx][wd_highIdx];
+    const auto& setpointsHighLow = yawSetpoints_[ws_highIdx][wd_lowIdx];
     const auto& setpointsHighHigh = yawSetpoints_[ws_highIdx][wd_highIdx];
 
     TurbineYawSetpoints result(setpointsLowLow.size(), 0.0f);
     for (std::size_t i = 0; i < setpointsLowLow.size(); ++i) {
-        result[i] = setpointsLowLow[i]   * (1.0f - windSpeedBracket.weight) * (1.0f - windDirectionBracket.weight) +
-                    setpointsLowHigh[i]  * (1.0f - windSpeedBracket.weight) * windDirectionBracket.weight +
-                    setpointsHighLow[i]  * windSpeedBracket.weight * (1.0f - windDirectionBracket.weight) +
+        result[i] = setpointsLowLow[i] * (1.0f - windSpeedBracket.weight) * (1.0f - windDirectionBracket.weight) +
+                    setpointsLowHigh[i] * (1.0f - windSpeedBracket.weight) * windDirectionBracket.weight +
+                    setpointsHighLow[i] * windSpeedBracket.weight * (1.0f - windDirectionBracket.weight) +
                     setpointsHighHigh[i] * windSpeedBracket.weight * windDirectionBracket.weight;
     }
 
     return result;
 }
 
-std::size_t YawLut::turbineCount() const noexcept {
+std::size_t YawLut::turbineCount() const noexcept
+{
     if (yawSetpoints_.empty() || yawSetpoints_.front().empty()) {
         return 0;
     }

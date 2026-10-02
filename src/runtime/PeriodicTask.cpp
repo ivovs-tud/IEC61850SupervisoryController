@@ -7,21 +7,23 @@
 #include <windows.h>
 #endif
 
-PeriodicTask::PeriodicTask(std::chrono::milliseconds period) : period_(period) {
+PeriodicTask::PeriodicTask(std::chrono::milliseconds period) : period_(period)
+{
     if (period_.count() <= 0) {
         throw std::invalid_argument("PeriodicTask period must be greater than zero");
     }
 }
 
-PeriodicTask::~PeriodicTask() {
+PeriodicTask::~PeriodicTask()
+{
     stop();
 }
 
-bool PeriodicTask::start() {
+bool PeriodicTask::start()
+{
     std::unique_lock<std::mutex> lock(lifecycleMutex_);
     const State currentState = state_.load();
-    if (thread_.joinable() || currentState == State::Starting ||
-        currentState == State::Running || currentState == State::StopRequested) {
+    if (thread_.joinable() || currentState == State::Starting || currentState == State::Running || currentState == State::StopRequested) {
         throw std::logic_error("PeriodicTask is already active or has not been joined");
     }
 
@@ -40,9 +42,7 @@ bool PeriodicTask::start() {
         throw;
     }
 
-    lifecycleCv_.wait(lock, [this]() {
-        return startupFinished_;
-    });
+    lifecycleCv_.wait(lock, [this]() { return startupFinished_; });
     const bool started = startupSucceeded_;
     lock.unlock();
 
@@ -52,21 +52,22 @@ bool PeriodicTask::start() {
     return started;
 }
 
-void PeriodicTask::requestStop() noexcept {
+void PeriodicTask::requestStop() noexcept
+{
     {
         // Update the wait predicate under its mutex to prevent a lost wake-up.
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
         running_.store(false);
         State currentState = state_.load();
         while ((currentState == State::Starting || currentState == State::Running) &&
-               !state_.compare_exchange_weak(currentState, State::StopRequested)) {
-        }
+               !state_.compare_exchange_weak(currentState, State::StopRequested)) {}
     }
     lifecycleCv_.notify_all();
     wakeCv_.notify_all();
 }
 
-void PeriodicTask::waitStopped() {
+void PeriodicTask::waitStopped()
+{
     if (!thread_.joinable()) {
         return;
     }
@@ -77,7 +78,8 @@ void PeriodicTask::waitStopped() {
     thread_.join();
 }
 
-void PeriodicTask::stop() noexcept {
+void PeriodicTask::stop() noexcept
+{
     requestStop();
     try {
         waitStopped();
@@ -86,21 +88,25 @@ void PeriodicTask::stop() noexcept {
     }
 }
 
-std::exception_ptr PeriodicTask::failure() const {
+std::exception_ptr PeriodicTask::failure() const
+{
     std::lock_guard<std::mutex> lock(lifecycleMutex_);
     return failure_;
 }
 
-std::string PeriodicTask::failureMessage() const {
+std::string PeriodicTask::failureMessage() const
+{
     return describeFailure(failure());
 }
 
-void PeriodicTask::setFailureHandler(FailureHandler handler) {
+void PeriodicTask::setFailureHandler(FailureHandler handler)
+{
     std::lock_guard<std::mutex> lock(lifecycleMutex_);
     failureHandler_ = std::move(handler);
 }
 
-void PeriodicTask::run() {
+void PeriodicTask::run()
+{
     bool failed = false;
     try {
         onStart();
@@ -118,9 +124,7 @@ void PeriodicTask::run() {
             execute();
             nextWakeup += period_;
             std::unique_lock<std::mutex> lock(lifecycleMutex_);
-            wakeCv_.wait_until(lock, nextWakeup, [this]() {
-                return !running_.load();
-            });
+            wakeCv_.wait_until(lock, nextWakeup, [this]() { return !running_.load(); });
         }
 
     } catch (...) {
@@ -155,7 +159,7 @@ void PeriodicTask::run() {
         handler = failureHandler_;
         message = describeFailure(failure_);
     }
-    
+
     if (handler) {
         try {
             handler(message);
@@ -165,14 +169,16 @@ void PeriodicTask::run() {
     }
 }
 
-void PeriodicTask::recordFailure(std::exception_ptr failure) noexcept {
+void PeriodicTask::recordFailure(std::exception_ptr failure) noexcept
+{
     std::lock_guard<std::mutex> lock(lifecycleMutex_);
     if (!failure_) {
         failure_ = std::move(failure);
     }
 }
 
-std::string PeriodicTask::describeFailure(const std::exception_ptr& failure) noexcept {
+std::string PeriodicTask::describeFailure(const std::exception_ptr& failure) noexcept
+{
     if (!failure) {
         return {};
     }
@@ -185,7 +191,8 @@ std::string PeriodicTask::describeFailure(const std::exception_ptr& failure) noe
     }
 }
 
-void PeriodicTask::SetThreadPriorityHelper() {
+void PeriodicTask::SetThreadPriorityHelper()
+{
 #if defined(_WIN32) || defined(_WIN64)
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
 #endif

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "sc/communication/attack/AttackSignalType.hpp"
 #include "sc/communication/attack/AttackProtocol.hpp"
+#include "sc/communication/attack/AttackSignalType.hpp"
 #include "sc/runtime/Clock.hpp"
 
 #include <chrono>
@@ -26,7 +26,10 @@ struct StartAttackSessionResult {
     AttackSessionId id{0};
     std::string error;
 
-    explicit operator bool() const { return id != 0; }
+    explicit operator bool() const
+    {
+        return id != 0;
+    }
     /**
      * Checks whether the session was started.
      * @return True when a session ID was assigned.
@@ -41,8 +44,9 @@ struct ClosedAttackSession {
 
 // Tracks the active attack client and its per-turbine controls.
 class AttackSessionManager {
-public:
-    AttackSessionManager(int numTurbines, std::vector<AttackInterface::SignalType> signalTypes, sc::ports::Clock& clock, std::chrono::milliseconds leaseTimeout = sc::protocol::attack::DEFAULT_HEARTBEAT_TIMEOUT);
+    public:
+    AttackSessionManager(int numTurbines, std::vector<AttackInterface::SignalType> signalTypes, sc::ports::Clock& clock,
+                         std::chrono::milliseconds leaseTimeout = sc::protocol::attack::DEFAULT_HEARTBEAT_TIMEOUT);
     /**
      * Creates attack state for all configured turbine links.
      * @param numTurbines Number of turbine links.
@@ -134,7 +138,7 @@ public:
      * @return Session information, or no value when inactive.
      */
 
-private:
+    private:
     struct LinkState {
         std::map<AttackInterface::SignalType, bool> tapEnabled;
         std::map<AttackInterface::SignalType, bool> fdiEnabled;

@@ -1,16 +1,16 @@
-#include <catch2/catch_test_macros.hpp>
+#include "sc/communication/attack/AttackProtocol.hpp"
+#include "sc/communication/data_historian/DataHistorianRecord.hpp"
 
+#include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include "sc/communication/data_historian/DataHistorianRecord.hpp"
-#include "sc/communication/attack/AttackProtocol.hpp"
-
 namespace {
 
-std::vector<uint8_t> fromHex(const std::string& value) {
+std::vector<uint8_t> fromHex(const std::string& value)
+{
     std::vector<uint8_t> bytes;
     bytes.reserve(value.size() / 2);
     for (std::size_t index = 0; index < value.size(); index += 2) {
@@ -21,19 +21,16 @@ std::vector<uint8_t> fromHex(const std::string& value) {
 
 } // namespace
 
-TEST_CASE("attack protocol retains the documented wire bytes") {
+TEST_CASE("attack protocol retains the documented wire bytes")
+{
     using namespace sc::protocol::attack;
 
-    REQUIRE(encode(TxDataMessage{2, AttackInterface::SignalType::YAW_ANGLE, 12.5F}) ==
-            fromHex("01020000050000000100000000004841"));
+    REQUIRE(encode(TxDataMessage{2, AttackInterface::SignalType::YAW_ANGLE, 12.5F}) == fromHex("01020000050000000100000000004841"));
     REQUIRE(encode(RqDataMessage{3, AttackInterface::SignalType::POWER, 1000, 1500}) ==
             fromHex("0203000004000000e803000000000000dc05000000000000"));
     REQUIRE(encode(AtDataMessage{3, AttackInterface::SignalType::POWER, 1100, -7.25F}) ==
             fromHex("04030000040000004c040000000000000000e8c000000000"));
-    REQUIRE(encode(CtDataMessage{
-                ControlSignal::FDI,
-                AttackInterface::SignalType::YAW_ANGLE,
-                {1, 0, 1, 0, 0, 0, 0, 0, 0}}) ==
+    REQUIRE(encode(CtDataMessage{ControlSignal::FDI, AttackInterface::SignalType::YAW_ANGLE, {1, 0, 1, 0, 0, 0, 0, 0, 0}}) ==
             fromHex("080000000200000005000000010001000000000000"));
 
     const auto configuration = encode(CfgDataMessage{"PythonAttackClient", 7, 2});
@@ -47,7 +44,8 @@ TEST_CASE("attack protocol retains the documented wire bytes") {
     REQUIRE(encode(ReleaseMessage{}) == fromHex("80"));
 }
 
-TEST_CASE("historian record retains the documented native ABI") {
+TEST_CASE("historian record retains the documented native ABI")
+{
     STATIC_REQUIRE(sizeof(DataHistorianRecord) == 56);
     STATIC_REQUIRE(offsetof(DataHistorianRecord, turbineId) == 0);
     STATIC_REQUIRE(offsetof(DataHistorianRecord, unixTime) == 8);

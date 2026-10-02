@@ -1,6 +1,6 @@
+#include "SocketPlatform.hpp"
 #include "sc/communication/data_historian/DataHistorianRecord.hpp"
 #include "sc/communication/data_historian/DataHistorianServer.hpp"
-#include "SocketPlatform.hpp"
 
 #include <array>
 #include <chrono>
@@ -14,9 +14,11 @@
 
 namespace {
 
-int reserveLoopbackPort() {
+int reserveLoopbackPort()
+{
     const socket_t probe = socket(AF_INET, SOCK_STREAM, 0);
-    if (probe == INVALID_SOCKET_FD) return -1;
+    if (probe == INVALID_SOCKET_FD)
+        return -1;
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -35,15 +37,15 @@ int reserveLoopbackPort() {
     return port;
 }
 
-socket_t connectLoopback(int port) {
+socket_t connectLoopback(int port)
+{
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     address.sin_port = htons(static_cast<uint16_t>(port));
     for (int attempt = 0; attempt < 100; ++attempt) {
         const socket_t client = socket(AF_INET, SOCK_STREAM, 0);
-        if (client != INVALID_SOCKET_FD &&
-            connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0) {
+        if (client != INVALID_SOCKET_FD && connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0) {
             return client;
         }
         socket_close(client);
@@ -52,17 +54,20 @@ socket_t connectLoopback(int port) {
     return INVALID_SOCKET_FD;
 }
 
-bool writeAll(socket_t client, const uint8_t* data, std::size_t size) {
+bool writeAll(socket_t client, const uint8_t* data, std::size_t size)
+{
     std::size_t offset = 0;
     while (offset < size) {
         const ssize_t written = socket_write(client, data + offset, size - offset);
-        if (written <= 0) return false;
+        if (written <= 0)
+            return false;
         offset += static_cast<std::size_t>(written);
     }
     return true;
 }
 
-DataHistorianRecord makeRecord(uint32_t id, uint64_t timestamp, float yaw) {
+DataHistorianRecord makeRecord(uint32_t id, uint64_t timestamp, float yaw)
+{
     DataHistorianRecord record{};
     record.turbineId = id;
     record.unixTime = timestamp;
@@ -72,7 +77,8 @@ DataHistorianRecord makeRecord(uint32_t id, uint64_t timestamp, float yaw) {
 
 } // namespace
 
-int main() {
+int main()
+{
     if (!socket_init()) {
         std::cerr << "failed to initialize test socket subsystem\n";
         return 1;
@@ -136,8 +142,7 @@ int main() {
     const std::size_t burstBytes = (records.size() - 1) * sizeof(DataHistorianRecord);
     std::vector<uint8_t> remainder(sizeof(DataHistorianRecord) - split + burstBytes);
     std::memcpy(remainder.data(), first + split, sizeof(DataHistorianRecord) - split);
-    std::memcpy(remainder.data() + sizeof(DataHistorianRecord) - split,
-                records.data() + 1, burstBytes);
+    std::memcpy(remainder.data() + sizeof(DataHistorianRecord) - split, records.data() + 1, burstBytes);
     if (!writeAll(client, remainder.data(), remainder.size())) {
         std::cerr << "failed to write coalesced historian records\n";
         socket_close(client);
@@ -149,9 +154,7 @@ int main() {
     bool complete;
     {
         std::unique_lock<std::mutex> lock(receivedMutex);
-        complete = receivedCv.wait_for(lock, std::chrono::seconds(3), [&]() {
-            return received.size() == records.size();
-        });
+        complete = receivedCv.wait_for(lock, std::chrono::seconds(3), [&]() { return received.size() == records.size(); });
     }
     socket_close(client);
     server.stop();
@@ -162,8 +165,7 @@ int main() {
         return 8;
     }
     for (std::size_t index = 0; index < records.size(); ++index) {
-        if (received[index].turbineId != records[index].turbineId ||
-            received[index].unixTime != records[index].unixTime ||
+        if (received[index].turbineId != records[index].turbineId || received[index].unixTime != records[index].unixTime ||
             received[index].yawAngle != records[index].yawAngle) {
             std::cerr << "data historian record order or content changed\n";
             return 9;

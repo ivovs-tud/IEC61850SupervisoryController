@@ -1,13 +1,13 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <chrono>
-#include <cstddef>
-
-#include "sc/communication/iec61850/IecReferences.hpp"
 #include "sc/communication/attack/AttackProtocol.hpp"
 #include "sc/communication/attack/AttackTransport.hpp"
+#include "sc/communication/iec61850/IecReferences.hpp"
+
+#include <chrono>
+#include <cstddef>
+#include <string>
+#include <vector>
 
 namespace sc::runtime {
 struct RuntimeConfig;
@@ -17,12 +17,11 @@ namespace sc::communication {
 
 enum CommunicationStatus {
     COMM_DISCONNECTED = -1,
-    COMM_CONNECTING   = 0,
-    COMM_CONNECTED    = 1,
+    COMM_CONNECTING = 0,
+    COMM_CONNECTED = 1,
 };
 
-struct CommunicationConfig
-{
+struct CommunicationConfig {
     struct Hmi {
         std::chrono::milliseconds period{500};
         int windowSize{300};
@@ -32,44 +31,44 @@ struct CommunicationConfig
     } hmi;
 
     struct OperatorServer {
-        int                       port        {9001};
-        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
+        int port{9001};
+        std::chrono::milliseconds pollPeriod{std::chrono::milliseconds(10)};
     } operatorServer;
 
     struct AttackInterface {
-        sc::ports::AttackTransport    transport   {sc::ports::AttackTransport::ZEROMQ};
-        std::string                   bindAddress {"0.0.0.0"};
-        int                       port        {9002};
-        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
-        std::chrono::milliseconds heartbeatInterval {sc::protocol::attack::DEFAULT_HEARTBEAT_INTERVAL};
-        std::chrono::milliseconds leaseTimeout {sc::protocol::attack::DEFAULT_HEARTBEAT_TIMEOUT};
-        bool                         reuseLastFdiValueOnFailure {true};
-        std::size_t                receiveBufferBytes {64 * 1024};
-        std::size_t                transmitBufferBytes {64 * 1024};
-        std::chrono::milliseconds  configurationTimeout {std::chrono::milliseconds(1000)};
-        std::chrono::milliseconds  tcpUserTimeout {std::chrono::milliseconds(0)};
+        sc::ports::AttackTransport transport{sc::ports::AttackTransport::ZEROMQ};
+        std::string bindAddress{"0.0.0.0"};
+        int port{9002};
+        std::chrono::milliseconds pollPeriod{std::chrono::milliseconds(10)};
+        std::chrono::milliseconds heartbeatInterval{sc::protocol::attack::DEFAULT_HEARTBEAT_INTERVAL};
+        std::chrono::milliseconds leaseTimeout{sc::protocol::attack::DEFAULT_HEARTBEAT_TIMEOUT};
+        bool reuseLastFdiValueOnFailure{true};
+        std::size_t receiveBufferBytes{64 * 1024};
+        std::size_t transmitBufferBytes{64 * 1024};
+        std::chrono::milliseconds configurationTimeout{std::chrono::milliseconds(1000)};
+        std::chrono::milliseconds tcpUserTimeout{std::chrono::milliseconds(0)};
     } attackInterface;
 
     struct DataHistorian {
-        int                       port        {9003};
-        std::chrono::milliseconds pollPeriod  {std::chrono::milliseconds(10)};
+        int port{9003};
+        std::chrono::milliseconds pollPeriod{std::chrono::milliseconds(10)};
     } dataHistorian;
 
     struct Mms {
-        std::vector<TurbineEndpoint>  turbines;
-        std::chrono::milliseconds     pollPeriod  {std::chrono::milliseconds(10)};
-        std::chrono::milliseconds     reconnectInitialDelay {std::chrono::milliseconds(100)};
-        std::chrono::milliseconds     reconnectMaxDelay {std::chrono::milliseconds(5000)};
-        bool                          reportingEnabled {true};
-        std::chrono::milliseconds     reportTriggerPeriod {std::chrono::milliseconds(500)};
-        std::string                   reportDataSetReference {"WPPD1$ds01"};
-        std::string                   reportControlBlockReference {"WPPD1$RP$urcb01"};
-        std::vector<std::string>      reportDataReferences {};
+        std::vector<TurbineEndpoint> turbines;
+        std::chrono::milliseconds pollPeriod{std::chrono::milliseconds(10)};
+        std::chrono::milliseconds reconnectInitialDelay{std::chrono::milliseconds(100)};
+        std::chrono::milliseconds reconnectMaxDelay{std::chrono::milliseconds(5000)};
+        bool reportingEnabled{true};
+        std::chrono::milliseconds reportTriggerPeriod{std::chrono::milliseconds(500)};
+        std::string reportDataSetReference{"WPPD1$ds01"};
+        std::string reportControlBlockReference{"WPPD1$RP$urcb01"};
+        std::vector<std::string> reportDataReferences{};
     } mms;
 
     struct Goose {
-        bool                      enabled{false};
-        std::string               networkInterface{"veth1"};
+        bool enabled{false};
+        std::string networkInterface{"veth1"};
     } goose;
 };
 

@@ -6,7 +6,8 @@
 
 namespace sc::communication {
 
-CommunicationConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& runtime) {
+CommunicationConfig makeCommunicationConfig(const sc::runtime::RuntimeConfig& runtime)
+{
     CommunicationConfig config;
     config.hmi.period = runtime.hmi.period;
     config.hmi.windowSize = runtime.hmi.windowSize;

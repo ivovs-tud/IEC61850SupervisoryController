@@ -12,6 +12,24 @@ option(SC_BUILD_TESTS "Build supervisory controller tests" OFF)
 option(SC_BUILD_INTEGRATION_TESTS "Build tests that require optional network dependencies" OFF)
 option(SC_BUILD_CONTROLLER "Build the IEC 61850 supervisory controller executable" ON)
 
+find_program(SC_CLANG_FORMAT_EXECUTABLE NAMES clang-format clang-format-18)
+add_custom_target(format
+    COMMAND ${CMAKE_COMMAND}
+        -DSC_PROJECT_ROOT=${CMAKE_SOURCE_DIR}
+        -DSC_CLANG_FORMAT_EXECUTABLE=${SC_CLANG_FORMAT_EXECUTABLE}
+        -DSC_FORMAT_MODE=format
+        -P ${CMAKE_SOURCE_DIR}/cmake/RunClangFormat.cmake
+    VERBATIM
+)
+add_custom_target(format-check
+    COMMAND ${CMAKE_COMMAND}
+        -DSC_PROJECT_ROOT=${CMAKE_SOURCE_DIR}
+        -DSC_CLANG_FORMAT_EXECUTABLE=${SC_CLANG_FORMAT_EXECUTABLE}
+        -DSC_FORMAT_MODE=check
+        -P ${CMAKE_SOURCE_DIR}/cmake/RunClangFormat.cmake
+    VERBATIM
+)
+
 if(SC_BUILD_INTEGRATION_TESTS AND NOT SC_BUILD_TESTS)
     message(FATAL_ERROR "SC_BUILD_INTEGRATION_TESTS requires SC_BUILD_TESTS=ON")
 endif()

@@ -1,6 +1,7 @@
 #include "CommunicationOrchestrator.hpp"
-#include "sc/communication/iec61850/IECCommunicator.hpp"
+
 #include "sc/communication/attack/AttackInterface.hpp"
+#include "sc/communication/iec61850/IECCommunicator.hpp"
 #include "sc/runtime/Logging.hpp"
 #include "sc/runtime/Time.hpp"
 
@@ -21,7 +22,8 @@ AttackInterface::AttackTiming makeAttackTiming(const CommunicationConfig& config
     return timing;
 }
 
-AttackChannelTCP::Config makeTcpAttackConfig(const CommunicationConfig& config) {
+AttackChannelTCP::Config makeTcpAttackConfig(const CommunicationConfig& config)
+{
     AttackChannelTCP::Config tcp;
     tcp.bindAddress = config.attackInterface.bindAddress;
     tcp.port = config.attackInterface.port;
@@ -34,7 +36,8 @@ AttackChannelTCP::Config makeTcpAttackConfig(const CommunicationConfig& config) 
     return tcp;
 }
 
-AttackChannelZMQ::Config makeZmqAttackConfig(const CommunicationConfig& config) {
+AttackChannelZMQ::Config makeZmqAttackConfig(const CommunicationConfig& config)
+{
     AttackChannelZMQ::Config zmq;
     zmq.port = config.attackInterface.port;
     zmq.pollPeriod = config.attackInterface.pollPeriod;
@@ -46,15 +49,18 @@ AttackChannelZMQ::Config makeZmqAttackConfig(const CommunicationConfig& config) 
     return zmq;
 }
 
-OperatorServer::Config makeOperatorConfig(const CommunicationConfig& config) {
+OperatorServer::Config makeOperatorConfig(const CommunicationConfig& config)
+{
     return {config.operatorServer.port, config.operatorServer.pollPeriod};
 }
 
-DataHistorianServer::Config makeDataHistorianConfig(const CommunicationConfig& config) {
+DataHistorianServer::Config makeDataHistorianConfig(const CommunicationConfig& config)
+{
     return {config.dataHistorian.port, config.dataHistorian.pollPeriod};
 }
 
-HmiConfig makeHmiConfig(const CommunicationConfig& config) {
+HmiConfig makeHmiConfig(const CommunicationConfig& config)
+{
     HmiConfig hmi = defaultHmiConfig(static_cast<int>(config.mms.turbines.size()));
     hmi.windowSize = config.hmi.windowSize;
     hmi.publisherEndpoint = config.hmi.publisherEndpoint;
@@ -65,27 +71,19 @@ HmiConfig makeHmiConfig(const CommunicationConfig& config) {
 
 } // namespace
 
-CommunicationOrchestrator::CommunicationOrchestrator(const CommunicationConfig& config)
-    : config_(config),
-      hmiInterface_(makeHmiConfig(config), config.hmi.period),
-      iecManager_(sc::ports::systemClock(), config.mms.reconnectInitialDelay, config.mms.reconnectMaxDelay),
-      operatorServer_(makeOperatorConfig(config)),
-      tcpAttackChannel_(makeTcpAttackConfig(config)),
-      zmqAttackChannel_(makeZmqAttackConfig(config)),
-      attackChannel_(config.attackInterface.transport == sc::ports::AttackTransport::TCP
-                         ? static_cast<sc::ports::AttackChannel&>(tcpAttackChannel_)
-                         : static_cast<sc::ports::AttackChannel&>(zmqAttackChannel_)),
-      attackInterface_(static_cast<int>(config.mms.turbines.size()),
-                       attackChannel_,
-                       sc::ports::systemClock(),
-                       makeAttackTiming(config)),
-      dataHistorianServer_(makeDataHistorianConfig(config))
+CommunicationOrchestrator::CommunicationOrchestrator(const CommunicationConfig& config) :
+    config_(config), hmiInterface_(makeHmiConfig(config), config.hmi.period),
+    iecManager_(sc::ports::systemClock(), config.mms.reconnectInitialDelay, config.mms.reconnectMaxDelay),
+    operatorServer_(makeOperatorConfig(config)), tcpAttackChannel_(makeTcpAttackConfig(config)),
+    zmqAttackChannel_(makeZmqAttackConfig(config)), attackChannel_(config.attackInterface.transport == sc::ports::AttackTransport::TCP
+                                                                       ? static_cast<sc::ports::AttackChannel&>(tcpAttackChannel_)
+                                                                       : static_cast<sc::ports::AttackChannel&>(zmqAttackChannel_)),
+    attackInterface_(static_cast<int>(config.mms.turbines.size()), attackChannel_, sc::ports::systemClock(), makeAttackTiming(config)),
+    dataHistorianServer_(makeDataHistorianConfig(config))
 {
     socketStatus_.store(COMM_DISCONNECTED);
     iecStatus_.store(COMM_DISCONNECTED);
-    operatorServer_.setFailureHandler([this](const std::string& message) {
-        handleRuntimeFailure("operator server: " + message);
-    });
+    operatorServer_.setFailureHandler([this](const std::string& message) { handleRuntimeFailure("operator server: " + message); });
     zmqAttackChannel_.setFailureHandler([this](const std::string& message) {
         attackInterface_.shutdown("transport failure");
         handleRuntimeFailure("ZeroMQ attack interface server: " + message);
@@ -94,12 +92,10 @@ CommunicationOrchestrator::CommunicationOrchestrator(const CommunicationConfig& 
         attackInterface_.shutdown("transport failure");
         handleRuntimeFailure("raw TCP attack interface server: " + message);
     });
-    dataHistorianServer_.setFailureHandler([this](const std::string& message) {
-        handleRuntimeFailure("data historian server: " + message);
-    });
-    hmiInterface_.setFailureHandler([](const std::string& message) {
-        COMMTASK_ERR("Optional HMI interface stopped after failure: " << message);
-    });
+    dataHistorianServer_.setFailureHandler(
+        [this](const std::string& message) { handleRuntimeFailure("data historian server: " + message); });
+    hmiInterface_.setFailureHandler(
+        [](const std::string& message) { COMMTASK_ERR("Optional HMI interface stopped after failure: " << message); });
 }
 
 CommunicationOrchestrator::~CommunicationOrchestrator()
@@ -118,76 +114,66 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::init()
     }
     for (std::size_t index = 0; index < config_.mms.turbines.size(); ++index) {
         const auto& endpoint = config_.mms.turbines[index];
-        iecManager_.addTurbine(static_cast<int>(index) + 1,
-                               endpoint.host,
-                               endpoint.port,
-                               endpoint.logicalDevice,
-                               endpoint.iedName);
+        iecManager_.addTurbine(static_cast<int>(index) + 1, endpoint.host, endpoint.port, endpoint.logicalDevice, endpoint.iedName);
         for (const auto& reference : endpoint.gooseRefs) {
             const int turbineId = static_cast<int>(index) + 1;
-            if (!iecManager_.addGooseSubscription(
-                    turbineId, reference,
-                    [turbineId](const std::string& receivedReference, int32_t value) {
-                        (void)turbineId;
-                        (void)receivedReference;
-                        (void)value;
-                        COMMTASK_LOG_V2("GOOSE turbine " << turbineId << " "
-                                         << receivedReference << "=" << value);
-                    })) {
+            if (!iecManager_.addGooseSubscription(turbineId, reference, [turbineId](const std::string& receivedReference, int32_t value) {
+                    (void)turbineId;
+                    (void)receivedReference;
+                    (void)value;
+                    COMMTASK_LOG_V2("GOOSE turbine " << turbineId << " " << receivedReference << "=" << value);
+                })) {
                 return {false, StartupStage::Initialization,
-                        "failed to configure GOOSE subscription for turbine " +
-                            std::to_string(turbineId)};
+                        "failed to configure GOOSE subscription for turbine " + std::to_string(turbineId)};
             }
         }
     }
-    if (config_.goose.enabled &&
-        !iecManager_.configureGoose(config_.goose.networkInterface)) {
+    if (config_.goose.enabled && !iecManager_.configureGoose(config_.goose.networkInterface)) {
         return {false, StartupStage::Initialization, "failed to configure GOOSE receiver"};
     }
 
     operatorServer_.setCommandHandler([this](const OperatorCommand& command) {
-        std::visit([this](const auto& value) {
-            using Command = std::decay_t<decltype(value)>;
-            if constexpr (std::is_same_v<Command, RequestedPowerCommand>) {
-                {
-                    auto& control = SharedData::instance().control;
-                    std::lock_guard<std::mutex> lock(control.mutex);
-                    control.requestedPower = value.value;
-                }
-                COMMTASK_LOG_V1("Updated RequestedReferencePower to " << value.value);
-            } else if constexpr (std::is_same_v<Command, SimulationStateCommand>) {
-                {
-                    auto& interface = SharedData::instance().interface;
-                    std::lock_guard<std::mutex> lock(interface.mutex);
-                    interface.simStarted = value.running;
-                    if (!value.running) {
-                        interface.simConfigured = false;
+        std::visit(
+            [this](const auto& value) {
+                using Command = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<Command, RequestedPowerCommand>) {
+                    {
+                        auto& control = SharedData::instance().control;
+                        std::lock_guard<std::mutex> lock(control.mutex);
+                        control.requestedPower = value.value;
                     }
+                    COMMTASK_LOG_V1("Updated RequestedReferencePower to " << value.value);
+                } else if constexpr (std::is_same_v<Command, SimulationStateCommand>) {
+                    {
+                        auto& interface = SharedData::instance().interface;
+                        std::lock_guard<std::mutex> lock(interface.mutex);
+                        interface.simStarted = value.running;
+                        if (!value.running) {
+                            interface.simConfigured = false;
+                        }
+                    }
+                    if (value.running) {
+                        DataHistorian::instance().start();
+                    } else {
+                        DataHistorian::instance().stopRun();
+                    }
+                    COMMTASK_LOG_V1("Received simulation control message from operator server: simStarting = " << value.running);
                 }
-                if (value.running) {
-                    DataHistorian::instance().start();
-                } else {
-                    DataHistorian::instance().stopRun();
-                }
-                COMMTASK_LOG_V1("Received simulation control message from operator server: simStarting = " << value.running);
-            }
-        }, command);
+            },
+            command);
     });
 
     dataHistorianServer_.setRecordHandler([](const DataHistorianRecord& record) {
         char logMsg[512];
-        snprintf(logMsg, sizeof(logMsg), "[WT%u]%llu;YawAng=%.1f;YawSpt=%.1f;W=%.1f;WSpt=%.1f;V=%.1f;D=%.1f;RotSpd=%.1f;Pth=%.1f;PthSpt=%.1f",
-            record.turbineId, static_cast<unsigned long long>(record.unixTime),
-            record.yawAngle, record.yawSetpoint,
-            record.power, record.powerSetpoint, record.windSpeed, record.windDirection,
-            record.rotorSpeed, record.pitchAngle, record.pitchSetpoint);
+        snprintf(logMsg, sizeof(logMsg),
+                 "[WT%u]%llu;YawAng=%.1f;YawSpt=%.1f;W=%.1f;WSpt=%.1f;V=%.1f;D=%.1f;RotSpd=%.1f;Pth=%.1f;PthSpt=%.1f", record.turbineId,
+                 static_cast<unsigned long long>(record.unixTime), record.yawAngle, record.yawSetpoint, record.power, record.powerSetpoint,
+                 record.windSpeed, record.windDirection, record.rotorSpeed, record.pitchAngle, record.pitchSetpoint);
 
         DataHistorian::instance().log(std::string(logMsg));
     });
 
-    attackInterface_.setAuditCallback([](const std::string& event) {
-        DataHistorian::instance().log("[AttackInterface] " + event);
-    });
+    attackInterface_.setAuditCallback([](const std::string& event) { DataHistorian::instance().log("[AttackInterface] " + event); });
 
     createCommunicators();
     initialized_ = true;
@@ -201,11 +187,8 @@ void CommunicationOrchestrator::createCommunicators()
 
     for (size_t idx = 0; idx < config_.mms.turbines.size(); ++idx) {
         const int turbineId = static_cast<int>(idx) + 1;
-        auto communicator = std::make_unique<IECCommunicator>(
-            config_, turbineId, iecManager_, attackInterface_);
-        communicator->setFailureHandler([this](const std::string& message) {
-            handleRuntimeFailure(message);
-        });
+        auto communicator = std::make_unique<IECCommunicator>(config_, turbineId, iecManager_, attackInterface_);
+        communicator->setFailureHandler([this](const std::string& message) { handleRuntimeFailure(message); });
         communicators_.push_back(std::move(communicator));
     }
 }
@@ -222,8 +205,7 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::start()
 
     socketStatus_.store(COMM_CONNECTING);
     if (!hmiInterface_.start()) {
-        COMMTASK_ERR("HMI unavailable; controller will continue without it: "
-                     << hmiInterface_.failureMessage());
+        COMMTASK_ERR("HMI unavailable; controller will continue without it: " << hmiInterface_.failureMessage());
     } else {
         hmiStarted_ = true;
     }
@@ -234,9 +216,7 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::start()
     }
     operatorStarted_ = true;
     const bool attackServerStarted =
-        config_.attackInterface.transport == sc::ports::AttackTransport::TCP
-            ? tcpAttackChannel_.start()
-            : zmqAttackChannel_.start();
+        config_.attackInterface.transport == sc::ports::AttackTransport::TCP ? tcpAttackChannel_.start() : zmqAttackChannel_.start();
     if (!attackServerStarted) {
         COMMTASK_ERR("Failed to start attack interface server on port " << config_.attackInterface.port);
         rollbackStart(0);
@@ -262,15 +242,12 @@ CommunicationOrchestrator::StartupResult CommunicationOrchestrator::start()
     for (std::size_t index = 0; index < communicators_.size(); ++index) {
         if (!communicators_[index]->start()) {
             rollbackStart(index);
-            return {false, StartupStage::TurbineCommunicator,
-                    "failed to start IEC communicator for turbine " +
-                        std::to_string(index + 1)};
+            return {false, StartupStage::TurbineCommunicator, "failed to start IEC communicator for turbine " + std::to_string(index + 1)};
         }
         communicatorStartCount_ = index + 1;
     }
 
-    iecStatus_.store(
-        iecManager_.status() == IEC_LINK_CONNECTED ? COMM_CONNECTED : COMM_CONNECTING);
+    iecStatus_.store(iecManager_.status() == IEC_LINK_CONNECTED ? COMM_CONNECTED : COMM_CONNECTING);
 
     {
         auto& interface = SharedData::instance().interface;

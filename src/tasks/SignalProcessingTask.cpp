@@ -1,20 +1,23 @@
+#include "sc/tasks/SignalProcessingTask.hpp"
+
+#include "sc/application/SignalProcessing.hpp"
+#include "sc/model/SharedData.hpp"
+#include "sc/runtime/DataHistorian.hpp"
+#include "sc/runtime/Time.hpp"
+
 #include <algorithm>
 #include <array>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-#include "sc/tasks/SignalProcessingTask.hpp"
-#include "sc/runtime/DataHistorian.hpp"
-#include "sc/model/SharedData.hpp"
-#include "sc/runtime/Time.hpp"
-#include "sc/application/SignalProcessing.hpp"
+SignalProcessingTask::SignalProcessingTask(std::chrono::milliseconds period, sc::application::SignalProcessingConfig config) :
+    PeriodicTask(period), config_(config)
+{
+}
 
-SignalProcessingTask::SignalProcessingTask(
-    std::chrono::milliseconds period, sc::application::SignalProcessingConfig config)
-    : PeriodicTask(period), config_(config) {}
-
-void SignalProcessingTask::execute() {
+void SignalProcessingTask::execute()
+{
     const uint64_t nowMs = getCurrentTimeMs();
     auto& data = SharedData::instance();
 
@@ -24,22 +27,12 @@ void SignalProcessingTask::execute() {
         std::lock_guard<std::mutex> lock(data.collected.mutex);
         input.turbines.reserve(data.collected.lastPower.size());
         for (std::size_t i = 0; i < data.collected.lastPower.size(); ++i) {
-            const std::array<uint64_t, 6> timestamps{
-                data.collected.lastWS_t[i],
-                data.collected.lastWD_t[i],
-                data.collected.lastYawOffset_t[i],
-                data.collected.lastRPM_t[i],
-                data.collected.lastPower_t[i],
-                data.collected.lastGenTorque_t[i]};
-            input.turbines.push_back({
-                data.collected.lastWS[i],
-                data.collected.lastWS_t[i],
-                data.collected.lastWD[i],
-                data.collected.lastWD_t[i],
-                data.collected.lastPower[i],
-                data.collected.measuredPower[i],
-                data.collected.lastPower_t[i],
-                *std::max_element(timestamps.begin(), timestamps.end())});
+            const std::array<uint64_t, 6> timestamps{data.collected.lastWS_t[i],        data.collected.lastWD_t[i],
+                                                     data.collected.lastYawOffset_t[i], data.collected.lastRPM_t[i],
+                                                     data.collected.lastPower_t[i],     data.collected.lastGenTorque_t[i]};
+            input.turbines.push_back({data.collected.lastWS[i], data.collected.lastWS_t[i], data.collected.lastWD[i],
+                                      data.collected.lastWD_t[i], data.collected.lastPower[i], data.collected.measuredPower[i],
+                                      data.collected.lastPower_t[i], *std::max_element(timestamps.begin(), timestamps.end())});
         }
     }
 
@@ -67,8 +60,7 @@ void SignalProcessingTask::execute() {
         data.processed.windDirection = result.windDirection;
     }
 
-    const std::string logMsg = "[SP]" + std::to_string(getCurrentTimeMs()) +
-                               ";GV=" + std::to_string(result.windSpeed) +
+    const std::string logMsg = "[SP]" + std::to_string(getCurrentTimeMs()) + ";GV=" + std::to_string(result.windSpeed) +
                                ";GD=" + std::to_string(result.windDirection);
     DataHistorian::instance().log(logMsg);
 }

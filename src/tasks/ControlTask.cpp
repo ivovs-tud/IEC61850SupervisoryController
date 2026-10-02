@@ -1,18 +1,21 @@
+#include "sc/tasks/ControlTask.hpp"
+
+#include "sc/application/ControlCalculation.hpp"
+#include "sc/model/SharedData.hpp"
+#include "sc/runtime/Logging.hpp"
+
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
 
-#include "sc/tasks/ControlTask.hpp"
-#include "sc/model/SharedData.hpp"
-#include "sc/runtime/Logging.hpp"
-#include "sc/application/ControlCalculation.hpp"
+ControlTask::ControlTask(Config config, sc::application::YawLut yawLut) :
+    PeriodicTask(config.period), yawLut_(std::move(yawLut)), numTurbines_(config.numTurbines), powerSharingMode_(config.powerSharingMode)
+{
+}
 
-ControlTask::ControlTask(Config config, sc::application::YawLut yawLut)
-    : PeriodicTask(config.period), yawLut_(std::move(yawLut)), numTurbines_(config.numTurbines),
-      powerSharingMode_(config.powerSharingMode) {}
-
-void ControlTask::execute() {
+void ControlTask::execute()
+{
     sc::application::ControlInputs inputs;
     inputs.turbineCount = numTurbines_;
     inputs.powerSharingMode = powerSharingMode_;
@@ -33,8 +36,8 @@ void ControlTask::execute() {
     }
 
     CONTROL_LOG_V2("Using Wind Speed: " << inputs.windSpeed << " m/s, Wind Direction: " << inputs.windDirection
-                  << " deg, to compute setpoints for requested reference power: "
-                  << inputs.requestedReferencePower << " W");
+                                        << " deg, to compute setpoints for requested reference power: " << inputs.requestedReferencePower
+                                        << " W");
     const auto setpoints = sc::application::calculateControlSetpoints(inputs, yawLut_);
 
 #if SC_LOG_LEVEL_CONTROL >= 2
@@ -60,6 +63,7 @@ void ControlTask::execute() {
     data.control.yawSetpoints = setpoints.turbineYaw;
 }
 
-void ControlTask::onStop() {
+void ControlTask::onStop()
+{
     CONTROL_LOG_V1("Stopped");
 }

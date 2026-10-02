@@ -11,11 +11,10 @@
 #include <mutex>
 #include <optional>
 #include <vector>
-
 #include <zmq.hpp>
 
 class AttackChannelZMQ final : public PeriodicTask, public sc::ports::AttackChannel {
-public:
+    public:
     struct Config {
         int port{9002};
         std::chrono::milliseconds pollPeriod{10};
@@ -34,12 +33,12 @@ public:
     void setDisconnectHandler(sc::ports::AttackDisconnectHandler handler) override;
     bool send(const uint8_t* data, std::size_t size) override;
 
-protected:
+    protected:
     void onStart() override;
     void execute() override;
     void onStop() override;
 
-private:
+    private:
     static constexpr std::size_t kMaxSendsPerCycle = 8;
 
     void drainInboundQueue();

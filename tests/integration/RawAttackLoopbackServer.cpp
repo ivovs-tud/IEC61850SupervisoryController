@@ -1,3 +1,6 @@
+#include "sc/communication/attack/AttackChannelTCP.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -7,9 +10,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#include "sc/communication/attack/AttackInterface.hpp"
-#include "sc/communication/attack/AttackChannelTCP.hpp"
 
 namespace {
 
@@ -22,31 +22,47 @@ enum class Mode {
     ConfigurationTimeout,
 };
 
-Mode parseMode(int argc, char* argv[]) {
-    if (argc == 2) return Mode::Normal;
+Mode parseMode(int argc, char* argv[])
+{
+    if (argc == 2)
+        return Mode::Normal;
     const std::string value = argv[2];
-    if (value == "overflow") return Mode::Overflow;
-    if (value == "lease-timeout") return Mode::LeaseTimeout;
-    if (value == "shutdown") return Mode::Shutdown;
-    if (value == "slow-reader") return Mode::SlowReader;
-    if (value == "configuration-timeout") return Mode::ConfigurationTimeout;
+    if (value == "overflow")
+        return Mode::Overflow;
+    if (value == "lease-timeout")
+        return Mode::LeaseTimeout;
+    if (value == "shutdown")
+        return Mode::Shutdown;
+    if (value == "slow-reader")
+        return Mode::SlowReader;
+    if (value == "configuration-timeout")
+        return Mode::ConfigurationTimeout;
     throw std::invalid_argument("unknown raw attack loopback mode: " + value);
 }
 
-int disconnectReasonCode(const std::string& reason) {
-    if (reason == "client release") return 1;
-    if (reason == "peer closed connection") return 2;
-    if (reason.find("receive error") != std::string::npos || reason == "connection closed") return 3;
-    if (reason.find("protocol error") != std::string::npos) return 4;
-    if (reason == "transmit buffer overflow") return 5;
-    if (reason == "lease timeout") return 6;
-    if (reason == "server shutdown") return 7;
+int disconnectReasonCode(const std::string& reason)
+{
+    if (reason == "client release")
+        return 1;
+    if (reason == "peer closed connection")
+        return 2;
+    if (reason.find("receive error") != std::string::npos || reason == "connection closed")
+        return 3;
+    if (reason.find("protocol error") != std::string::npos)
+        return 4;
+    if (reason == "transmit buffer overflow")
+        return 5;
+    if (reason == "lease timeout")
+        return 6;
+    if (reason == "server shutdown")
+        return 7;
     return 99;
 }
 
 } // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     if (argc < 2 || argc > 3) {
         std::cerr << "usage: sc_raw_attack_loopback_server <port> "
                      "[overflow|lease-timeout|shutdown|slow-reader|configuration-timeout]\n";
@@ -65,8 +81,10 @@ int main(int argc, char* argv[]) {
     channelConfig.port = std::atoi(argv[1]);
     channelConfig.pollPeriod = std::chrono::milliseconds(1);
     channelConfig.turbineCount = 2;
-    if (mode == Mode::Overflow) channelConfig.transmitBufferBytes = 268;
-    if (mode == Mode::SlowReader) channelConfig.transmitBufferBytes = 1024;
+    if (mode == Mode::Overflow)
+        channelConfig.transmitBufferBytes = 268;
+    if (mode == Mode::SlowReader)
+        channelConfig.transmitBufferBytes = 1024;
     if (mode == Mode::ConfigurationTimeout) {
         channelConfig.configurationTimeout = std::chrono::milliseconds(100);
     }
@@ -148,8 +166,7 @@ int main(int argc, char* argv[]) {
         attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
 
         float yawSetpoint = -1.0F;
-        const auto result = attack.processValue(
-            1, AttackInterface::SignalType::YAW_SETPOINT, yawSetpoint);
+        const auto result = attack.processValue(1, AttackInterface::SignalType::YAW_SETPOINT, yawSetpoint);
         if (result == AttackInterface::AI_OK) {
             ++overwriteSuccessCount;
         } else if (result == AttackInterface::AI_TIMEOUT) {
@@ -161,25 +178,20 @@ int main(int argc, char* argv[]) {
     channel.stop();
     float authoritativeValue = 321.0F;
     const bool restored =
-        attack.overwrite(1, AttackInterface::SignalType::YAW_SETPOINT, authoritativeValue) ==
-            AttackInterface::AI_DISABLED &&
+        attack.overwrite(1, AttackInterface::SignalType::YAW_SETPOINT, authoritativeValue) == AttackInterface::AI_DISABLED &&
         authoritativeValue == 321.0F;
     std::string finalReason;
     {
         std::lock_guard<std::mutex> lock(disconnectMutex);
         finalReason = disconnectReason;
     }
-    const auto leaseElapsed = configuredAt == std::chrono::steady_clock::time_point{} ||
-                                      disconnectedAt == std::chrono::steady_clock::time_point{}
-        ? -1
-        : std::chrono::duration_cast<std::chrono::milliseconds>(
-              disconnectedAt - configuredAt).count();
-    std::cout << "SC_RAW_LOOPBACK_RESULT configurations=" << configurationCount.load()
-              << " disconnects=" << disconnectCount.load()
-              << " overwrite_successes=" << overwriteSuccessCount
-              << " overwrite_timeouts=" << overwriteTimeoutCount
-              << " restored=" << static_cast<int>(restored)
-              << " reason=" << disconnectReasonCode(finalReason)
+    const auto leaseElapsed =
+        configuredAt == std::chrono::steady_clock::time_point{} || disconnectedAt == std::chrono::steady_clock::time_point{}
+            ? -1
+            : std::chrono::duration_cast<std::chrono::milliseconds>(disconnectedAt - configuredAt).count();
+    std::cout << "SC_RAW_LOOPBACK_RESULT configurations=" << configurationCount.load() << " disconnects=" << disconnectCount.load()
+              << " overwrite_successes=" << overwriteSuccessCount << " overwrite_timeouts=" << overwriteTimeoutCount
+              << " restored=" << static_cast<int>(restored) << " reason=" << disconnectReasonCode(finalReason)
               << " lease_elapsed_ms=" << leaseElapsed << '\n';
     return channel.failure() ? 4 : 0;
 }

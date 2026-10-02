@@ -8,7 +8,7 @@
 #include <string>
 
 class TcpServer {
-public:
+    public:
     using ClientId = std::uint64_t;
     using ConnectedHandler = std::function<void(ClientId)>;
     using DataHandler = std::function<void(ClientId, const uint8_t*, std::size_t)>;
@@ -49,7 +49,7 @@ public:
     std::size_t clientCount() const;
     std::size_t queuedBytes(ClientId clientId) const;
 
-private:
+    private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 };

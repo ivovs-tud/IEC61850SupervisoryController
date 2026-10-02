@@ -5,15 +5,17 @@
 
 // Aggregates turbine measurements into farm-level values.
 class SignalProcessingTask : public PeriodicTask {
-public:
-    explicit SignalProcessingTask(
-        std::chrono::milliseconds period = std::chrono::milliseconds(1),
-        sc::application::SignalProcessingConfig config = {});
-    ~SignalProcessingTask() override { stop(); }
+    public:
+    explicit SignalProcessingTask(std::chrono::milliseconds period = std::chrono::milliseconds(1),
+                                  sc::application::SignalProcessingConfig config = {});
+    ~SignalProcessingTask() override
+    {
+        stop();
+    }
 
-protected:
+    protected:
     void execute() override;
 
-private:
+    private:
     sc::application::SignalProcessingConfig config_;
 };
