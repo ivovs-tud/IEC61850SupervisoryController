@@ -1,5 +1,14 @@
 #pragma once
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include "sc/runtime/Logging.hpp"
 
 #include <cerrno>
@@ -9,10 +18,17 @@
 
 #if defined(PLATFORM_WINDOWS)
 
-#include <basetsd.h>
-#include <windows.h>
+// WinSock2 must precede windows.h to prevent inclusion of legacy winsock.h.
+#if defined(_WINSOCKAPI_) && !defined(_WINSOCK2API_)
+#error "winsock.h was included before SocketPlatform.hpp"
+#endif
+
+// clang-format off
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
+#include <basetsd.h>
+// clang-format on
 
 #pragma comment(lib, "ws2_32.lib")
 

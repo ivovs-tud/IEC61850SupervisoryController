@@ -52,6 +52,7 @@ jobs:
       VCPKG_REF: 2026.07.29
       VCPKG_DISABLE_METRICS: 1
       VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.cache/vcpkg,readwrite
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}/.cache/vcpkg-installed
 
     steps:
       - name: Check out supervisory controller
@@ -63,14 +64,33 @@ jobs:
           python-version: "3.13"
           cache: pip
 
+      - name: Determine vcpkg cache scope
+        id: vcpkg-cache-scope
+        shell: bash
+        run: |
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            echo "value=${ImageOS:-Windows}-${ImageVersion:-unknown}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "value=stable" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Restore vcpkg binary packages
         id: vcpkg-cache
         uses: actions/cache/restore@v6
         with:
           path: .cache/vcpkg
-          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}
+          key: vcpkg-binaries-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-${{ steps.vcpkg-cache-scope.outputs.value }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}
           restore-keys: |
+            vcpkg-binaries-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-${{ steps.vcpkg-cache-scope.outputs.value }}-
             vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-
+
+      - name: Restore Windows vcpkg install tree
+        if: runner.os == 'Windows'
+        id: vcpkg-installed-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/vcpkg-installed
+          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_REF }}-${{ steps.vcpkg-cache-scope.outputs.value }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}
 
       - name: Prepare vcpkg binary cache
         run: cmake -E make_directory "${{ github.workspace }}/.cache/vcpkg"
@@ -81,6 +101,16 @@ jobs:
           repository: microsoft/vcpkg
           ref: ${{ env.VCPKG_REF }}
           path: vcpkg
+
+      - name: Restore Windows vcpkg downloads
+        if: runner.os == 'Windows' && steps.vcpkg-installed-cache.outputs.cache-hit != 'true'
+        id: vcpkg-downloads-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: vcpkg/downloads
+          key: vcpkg-downloads-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-downloads-${{ runner.os }}-${{ env.VCPKG_REF }}-
 
       - name: Bootstrap vcpkg on Unix
         if: runner.os != 'Windows'
@@ -95,8 +125,13 @@ jobs:
       - name: Install Python package
         run: python -m pip install ./python
 
-      - name: Configure
+      - name: Configure on Unix
+        if: runner.os != 'Windows'
         run: cmake --preset vcpkg-hardware-free-integration
+
+      - name: Configure on Windows
+        if: runner.os == 'Windows'
+        run: cmake --preset vcpkg-hardware-free-integration "-DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }}"
 
       - name: Save vcpkg binary packages
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -104,6 +139,20 @@ jobs:
         with:
           path: .cache/vcpkg
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      - name: Save Windows vcpkg install tree
+        if: runner.os == 'Windows' && steps.vcpkg-installed-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/vcpkg-installed
+          key: ${{ steps.vcpkg-installed-cache.outputs.cache-primary-key }}
+
+      - name: Save Windows vcpkg downloads
+        if: runner.os == 'Windows' && steps.vcpkg-installed-cache.outputs.cache-hit != 'true' && steps.vcpkg-downloads-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: vcpkg/downloads
+          key: ${{ steps.vcpkg-downloads-cache.outputs.cache-primary-key }}
 
       - name: Build
         run: cmake --build --preset vcpkg-hardware-free-integration --parallel 4
