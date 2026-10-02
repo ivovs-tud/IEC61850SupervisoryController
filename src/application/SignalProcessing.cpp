@@ -33,8 +33,9 @@ SignalProcessingResult processSignals(const SignalProcessingInput& input, const 
     if (!std::isfinite(input.previousWindSpeed) || !std::isfinite(input.previousWindDirection) ||
         !std::isfinite(config.windSpeedUpdateWeight) || !std::isfinite(config.windDirectionUpdateWeight) ||
         config.windSpeedUpdateWeight < 0.0F || config.windSpeedUpdateWeight > 1.0F ||
-        config.windDirectionUpdateWeight < 0.0F || config.windDirectionUpdateWeight > 1.0F) {
-        throw std::invalid_argument("signal-processing state and update weights must be finite and valid");
+        config.windDirectionUpdateWeight < 0.0F || config.windDirectionUpdateWeight > 1.0F ||
+        config.windSpeedSampleCount == 0) {
+        throw std::invalid_argument("signal-processing state and configuration must be valid");
     }
     const bool hasPreviousTurbineWind = !input.previousFilteredWindSpeeds.empty() ||
                                         !input.previousFilteredWindSpeedTimeMs.empty();
@@ -108,8 +109,7 @@ SignalProcessingResult processSignals(const SignalProcessingInput& input, const 
     }
 
     if (!validWindSpeeds.empty()) {
-        constexpr std::size_t maximumWindSpeedSamples = 3; // TODO: make this configurable
-        const std::size_t sampleCount = std::min(maximumWindSpeedSamples, validWindSpeeds.size());
+        const std::size_t sampleCount = std::min(config.windSpeedSampleCount, validWindSpeeds.size());
         std::partial_sort(validWindSpeeds.begin(), validWindSpeeds.begin() + static_cast<std::ptrdiff_t>(sampleCount), validWindSpeeds.end(), std::greater<double>());
         const double windSpeedSum = std::accumulate(validWindSpeeds.begin(), validWindSpeeds.begin() + static_cast<std::ptrdiff_t>(sampleCount), 0.0);
         const float measuredWindSpeed = static_cast<float>(windSpeedSum / static_cast<double>(sampleCount));

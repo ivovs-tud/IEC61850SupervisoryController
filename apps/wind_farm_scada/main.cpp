@@ -144,13 +144,18 @@ int main(int argc, char* argv[]) {
         ControlTask::Config controlConfig;
         controlConfig.period = runtime.tasks.controlPeriod;
         controlConfig.numTurbines = numTurbines;
+        controlConfig.powerSharingMode = runtime.control.powerSharingMode;
 
         const sc::communication::CommunicationConfig communicationConfig =
             sc::communication::makeCommunicationConfig(runtime);
 
         // All validation and dynamic state sizing is complete before any worker starts.
         ControlTask controlTask(controlConfig, std::move(yawLut));
-        SignalProcessingTask signalTask(runtime.tasks.signalProcessingPeriod);
+        sc::application::SignalProcessingConfig signalProcessingConfig;
+        signalProcessingConfig.windSpeedSampleCount =
+            runtime.signalProcessing.windSpeedSampleCount;
+        SignalProcessingTask signalTask(
+            runtime.tasks.signalProcessingPeriod, signalProcessingConfig);
         MonitoringTask monitoringTask(runtime.tasks.monitoringPeriod, numTurbines,
                                       runtime.monitoring.alarmAcknowledgementEnabled);
         sc::communication::CommunicationOrchestrator commTask(communicationConfig);

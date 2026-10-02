@@ -52,6 +52,12 @@ sc::ports::AttackTransport parseAttackTransport(const std::string& value) {
     throw std::runtime_error("communication.attack_interface.transport must be 'zeromq' or 'tcp'");
 }
 
+sc::application::PowerSharingMode parsePowerSharingMode(const std::string& value) {
+    if (value == "equal") return sc::application::PowerSharingMode::EQUAL;
+    if (value == "available_power") return sc::application::PowerSharingMode::AVAILABLE_POWER;
+    throw std::runtime_error("control.power_sharing_mode must be 'equal' or 'available_power'");
+}
+
 bool isIpv4Address(const std::string& value) {
     std::istringstream input(value);
     for (int index = 0; index < 4; ++index) {
@@ -106,6 +112,17 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
 
         if (const auto value = root.get_optional<std::string>("control.yaw_lut_csv")) {
             config.control.yawLutCsvPath = configuredPath(jsonPath, *value);
+        }
+        if (const auto value = root.get_optional<std::string>("control.power_sharing_mode")) {
+            config.control.powerSharingMode = parsePowerSharingMode(*value);
+        }
+        if (const auto value = root.get_optional<long long>(
+                "signal_processing.wind_speed_sample_count")) {
+            if (*value <= 0) {
+                throw std::runtime_error(
+                    "signal_processing.wind_speed_sample_count must be greater than zero");
+            }
+            config.signalProcessing.windSpeedSampleCount = static_cast<std::size_t>(*value);
         }
 
         config.monitoring.alarmAcknowledgementEnabled = root.get<bool>(
@@ -269,6 +286,10 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
     requirePositive(config.tasks.monitoringPeriod, "tasks.monitoring_period_ms");
     if (config.control.yawLutCsvPath.empty()) {
         throw std::runtime_error("control.yaw_lut_csv must not be empty");
+    }
+    if (config.signalProcessing.windSpeedSampleCount == 0) {
+        throw std::runtime_error(
+            "signal_processing.wind_speed_sample_count must be greater than zero");
     }
 
     requirePositive(config.hmi.period, "hmi.period_ms");

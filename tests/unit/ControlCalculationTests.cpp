@@ -41,10 +41,40 @@ TEST_CASE("control calculation divides requested power equally") {
     REQUIRE(setpoints.turbinePower[1] == Catch::Approx(50.0F));
 }
 
+TEST_CASE("control calculation shares power in proportion to available power") {
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
+    inputs.availablePower = {25.0, 75.0};
+
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(setpoints.turbinePower == std::vector<float>{25.0F, 75.0F});
+
+    inputs.availablePower = {0.0, 100.0};
+    const auto unavailableTurbineSetpoints =
+        sc::application::calculateControlSetpoints(inputs, lut);
+    REQUIRE(unavailableTurbineSetpoints.turbinePower ==
+            std::vector<float>{0.0F, 100.0F});
+}
+
+TEST_CASE("adaptive power sharing falls back to equal sharing before estimates exist") {
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
+    inputs.availablePower = {0.0, 0.0};
+
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(setpoints.turbinePower == std::vector<float>{50.0F, 50.0F});
+}
+
 TEST_CASE("control calculation broadcasts negative reference power to every turbine") {
     const auto lut = testYawLut();
     auto inputs = defaultInputs();
     inputs.requestedReferencePower = -1.0F;
+    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
+    inputs.availablePower = {25.0, 75.0};
 
     const auto sentinelSetpoints = sc::application::calculateControlSetpoints(inputs, lut);
 
@@ -134,5 +164,20 @@ TEST_CASE("control calculation validates counts and finite numeric inputs") {
 
     inputs = defaultInputs();
     inputs.requestedReferencePower = std::numeric_limits<float>::infinity();
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
+    inputs.availablePower = {1.0};
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs.availablePower = {1.0, std::numeric_limits<double>::quiet_NaN()};
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs.availablePower = {1.0, -1.0};
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.powerSharingMode = static_cast<sc::application::PowerSharingMode>(-1);
     REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
 }

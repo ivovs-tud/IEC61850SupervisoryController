@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "sc/application/PowerSharingMode.hpp"
 #include "sc/communication/attack/AttackTransport.hpp"
 #include "sc/communication/attack/AttackProtocol.hpp"
 
@@ -44,7 +45,13 @@ struct RuntimeConfig {
 
     struct Control {
         std::filesystem::path yawLutCsvPath{"config/yaw_lut.csv"};
+        sc::application::PowerSharingMode powerSharingMode{
+            sc::application::PowerSharingMode::EQUAL};
     } control;
+
+    struct SignalProcessing {
+        std::size_t windSpeedSampleCount{3};
+    } signalProcessing;
 
     struct Monitoring {
         bool alarmAcknowledgementEnabled{false};

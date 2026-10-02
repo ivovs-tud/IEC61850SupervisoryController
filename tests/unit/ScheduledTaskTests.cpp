@@ -85,6 +85,30 @@ TEST_CASE("control task leaves both outputs unchanged when publication cannot co
     REQUIRE(data.control.yawSetpoints == std::vector<float>{21.0F, 22.0F, 23.0F});
 }
 
+TEST_CASE("control task uses the published available-power estimates in available-power mode") {
+    auto& data = SharedData::instance();
+    data.configureTurbineCount(2);
+    {
+        std::lock_guard<std::mutex> lock(data.control.mutex);
+        data.control.requestedPower = 100.0F;
+        data.control.yawSteeringEnabled = false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(data.processed.mutex);
+        data.processed.windSpeed = 5.0F;
+        data.processed.windDirection = 0.0F;
+        data.processed.availablePower = {20.0, 80.0};
+    }
+
+    TestControlTask task(
+        {2, std::chrono::milliseconds(10), sc::application::PowerSharingMode::AVAILABLE_POWER},
+        testYawLut());
+    task.runOnce();
+
+    std::lock_guard<std::mutex> lock(data.control.mutex);
+    REQUIRE(data.control.powerSetpoints == std::vector<float>{20.0F, 80.0F});
+}
+
 TEST_CASE("signal-processing task publishes finite farm data from fresh measurements") {
     auto& data = SharedData::instance();
     data.configureTurbineCount(2);

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <boost/circular_buffer.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -105,8 +104,6 @@ struct InterfaceData {
     bool systemRunning{false};
     bool simStarted{false};
     bool simConfigured{false};
-    std::string simTeamName;
-    int simScenario{0};
     int attackTapEnabled{0};
     int attackTapAvailable{0};
     int attackFdiEnabled{0};
@@ -160,75 +157,5 @@ struct SharedData {
         control.yawSetpoints.assign(turbineCount, 0.0f);
         control.turbineEnabled.assign(turbineCount, 1);
         control.turbineController.assign(turbineCount, ControlData::controllerKomega2);
-    }
-
-    void resetForNewRun(const std::string& teamName, int scenarioId, int turbineControllerId) {
-        std::scoped_lock lock(collected.mutex, processed.mutex, control.mutex,
-                              monitoring.mutex, interface.mutex);
-
-        std::fill(collected.lastWS.begin(), collected.lastWS.end(), 0.0);
-        std::fill(collected.lastWS_t.begin(), collected.lastWS_t.end(), 0);
-        std::fill(collected.lastWD.begin(), collected.lastWD.end(), 0.0);
-        std::fill(collected.lastWD_t.begin(), collected.lastWD_t.end(), 0);
-        std::fill(collected.lastYawOffset.begin(), collected.lastYawOffset.end(), 0.0);
-        std::fill(collected.lastYawOffset_t.begin(), collected.lastYawOffset_t.end(), 0);
-        std::fill(collected.lastRPM.begin(), collected.lastRPM.end(), 0.0);
-        std::fill(collected.lastRPM_t.begin(), collected.lastRPM_t.end(), 0);
-        std::fill(collected.lastPower.begin(), collected.lastPower.end(), 0.0);
-        std::fill(collected.lastPower_t.begin(), collected.lastPower_t.end(), 0);
-        std::fill(collected.lastGenTorque.begin(), collected.lastGenTorque.end(), 0.0);
-        std::fill(collected.lastGenTorque_t.begin(), collected.lastGenTorque_t.end(), 0);
-        for (auto& history : collected.wsHistory) history.clear();
-        for (auto& history : collected.wdHistory) history.clear();
-        for (auto& history : collected.yawOffsetHistory) history.clear();
-        for (auto& history : collected.rpmHistory) history.clear();
-        for (auto& history : collected.powerHistory) history.clear();
-
-        processed.connectedTurbines = 0;
-        std::fill(processed.availablePower.begin(), processed.availablePower.end(), 0.0);
-        std::fill(processed.filteredWindSpeeds.begin(), processed.filteredWindSpeeds.end(), 0.0);
-        std::fill(processed.filteredWindSpeedTimeMs.begin(), processed.filteredWindSpeedTimeMs.end(), 0);
-        processed.totalReceivedPower = 0.0;
-        processed.windSpeed = 0.0f;
-        processed.windDirection = 0.0f;
-
-        std::fill(control.powerSetpoints.begin(), control.powerSetpoints.end(), 0.0f);
-        std::fill(control.yawSetpoints.begin(), control.yawSetpoints.end(), 0.0f);
-        control.requestedPower = -1.0f;
-        control.yawSteeringEnabled = false;
-        control.yawSteeringCommandName = "Yaw Steering";
-        control.alarmAcknowledgementRequested = false;
-        control.statusMessage.clear();
-
-        resetMonitoringData(monitoring);
-
-        interface.systemRunning = false;
-        interface.simStarted = false;
-        interface.simConfigured = true;
-        interface.simTeamName = teamName;
-        interface.simScenario = scenarioId;
-        interface.attackTapEnabled = 0;
-        interface.attackTapAvailable = 0;
-        interface.attackFdiEnabled = 0;
-        interface.attackFdiAvailable = 0;
-        interface.attackFdiSignals.clear();
-
-        // TODO(Step 9): Remove the unused legacy controller selector
-        (void)turbineControllerId;
-    }
-
-private:
-    static void resetMonitoringData(MonitoringData& data) {
-        data.alarmWRecMeas = false;
-        data.alarmOrientationMisalign = false;
-        data.alarmWTorqueRotSpd = false;
-        data.alarmPowerExpected = false;
-        data.alarmHorWdDir = false;
-        data.alarmHorWdDirChg = false;
-        data.alarmHorWdSpdChg = false;
-        data.alarmTelemetryFreezeReplay = false;
-        data.alarmDrivetrainUnderResponse = false;
-        data.alarmStaticBounds = false;
-        data.alarmFleetPeerOutlier = false;
     }
 };

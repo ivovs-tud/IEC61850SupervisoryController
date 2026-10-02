@@ -25,7 +25,15 @@
     "control": {
       "type": "object",
       "properties": {
-        "yaw_lut_csv": {"type": "string", "minLength": 1}
+        "yaw_lut_csv": {"type": "string", "minLength": 1},
+        "power_sharing_mode": {"type": "string", "enum": ["equal", "available_power"]}
+      },
+      "additionalProperties": true
+    },
+    "signal_processing": {
+      "type": "object",
+      "properties": {
+        "wind_speed_sample_count": {"type": "integer", "minimum": 1}
       },
       "additionalProperties": true
     },

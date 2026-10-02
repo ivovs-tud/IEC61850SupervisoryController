@@ -9,11 +9,13 @@
 #include "sc/application/ControlCalculation.hpp"
 
 ControlTask::ControlTask(Config config, sc::application::YawLut yawLut)
-    : PeriodicTask(config.period), yawLut_(std::move(yawLut)), numTurbines_(config.numTurbines) {}
+    : PeriodicTask(config.period), yawLut_(std::move(yawLut)), numTurbines_(config.numTurbines),
+      powerSharingMode_(config.powerSharingMode) {}
 
 void ControlTask::execute() {
     sc::application::ControlInputs inputs;
     inputs.turbineCount = numTurbines_;
+    inputs.powerSharingMode = powerSharingMode_;
 
     auto& data = SharedData::instance();
     {
@@ -25,6 +27,9 @@ void ControlTask::execute() {
         std::lock_guard<std::mutex> lock(data.processed.mutex);
         inputs.windSpeed = data.processed.windSpeed;
         inputs.windDirection = data.processed.windDirection;
+        if (powerSharingMode_ == sc::application::PowerSharingMode::AVAILABLE_POWER) {
+            inputs.availablePower = data.processed.availablePower;
+        }
     }
 
     CONTROL_LOG_V2("Using Wind Speed: " << inputs.windSpeed << " m/s, Wind Direction: " << inputs.windDirection

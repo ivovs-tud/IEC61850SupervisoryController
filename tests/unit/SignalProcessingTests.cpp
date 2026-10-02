@@ -62,6 +62,37 @@ TEST_CASE("signal processing averages fewer than three fresh turbines") {
     REQUIRE(result.windSpeed == Catch::Approx(9.0F));
 }
 
+TEST_CASE("farm wind speed uses the three strongest fresh turbine measurements") {
+    sc::application::SignalProcessingInput input;
+    input.currentTimeMs = 1000;
+    input.turbines.push_back(turbine(1.0, 90.0, 1000));
+    input.turbines.push_back(turbine(10.0, 90.0, 1000));
+    input.turbines.push_back(turbine(20.0, 90.0, 1000));
+    input.turbines.push_back(turbine(30.0, 90.0, 1000));
+
+    const auto result = sc::application::processSignals(input, immediateUpdates());
+
+    REQUIRE(result.windSpeed == Catch::Approx(20.0F));
+}
+
+TEST_CASE("farm wind speed sample count is configurable") {
+    sc::application::SignalProcessingInput input;
+    input.currentTimeMs = 1000;
+    input.turbines.push_back(turbine(1.0, 90.0, 1000));
+    input.turbines.push_back(turbine(10.0, 90.0, 1000));
+    input.turbines.push_back(turbine(20.0, 90.0, 1000));
+    input.turbines.push_back(turbine(30.0, 90.0, 1000));
+    auto config = immediateUpdates();
+    config.windSpeedSampleCount = 2;
+
+    const auto result = sc::application::processSignals(input, config);
+
+    REQUIRE(result.windSpeed == Catch::Approx(25.0F));
+
+    config.windSpeedSampleCount = 0;
+    REQUIRE_THROWS_AS(sc::application::processSignals(input, config), std::invalid_argument);
+}
+
 TEST_CASE("signal processing maintains filtered wind speed for each turbine") {
     auto input = sc::application::SignalProcessingInput{};
     input.currentTimeMs = 1000;

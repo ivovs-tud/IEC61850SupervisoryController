@@ -2,6 +2,7 @@
 
 #include <chrono>
 
+#include "sc/application/PowerSharingMode.hpp"
 #include "sc/runtime/PeriodicTask.hpp"
 #include "sc/application/YawLut.hpp"
 
@@ -13,6 +14,7 @@ public:
     struct Config {
         int numTurbines;
         std::chrono::milliseconds period{std::chrono::milliseconds(10)};
+        sc::application::PowerSharingMode powerSharingMode{sc::application::PowerSharingMode::EQUAL};
     };
 
     ControlTask(Config config, sc::application::YawLut yawLut);
@@ -30,4 +32,5 @@ protected:
 private:
     sc::application::YawLut yawLut_;
     int numTurbines_;
+    sc::application::PowerSharingMode powerSharingMode_;
 };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -29,6 +30,7 @@ struct SignalProcessingConfig {
     uint64_t measurementTimeoutMs{2000};
     float windSpeedUpdateWeight{0.1F};
     float windDirectionUpdateWeight{0.05F};
+    std::size_t windSpeedSampleCount{3};
 };
 
 struct SignalProcessingResult {

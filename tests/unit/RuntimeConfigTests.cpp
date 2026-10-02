@@ -27,6 +27,8 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
         REQUIRE(endpoint.logicalDevice == "LD0");
     }
     REQUIRE_FALSE(config.monitoring.alarmAcknowledgementEnabled);
+    REQUIRE(config.control.powerSharingMode == sc::application::PowerSharingMode::EQUAL);
+    REQUIRE(config.signalProcessing.windSpeedSampleCount == 3);
     REQUIRE(config.communication.attackInterface.transport == sc::ports::AttackTransport::ZEROMQ);
     REQUIRE(config.communication.attackInterface.bindAddress == "0.0.0.0");
     REQUIRE(config.communication.attackInterface.heartbeatInterval == 200ms);
@@ -79,6 +81,8 @@ TEST_CASE("runtime schema limits match runtime validation boundaries") {
             sc::runtime::defaultRuntimeConfig().schemaVersion);
     REQUIRE(schema.get<int>("properties.turbines.minItems") == 1);
     REQUIRE(schema.get<int>("properties.turbines.maxItems") == 255);
+    REQUIRE(schema.get<int>(
+        "properties.signal_processing.properties.wind_speed_sample_count.minimum") == 1);
     REQUIRE(schema.get<int>("$defs.socketServer.properties.port.minimum") == 1024);
     REQUIRE(schema.get<int>("$defs.socketServer.properties.port.maximum") == 65535);
     REQUIRE(schema.get<int>("$defs.attackInterfaceServer.properties.receive_buffer_bytes.minimum") ==
@@ -106,7 +110,8 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
         "    {\"host\": \"10.0.0.2\", \"port\": 121}\n"
         "  ],\n"
         "  \"tasks\": {\"control_period_ms\": 25},\n"
-        "  \"control\": {\"yaw_lut_csv\": \"lut.csv\"},\n"
+        "  \"control\": {\"yaw_lut_csv\": \"lut.csv\", \"power_sharing_mode\": \"available_power\"},\n"
+        "  \"signal_processing\": {\"wind_speed_sample_count\": 2},\n"
         "  \"monitoring\": {\"alarm_acknowledgement_enabled\": true},\n"
         "  \"hmi\": {\"window_size\": 42},\n"
         "  \"historian\": {\"output_directory\": \"logs\"},\n"
@@ -134,6 +139,8 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
     REQUIRE(config.hmi.windowSize == 42);
     REQUIRE(config.monitoring.alarmAcknowledgementEnabled);
     REQUIRE(config.control.yawLutCsvPath == parent / "lut.csv");
+    REQUIRE(config.control.powerSharingMode == sc::application::PowerSharingMode::AVAILABLE_POWER);
+    REQUIRE(config.signalProcessing.windSpeedSampleCount == 2);
     REQUIRE(config.historian.outputDirectory == parent / "logs");
     REQUIRE(config.communication.attackInterface.transport == sc::ports::AttackTransport::TCP);
     REQUIRE(config.communication.attackInterface.bindAddress == "127.0.0.1");
@@ -233,6 +240,16 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
+    SECTION("wind-speed sample count must be positive") {
+        auto config = sc::runtime::defaultRuntimeConfig();
+        config.signalProcessing.windSpeedSampleCount = 0;
+        REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
+
+        const sc::test::TemporaryCsv file(
+            "{\"signal_processing\":{\"wind_speed_sample_count\":-1}}\n");
+        REQUIRE_THROWS_AS(sc::runtime::loadRuntimeConfig(file.path()), std::runtime_error);
+    }
+
     SECTION("attack lease must exceed its heartbeat interval") {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.leaseTimeout = config.communication.attackInterface.heartbeatInterval;
@@ -261,6 +278,12 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
     SECTION("unknown attack transport") {
         const sc::test::TemporaryCsv file(
             "{\"communication\":{\"attack_interface\":{\"transport\":\"udp\"}}}\n");
+        REQUIRE_THROWS_AS(sc::runtime::loadRuntimeConfig(file.path()), std::runtime_error);
+    }
+
+    SECTION("unknown power-sharing mode") {
+        const sc::test::TemporaryCsv file(
+            "{\"control\":{\"power_sharing_mode\":\"unknown\"}}\n");
         REQUIRE_THROWS_AS(sc::runtime::loadRuntimeConfig(file.path()), std::runtime_error);
     }
 

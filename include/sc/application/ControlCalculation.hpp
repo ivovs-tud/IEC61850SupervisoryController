@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "sc/application/PowerSharingMode.hpp"
 #include "sc/application/YawLut.hpp"
 
 namespace sc::application {
@@ -12,6 +13,8 @@ struct ControlInputs {
     float windSpeed{0.0F};
     float windDirection{0.0F};
     bool yawSteeringEnabled{false};
+    PowerSharingMode powerSharingMode{PowerSharingMode::EQUAL};
+    std::vector<double> availablePower;
 };
 
 struct ControlSetpoints {

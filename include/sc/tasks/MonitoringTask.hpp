@@ -18,9 +18,6 @@ protected:
     void execute() override;
 
 private:
-    // GOOSE monitoring remains available for the IEC refactor that will wire it in.
-    static void onGooseMessage(void* subscriber, void* parameter);
-
     int numTurbines_;
     bool alarmAcknowledgementEnabled_;
     sc::application::MonitoringDetectors detectors_;

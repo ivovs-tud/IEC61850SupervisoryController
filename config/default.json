@@ -18,7 +18,11 @@
     "monitoring_period_ms": 50
   },
   "control": {
-    "yaw_lut_csv": "yaw_lut.csv"
+    "yaw_lut_csv": "yaw_lut.csv",
+    "power_sharing_mode": "equal"
+  },
+  "signal_processing": {
+    "wind_speed_sample_count": 3
   },
   "monitoring": {
     "alarm_acknowledgement_enabled": true

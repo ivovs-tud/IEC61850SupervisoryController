@@ -151,9 +151,3 @@ void MonitoringTask::execute() {
     alarms.alarmStaticBounds |= result.isActive(sc::application::AlarmType::StaticTelemetryBounds);
     alarms.alarmFleetPeerOutlier |= result.isActive(sc::application::AlarmType::FleetPeerOutlier);
 }
-
-void MonitoringTask::onGooseMessage(void* subscriber, void* parameter) {
-    // TODO: connect the existing GOOSE subscriber API when it moves into IECCommunicator.
-    (void)subscriber;
-    (void)parameter;
-}

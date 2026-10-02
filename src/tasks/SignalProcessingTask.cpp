@@ -10,8 +10,9 @@
 #include "sc/runtime/Time.hpp"
 #include "sc/application/SignalProcessing.hpp"
 
-SignalProcessingTask::SignalProcessingTask(std::chrono::milliseconds period)
-    : PeriodicTask(period) {}
+SignalProcessingTask::SignalProcessingTask(
+    std::chrono::milliseconds period, sc::application::SignalProcessingConfig config)
+    : PeriodicTask(period), config_(config) {}
 
 void SignalProcessingTask::execute() {
     const uint64_t nowMs = getCurrentTimeMs();
@@ -50,7 +51,7 @@ void SignalProcessingTask::execute() {
         input.previousFilteredWindSpeedTimeMs = data.processed.filteredWindSpeedTimeMs;
     }
 
-    const auto result = sc::application::processSignals(input);
+    const auto result = sc::application::processSignals(input, config_);
     {
         std::lock_guard<std::mutex> lock(data.processed.mutex);
         if (result.availablePower.size() != data.processed.availablePower.size()) {
