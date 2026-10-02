@@ -1,4 +1,5 @@
 #include "sc/communication/network/TcpServer.hpp"
+
 #include "SocketPlatform.hpp"
 
 #include <algorithm>
@@ -15,7 +16,7 @@
 #endif
 
 class TcpServer::Impl {
-public:
+    public:
     explicit Impl(Config config);
     ~Impl();
 
@@ -33,7 +34,7 @@ public:
     std::size_t clientCount() const;
     std::size_t queuedBytes(ClientId clientId) const;
 
-private:
+    private:
     struct Connection {
         ClientId id{0};
         socket_t fd{INVALID_SOCKET_FD};
@@ -74,42 +75,56 @@ private:
     std::vector<Connection> connections_;
 };
 
-TcpServer::Impl::Impl(Config config)
-    : config_(std::move(config)), receiveBuffer_(config_.receiveChunkBytes) {
-    if (config_.port < 0 || config_.port > 65535) throw std::invalid_argument("invalid TCP server port");
-    if (config_.maxClients == 0) throw std::invalid_argument("TCP server requires at least one client slot");
-    if (config_.receiveChunkBytes == 0) throw std::invalid_argument("TCP receive chunk must not be empty");
+TcpServer::Impl::Impl(Config config) : config_(std::move(config)), receiveBuffer_(config_.receiveChunkBytes)
+{
+    if (config_.port < 0 || config_.port > 65535)
+        throw std::invalid_argument("invalid TCP server port");
+    if (config_.maxClients == 0)
+        throw std::invalid_argument("TCP server requires at least one client slot");
+    if (config_.receiveChunkBytes == 0)
+        throw std::invalid_argument("TCP receive chunk must not be empty");
 }
 
-TcpServer::Impl::~Impl() {
+TcpServer::Impl::~Impl()
+{
     stop();
 }
 
-void TcpServer::Impl::setPort(int port) {
-    if (listenerFd_ != INVALID_SOCKET_FD) throw std::logic_error("cannot change a running TCP server port");
-    if (port < 0 || port > 65535) throw std::invalid_argument("invalid TCP server port");
+void TcpServer::Impl::setPort(int port)
+{
+    if (listenerFd_ != INVALID_SOCKET_FD)
+        throw std::logic_error("cannot change a running TCP server port");
+    if (port < 0 || port > 65535)
+        throw std::invalid_argument("invalid TCP server port");
     config_.port = port;
 }
 
-void TcpServer::Impl::setConnectedHandler(ConnectedHandler handler) {
+void TcpServer::Impl::setConnectedHandler(ConnectedHandler handler)
+{
     connectedHandler_ = std::move(handler);
 }
 
-void TcpServer::Impl::setDataHandler(DataHandler handler) {
+void TcpServer::Impl::setDataHandler(DataHandler handler)
+{
     dataHandler_ = std::move(handler);
 }
 
-void TcpServer::Impl::setDisconnectedHandler(DisconnectedHandler handler) {
+void TcpServer::Impl::setDisconnectedHandler(DisconnectedHandler handler)
+{
     disconnectedHandler_ = std::move(handler);
 }
 
-void TcpServer::Impl::setRejectedHandler(RejectedHandler handler) {
+void TcpServer::Impl::setRejectedHandler(RejectedHandler handler)
+{
     rejectedHandler_ = std::move(handler);
 }
 
-void TcpServer::Impl::start() {
-    if (listenerFd_ != INVALID_SOCKET_FD) throw std::logic_error("TCP server is already running");
-    if (!socket_init()) throw std::runtime_error("failed to initialize TCP socket subsystem");
+void TcpServer::Impl::start()
+{
+    if (listenerFd_ != INVALID_SOCKET_FD)
+        throw std::logic_error("TCP server is already running");
+    if (!socket_init())
+        throw std::runtime_error("failed to initialize TCP socket subsystem");
     socketInitialized_ = true;
 
     try {
@@ -119,8 +134,7 @@ void TcpServer::Impl::start() {
         }
 
         const int enabled = 1;
-        if (setsockopt(listenerFd_, SOL_SOCKET, SO_REUSEADDR,
-                       reinterpret_cast<const char*>(&enabled), sizeof(enabled)) < 0) {
+        if (setsockopt(listenerFd_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) < 0) {
             throw std::runtime_error(std::string("failed to configure TCP listener: ") + socket_strerror());
         }
         if (!socket_set_nonblocking(listenerFd_)) {
@@ -145,8 +159,10 @@ void TcpServer::Impl::start() {
     }
 }
 
-void TcpServer::Impl::poll() {
-    if (listenerFd_ == INVALID_SOCKET_FD) throw std::logic_error("TCP server is not running");
+void TcpServer::Impl::poll()
+{
+    if (listenerFd_ == INVALID_SOCKET_FD)
+        throw std::logic_error("TCP server is not running");
     expireIdleClients();
     closeRequestedClients();
 
@@ -159,7 +175,8 @@ void TcpServer::Impl::poll() {
         descriptors.reserve(1 + connections_.size());
         for (const auto& connection : connections_) {
             short events = POLLIN;
-            if (!connection.outboundQueue.empty()) events |= POLLOUT;
+            if (!connection.outboundQueue.empty())
+                events |= POLLOUT;
             descriptors.push_back({connection.fd, events, 0});
             clients.push_back({connection.id, connection.fd});
         }
@@ -167,23 +184,28 @@ void TcpServer::Impl::poll() {
 
     const int ready = socket_poll(descriptors.data(), descriptors.size(), 0);
     if (ready < 0) {
-        if (socket_interrupted()) return;
+        if (socket_interrupted())
+            return;
         throw std::runtime_error(std::string("TCP poll failed: ") + socket_strerror());
     }
     if ((descriptors.front().revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
         throw std::runtime_error("TCP listener failed");
     }
-    if ((descriptors.front().revents & POLLIN) != 0) acceptClients();
+    if ((descriptors.front().revents & POLLIN) != 0)
+        acceptClients();
 
     for (std::size_t index = 0; index < clients.size(); ++index) {
         const auto& client = clients[index];
         const short events = descriptors[index + 1].revents;
-        if (!isCurrentClient(client)) continue;
-        if ((events & POLLIN) != 0) readClient(client);
+        if (!isCurrentClient(client))
+            continue;
+        if ((events & POLLIN) != 0)
+            readClient(client);
         if (isCurrentClient(client) && (events & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
             closeClient(client.id, "connection closed");
         }
-        if (isCurrentClient(client) && (events & POLLOUT) != 0) drainOutbound(client);
+        if (isCurrentClient(client) && (events & POLLOUT) != 0)
+            drainOutbound(client);
     }
 
     // A receive callback may enqueue a response during this poll cycle.
@@ -191,14 +213,17 @@ void TcpServer::Impl::poll() {
     closeRequestedClients();
 }
 
-void TcpServer::Impl::stop() noexcept {
+void TcpServer::Impl::stop() noexcept
+{
     std::vector<ClientId> clientIds;
     {
         std::lock_guard<std::mutex> lock(connectionsMutex_);
         clientIds.reserve(connections_.size());
-        for (const auto& connection : connections_) clientIds.push_back(connection.id);
+        for (const auto& connection : connections_)
+            clientIds.push_back(connection.id);
     }
-    for (const ClientId clientId : clientIds) closeClient(clientId, "server shutdown");
+    for (const ClientId clientId : clientIds)
+        closeClient(clientId, "server shutdown");
 
     if (listenerFd_ != INVALID_SOCKET_FD) {
         socket_close(listenerFd_);
@@ -210,15 +235,16 @@ void TcpServer::Impl::stop() noexcept {
     }
 }
 
-bool TcpServer::Impl::send(ClientId clientId, const uint8_t* data, std::size_t size) {
-    if (clientId == 0 || data == nullptr || size == 0) return false;
+bool TcpServer::Impl::send(ClientId clientId, const uint8_t* data, std::size_t size)
+{
+    if (clientId == 0 || data == nullptr || size == 0)
+        return false;
     std::lock_guard<std::mutex> lock(connectionsMutex_);
-    auto connection = std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) {
-        return candidate.id == clientId;
-    });
-    if (connection == connections_.end() || connection->closeRequested) return false;
-    if (size > config_.transmitBufferBytes ||
-        connection->queuedBytes > config_.transmitBufferBytes - size) {
+    auto connection =
+        std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) { return candidate.id == clientId; });
+    if (connection == connections_.end() || connection->closeRequested)
+        return false;
+    if (size > config_.transmitBufferBytes || connection->queuedBytes > config_.transmitBufferBytes - size) {
         connection->closeRequested = true;
         connection->closeReason = "transmit buffer overflow";
         return false;
@@ -228,44 +254,50 @@ bool TcpServer::Impl::send(ClientId clientId, const uint8_t* data, std::size_t s
     return true;
 }
 
-void TcpServer::Impl::disconnect(ClientId clientId, std::string reason) {
+void TcpServer::Impl::disconnect(ClientId clientId, std::string reason)
+{
     std::lock_guard<std::mutex> lock(connectionsMutex_);
-    auto connection = std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) {
-        return candidate.id == clientId;
-    });
-    if (connection == connections_.end()) return;
+    auto connection =
+        std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) { return candidate.id == clientId; });
+    if (connection == connections_.end())
+        return;
     connection->closeRequested = true;
-    if (connection->closeReason.empty()) connection->closeReason = std::move(reason);
+    if (connection->closeReason.empty())
+        connection->closeReason = std::move(reason);
 }
 
-bool TcpServer::Impl::hasClient(ClientId clientId) const {
+bool TcpServer::Impl::hasClient(ClientId clientId) const
+{
     std::lock_guard<std::mutex> lock(connectionsMutex_);
-    return std::any_of(connections_.begin(), connections_.end(), [clientId](const auto& connection) {
-        return connection.id == clientId && !connection.closeRequested;
-    });
+    return std::any_of(connections_.begin(), connections_.end(),
+                       [clientId](const auto& connection) { return connection.id == clientId && !connection.closeRequested; });
 }
 
-std::size_t TcpServer::Impl::clientCount() const {
+std::size_t TcpServer::Impl::clientCount() const
+{
     std::lock_guard<std::mutex> lock(connectionsMutex_);
     return connections_.size();
 }
 
-std::size_t TcpServer::Impl::queuedBytes(ClientId clientId) const {
+std::size_t TcpServer::Impl::queuedBytes(ClientId clientId) const
+{
     std::lock_guard<std::mutex> lock(connectionsMutex_);
-    const auto connection = std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) {
-        return candidate.id == clientId;
-    });
+    const auto connection =
+        std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) { return candidate.id == clientId; });
     return connection == connections_.end() ? 0 : connection->queuedBytes;
 }
 
-void TcpServer::Impl::acceptClients() {
+void TcpServer::Impl::acceptClients()
+{
     while (true) {
         sockaddr_in peer{};
         socklen_t peerLength = sizeof(peer);
         const socket_t accepted = accept(listenerFd_, reinterpret_cast<sockaddr*>(&peer), &peerLength);
         if (accepted == INVALID_SOCKET_FD) {
-            if (socket_would_block()) return;
-            if (socket_interrupted()) continue;
+            if (socket_would_block())
+                return;
+            if (socket_interrupted())
+                continue;
             throw std::runtime_error(std::string("failed to accept TCP client: ") + socket_strerror());
         }
 
@@ -276,13 +308,15 @@ void TcpServer::Impl::acceptClients() {
         }
         if (full) {
             socket_close(accepted);
-            if (rejectedHandler_) rejectedHandler_("maximum clients reached");
+            if (rejectedHandler_)
+                rejectedHandler_("maximum clients reached");
             continue;
         }
         if (!configureClient(accepted)) {
             const std::string reason = std::string("client configuration failed: ") + socket_strerror();
             socket_close(accepted);
-            if (rejectedHandler_) rejectedHandler_(reason);
+            if (rejectedHandler_)
+                rejectedHandler_(reason);
             continue;
         }
 
@@ -296,34 +330,32 @@ void TcpServer::Impl::acceptClients() {
             connection.lastReceive = std::chrono::steady_clock::now();
             connections_.push_back(std::move(connection));
         }
-        if (connectedHandler_) connectedHandler_(clientId);
+        if (connectedHandler_)
+            connectedHandler_(clientId);
     }
 }
 
-bool TcpServer::Impl::configureClient(socket_t clientFd) const {
-    if (!socket_set_nonblocking(clientFd)) return false;
+bool TcpServer::Impl::configureClient(socket_t clientFd) const
+{
+    if (!socket_set_nonblocking(clientFd))
+        return false;
     const int enabled = 1;
     if (config_.tcpNoDelay &&
-        setsockopt(clientFd, IPPROTO_TCP, TCP_NODELAY,
-                   reinterpret_cast<const char*>(&enabled), sizeof(enabled)) < 0) {
+        setsockopt(clientFd, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) < 0) {
         return false;
     }
-    if (config_.keepAlive &&
-        setsockopt(clientFd, SOL_SOCKET, SO_KEEPALIVE,
-                   reinterpret_cast<const char*>(&enabled), sizeof(enabled)) < 0) {
+    if (config_.keepAlive && setsockopt(clientFd, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) < 0) {
         return false;
     }
 #if defined(__APPLE__) && defined(SO_NOSIGPIPE)
-    if (setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE,
-                   reinterpret_cast<const char*>(&enabled), sizeof(enabled)) < 0) {
+    if (setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) < 0) {
         return false;
     }
 #endif
 #if defined(__linux__) && defined(TCP_USER_TIMEOUT)
     if (config_.tcpUserTimeout.count() > 0) {
         const int timeout = static_cast<int>(config_.tcpUserTimeout.count());
-        if (setsockopt(clientFd, IPPROTO_TCP, TCP_USER_TIMEOUT,
-                       reinterpret_cast<const char*>(&timeout), sizeof(timeout)) < 0) {
+        if (setsockopt(clientFd, IPPROTO_TCP, TCP_USER_TIMEOUT, reinterpret_cast<const char*>(&timeout), sizeof(timeout)) < 0) {
             return false;
         }
     }
@@ -331,7 +363,8 @@ bool TcpServer::Impl::configureClient(socket_t clientFd) const {
     return true;
 }
 
-void TcpServer::Impl::readClient(const PolledClient& client) {
+void TcpServer::Impl::readClient(const PolledClient& client)
+{
     while (isCurrentClient(client)) {
         const ssize_t received = socket_read(client.fd, receiveBuffer_.data(), receiveBuffer_.size());
         if (received > 0) {
@@ -340,34 +373,38 @@ void TcpServer::Impl::readClient(const PolledClient& client) {
                 auto connection = std::find_if(connections_.begin(), connections_.end(), [&client](const auto& candidate) {
                     return candidate.id == client.id && candidate.fd == client.fd;
                 });
-                if (connection == connections_.end()) return;
+                if (connection == connections_.end())
+                    return;
                 connection->lastReceive = std::chrono::steady_clock::now();
             }
             if (dataHandler_) {
                 dataHandler_(client.id, receiveBuffer_.data(), static_cast<std::size_t>(received));
             }
-            if (isCloseRequested(client.id)) return;
+            if (isCloseRequested(client.id))
+                return;
             continue;
         }
         if (received == 0) {
             closeClient(client.id, "peer closed connection");
             return;
         }
-        if (socket_would_block()) return;
-        if (socket_interrupted()) continue;
+        if (socket_would_block())
+            return;
+        if (socket_interrupted())
+            continue;
         closeClient(client.id, std::string("receive error: ") + socket_strerror());
         return;
     }
 }
 
-void TcpServer::Impl::drainOutbound(const PolledClient& client) {
+void TcpServer::Impl::drainOutbound(const PolledClient& client)
+{
     while (true) {
         std::unique_lock<std::mutex> lock(connectionsMutex_);
-        auto connection = std::find_if(connections_.begin(), connections_.end(), [&client](const auto& candidate) {
-            return candidate.id == client.id && candidate.fd == client.fd;
-        });
-        if (connection == connections_.end() || connection->closeRequested ||
-            connection->outboundQueue.empty()) return;
+        auto connection = std::find_if(connections_.begin(), connections_.end(),
+                                       [&client](const auto& candidate) { return candidate.id == client.id && candidate.fd == client.fd; });
+        if (connection == connections_.end() || connection->closeRequested || connection->outboundQueue.empty())
+            return;
 
         auto& message = connection->outboundQueue.front();
         const uint8_t* data = message.data() + connection->sendOffset;
@@ -383,48 +420,56 @@ void TcpServer::Impl::drainOutbound(const PolledClient& client) {
             }
             continue;
         }
-        if (sent < 0 && socket_would_block()) return;
-        if (sent < 0 && socket_interrupted()) continue;
+        if (sent < 0 && socket_would_block())
+            return;
+        if (sent < 0 && socket_interrupted())
+            continue;
         lock.unlock();
-        closeClient(client.id, sent == 0 ? "send returned zero" :
-                    std::string("send error: ") + socket_strerror());
+        closeClient(client.id, sent == 0 ? "send returned zero" : std::string("send error: ") + socket_strerror());
         return;
     }
 }
 
-void TcpServer::Impl::drainAllOutbound() {
+void TcpServer::Impl::drainAllOutbound()
+{
     std::vector<PolledClient> clients;
     {
         std::lock_guard<std::mutex> lock(connectionsMutex_);
         for (const auto& connection : connections_) {
-            if (!connection.outboundQueue.empty()) clients.push_back({connection.id, connection.fd});
+            if (!connection.outboundQueue.empty())
+                clients.push_back({connection.id, connection.fd});
         }
     }
-    for (const auto& client : clients) drainOutbound(client);
+    for (const auto& client : clients)
+        drainOutbound(client);
 }
 
-void TcpServer::Impl::expireIdleClients() {
-    if (config_.idleTimeout.count() <= 0) return;
+void TcpServer::Impl::expireIdleClients()
+{
+    if (config_.idleTimeout.count() <= 0)
+        return;
     const auto now = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(connectionsMutex_);
     for (auto& connection : connections_) {
         if (now - connection.lastReceive >= config_.idleTimeout) {
             connection.closeRequested = true;
-            if (connection.closeReason.empty()) connection.closeReason = "client timeout";
+            if (connection.closeReason.empty())
+                connection.closeReason = "client timeout";
         }
     }
 }
 
-void TcpServer::Impl::closeRequestedClients() {
+void TcpServer::Impl::closeRequestedClients()
+{
     while (true) {
         ClientId clientId = 0;
         std::string reason;
         {
             std::lock_guard<std::mutex> lock(connectionsMutex_);
-            const auto connection = std::find_if(connections_.begin(), connections_.end(), [](const auto& candidate) {
-                return candidate.closeRequested;
-            });
-            if (connection == connections_.end()) return;
+            const auto connection =
+                std::find_if(connections_.begin(), connections_.end(), [](const auto& candidate) { return candidate.closeRequested; });
+            if (connection == connections_.end())
+                return;
             clientId = connection->id;
             reason = connection->closeReason;
         }
@@ -432,13 +477,14 @@ void TcpServer::Impl::closeRequestedClients() {
     }
 }
 
-void TcpServer::Impl::closeClient(ClientId clientId, const std::string& reason) {
+void TcpServer::Impl::closeClient(ClientId clientId, const std::string& reason)
+{
     {
         std::lock_guard<std::mutex> lock(connectionsMutex_);
-        const auto connection = std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) {
-            return candidate.id == clientId;
-        });
-        if (connection == connections_.end()) return;
+        const auto connection =
+            std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) { return candidate.id == clientId; });
+        if (connection == connections_.end())
+            return;
         socket_close(connection->fd);
         connections_.erase(connection);
     }
@@ -451,59 +497,88 @@ void TcpServer::Impl::closeClient(ClientId clientId, const std::string& reason) 
     }
 }
 
-bool TcpServer::Impl::isCurrentClient(const PolledClient& client) const {
+bool TcpServer::Impl::isCurrentClient(const PolledClient& client) const
+{
     std::lock_guard<std::mutex> lock(connectionsMutex_);
-    return std::any_of(connections_.begin(), connections_.end(), [&client](const auto& connection) {
-        return connection.id == client.id && connection.fd == client.fd;
-    });
+    return std::any_of(connections_.begin(), connections_.end(),
+                       [&client](const auto& connection) { return connection.id == client.id && connection.fd == client.fd; });
 }
 
-bool TcpServer::Impl::isCloseRequested(ClientId clientId) const {
+bool TcpServer::Impl::isCloseRequested(ClientId clientId) const
+{
     std::lock_guard<std::mutex> lock(connectionsMutex_);
-    const auto connection = std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) {
-        return candidate.id == clientId;
-    });
+    const auto connection =
+        std::find_if(connections_.begin(), connections_.end(), [clientId](const auto& candidate) { return candidate.id == clientId; });
     return connection == connections_.end() || connection->closeRequested;
 }
 
-TcpServer::TcpServer(Config config) : impl_(std::make_unique<Impl>(std::move(config))) {}
+TcpServer::TcpServer(Config config) : impl_(std::make_unique<Impl>(std::move(config)))
+{
+}
 
 TcpServer::~TcpServer() = default;
 
-void TcpServer::setPort(int port) { impl_->setPort(port); }
+void TcpServer::setPort(int port)
+{
+    impl_->setPort(port);
+}
 
-void TcpServer::setConnectedHandler(ConnectedHandler handler) {
+void TcpServer::setConnectedHandler(ConnectedHandler handler)
+{
     impl_->setConnectedHandler(std::move(handler));
 }
 
-void TcpServer::setDataHandler(DataHandler handler) { impl_->setDataHandler(std::move(handler)); }
+void TcpServer::setDataHandler(DataHandler handler)
+{
+    impl_->setDataHandler(std::move(handler));
+}
 
-void TcpServer::setDisconnectedHandler(DisconnectedHandler handler) {
+void TcpServer::setDisconnectedHandler(DisconnectedHandler handler)
+{
     impl_->setDisconnectedHandler(std::move(handler));
 }
 
-void TcpServer::setRejectedHandler(RejectedHandler handler) {
+void TcpServer::setRejectedHandler(RejectedHandler handler)
+{
     impl_->setRejectedHandler(std::move(handler));
 }
 
-void TcpServer::start() { impl_->start(); }
+void TcpServer::start()
+{
+    impl_->start();
+}
 
-void TcpServer::poll() { impl_->poll(); }
+void TcpServer::poll()
+{
+    impl_->poll();
+}
 
-void TcpServer::stop() noexcept { impl_->stop(); }
+void TcpServer::stop() noexcept
+{
+    impl_->stop();
+}
 
-bool TcpServer::send(ClientId clientId, const uint8_t* data, std::size_t size) {
+bool TcpServer::send(ClientId clientId, const uint8_t* data, std::size_t size)
+{
     return impl_->send(clientId, data, size);
 }
 
-void TcpServer::disconnect(ClientId clientId, std::string reason) {
+void TcpServer::disconnect(ClientId clientId, std::string reason)
+{
     impl_->disconnect(clientId, std::move(reason));
 }
 
-bool TcpServer::hasClient(ClientId clientId) const { return impl_->hasClient(clientId); }
+bool TcpServer::hasClient(ClientId clientId) const
+{
+    return impl_->hasClient(clientId);
+}
 
-std::size_t TcpServer::clientCount() const { return impl_->clientCount(); }
+std::size_t TcpServer::clientCount() const
+{
+    return impl_->clientCount();
+}
 
-std::size_t TcpServer::queuedBytes(ClientId clientId) const {
+std::size_t TcpServer::queuedBytes(ClientId clientId) const
+{
     return impl_->queuedBytes(clientId);
 }

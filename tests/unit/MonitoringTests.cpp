@@ -1,6 +1,6 @@
 #include "catch2/catch_test_macros.hpp"
-#include "sc/model/TurbineParameters.hpp"
 #include "sc/application/Monitoring.hpp"
+#include "sc/model/TurbineParameters.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -8,7 +8,8 @@
 
 namespace {
 
-sc::application::MonitoringInput monitoringInput(std::size_t turbineCount, uint64_t currentTimeMs) {
+sc::application::MonitoringInput monitoringInput(std::size_t turbineCount, uint64_t currentTimeMs)
+{
     sc::application::MonitoringInput input;
     input.currentTimeMs = currentTimeMs;
     input.connectedTurbines = static_cast<int>(turbineCount);
@@ -16,21 +17,23 @@ sc::application::MonitoringInput monitoringInput(std::size_t turbineCount, uint6
     return input;
 }
 
-const sc::application::AlarmEvidence* findEvidence(const sc::application::MonitoringResult& result,
-                                                    sc::application::AlarmType alarm) {
+const sc::application::AlarmEvidence* findEvidence(const sc::application::MonitoringResult& result, sc::application::AlarmType alarm)
+{
     const auto match = std::find_if(result.evidence.begin(), result.evidence.end(),
-        [alarm](const sc::application::AlarmEvidence& evidence) { return evidence.alarm == alarm; });
+                                    [alarm](const sc::application::AlarmEvidence& evidence) { return evidence.alarm == alarm; });
     return match == result.evidence.end() ? nullptr : &*match;
 }
 
 } // namespace
 
-TEST_CASE("monitoring rejects a mismatched turbine count") {
+TEST_CASE("monitoring rejects a mismatched turbine count")
+{
     sc::application::MonitoringDetectors detectors(2);
     REQUIRE_THROWS_AS(detectors.evaluate(monitoringInput(1, 1000)), std::invalid_argument);
 }
 
-TEST_CASE("monitoring rejects an invalid connected turbine count") {
+TEST_CASE("monitoring rejects an invalid connected turbine count")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     input.connectedTurbines = -1;
@@ -40,7 +43,8 @@ TEST_CASE("monitoring rejects an invalid connected turbine count") {
     REQUIRE_THROWS_AS(detectors.evaluate(input), std::invalid_argument);
 }
 
-TEST_CASE("static telemetry bounds report the turbine and offending value") {
+TEST_CASE("static telemetry bounds report the turbine and offending value")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     input.turbines[0].windSpeed = 50.0;
@@ -56,7 +60,8 @@ TEST_CASE("static telemetry bounds report the turbine and offending value") {
     REQUIRE(evidence->timestampMs == 1000);
 }
 
-TEST_CASE("orientation detector retains its estimate between cycles") {
+TEST_CASE("orientation detector retains its estimate between cycles")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     input.turbines[0].yaw = 0.0;
@@ -79,7 +84,8 @@ TEST_CASE("orientation detector retains its estimate between cycles") {
     REQUIRE(evidence->threshold == 8.0);
 }
 
-TEST_CASE("power tracking requires a persistent mismatch") {
+TEST_CASE("power tracking requires a persistent mismatch")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     input.farmWindSpeed = 10.0F;
@@ -95,7 +101,8 @@ TEST_CASE("power tracking requires a persistent mismatch") {
     REQUIRE(findEvidence(result, sc::application::AlarmType::MeasuredPowerVsExpected) != nullptr);
 }
 
-TEST_CASE("power expectation uses filtered turbine speed and global wind direction") {
+TEST_CASE("power expectation uses filtered turbine speed and global wind direction")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     input.farmWindSpeed = 5.0F;
@@ -118,8 +125,7 @@ TEST_CASE("power expectation uses filtered turbine speed and global wind directi
     turbine.filteredWindSpeedTimeMs = 6000;
     turbine.yawTimeMs = 6000;
     turbine.powerTimeMs = 6000;
-    const auto result = detectors.evaluateDetector(
-        sc::application::AlarmType::MeasuredPowerVsExpected, input);
+    const auto result = detectors.evaluateDetector(sc::application::AlarmType::MeasuredPowerVsExpected, input);
 
     REQUIRE(result.isActive(sc::application::AlarmType::MeasuredPowerVsExpected));
     const auto* evidence = findEvidence(result, sc::application::AlarmType::MeasuredPowerVsExpected);
@@ -127,7 +133,8 @@ TEST_CASE("power expectation uses filtered turbine speed and global wind directi
     REQUIRE(evidence->expected > 0.0);
 }
 
-TEST_CASE("telemetry freeze requires both a full window and persistence") {
+TEST_CASE("telemetry freeze requires both a full window and persistence")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     input.turbines[0].windSpeed = 8.0;
@@ -143,18 +150,20 @@ TEST_CASE("telemetry freeze requires both a full window and persistence") {
     REQUIRE(findEvidence(result, sc::application::AlarmType::TelemetryFreeze)->turbineId == 1);
 }
 
-TEST_CASE("wind direction comparison follows the shortest angular path") {
+TEST_CASE("wind direction comparison follows the shortest angular path")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     input.farmWindDirection = 359.0F;
     input.turbines[0].windDirection = 1.0;
     input.turbines[0].windDirectionTimeMs = 1000;
 
-    REQUIRE_FALSE(detectors.evaluateDetector(sc::application::AlarmType::WindDirection, input)
-                      .isActive(sc::application::AlarmType::WindDirection));
+    REQUIRE_FALSE(
+        detectors.evaluateDetector(sc::application::AlarmType::WindDirection, input).isActive(sc::application::AlarmType::WindDirection));
 }
 
-TEST_CASE("measurement detectors ignore stale and future-dated values") {
+TEST_CASE("measurement detectors ignore stale and future-dated values")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 30000);
     auto& turbine = input.turbines[0];
@@ -170,11 +179,12 @@ TEST_CASE("measurement detectors ignore stale and future-dated values") {
     input.farmWindDirection = 180.0F;
     turbine.windDirection = 0.0;
     turbine.windDirectionTimeMs = 31000;
-    REQUIRE_FALSE(detectors.evaluateDetector(sc::application::AlarmType::WindDirection, input)
-                      .isActive(sc::application::AlarmType::WindDirection));
+    REQUIRE_FALSE(
+        detectors.evaluateDetector(sc::application::AlarmType::WindDirection, input).isActive(sc::application::AlarmType::WindDirection));
 }
 
-TEST_CASE("persistent detectors reset rather than alarming on stale telemetry") {
+TEST_CASE("persistent detectors reset rather than alarming on stale telemetry")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     auto& turbine = input.turbines[0];
@@ -208,7 +218,8 @@ TEST_CASE("persistent detectors reset rather than alarming on stale telemetry") 
     }
 }
 
-TEST_CASE("static bounds report recent non-finite telemetry") {
+TEST_CASE("static bounds report recent non-finite telemetry")
+{
     sc::application::MonitoringDetectors detectors(1);
     auto input = monitoringInput(1, 1000);
     input.turbines[0].windSpeed = std::numeric_limits<double>::quiet_NaN();
@@ -218,7 +229,8 @@ TEST_CASE("static bounds report recent non-finite telemetry") {
                 .isActive(sc::application::AlarmType::StaticTelemetryBounds));
 }
 
-TEST_CASE("acknowledged alarms clear only after their condition clears") {
+TEST_CASE("acknowledged alarms clear only after their condition clears")
+{
     sc::application::AlarmStateTracker alarms;
     sc::application::MonitoringResult result;
     result.active[static_cast<std::size_t>(sc::application::AlarmType::StaticTelemetryBounds)] = true;
@@ -237,7 +249,8 @@ TEST_CASE("acknowledged alarms clear only after their condition clears") {
     REQUIRE_FALSE(alarms.visible(sc::application::AlarmType::StaticTelemetryBounds));
 }
 
-TEST_CASE("inactive latched alarms remain visible until acknowledged") {
+TEST_CASE("inactive latched alarms remain visible until acknowledged")
+{
     sc::application::AlarmStateTracker alarms;
     sc::application::MonitoringResult result;
     result.active[static_cast<std::size_t>(sc::application::AlarmType::WindSpeedChange)] = true;

@@ -9,8 +9,35 @@ permissions:
   contents: read
 
 jobs:
+  formatting:
+    name: Formatting (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Check out supervisory controller
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install clang-format
+        run: python -m pip install clang-format==18.1.8
+
+      - name: Check C++ formatting
+        run: cmake -DSC_FORMAT_MODE=check -P cmake/RunClangFormat.cmake
+
   integration:
     name: ${{ matrix.os }}
+    needs: formatting
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:

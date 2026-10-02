@@ -7,7 +7,7 @@
 namespace sc::ports {
 
 class Clock {
-public:
+    public:
     using SteadyTimePoint = std::chrono::steady_clock::time_point;
 
     virtual ~Clock() = default;
@@ -18,22 +18,26 @@ public:
 };
 
 class SystemClock final : public Clock {
-public:
-    SteadyTimePoint steadyNow() const override {
+    public:
+    SteadyTimePoint steadyNow() const override
+    {
         return std::chrono::steady_clock::now();
     }
 
-    uint64_t unixTimeMilliseconds() const override {
-        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
+    uint64_t unixTimeMilliseconds() const override
+    {
+        return static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
     }
 
-    void sleepFor(std::chrono::milliseconds duration) override {
+    void sleepFor(std::chrono::milliseconds duration) override
+    {
         std::this_thread::sleep_for(duration);
     }
 };
 
-inline Clock& systemClock() {
+inline Clock& systemClock()
+{
     static SystemClock clock;
     return clock;
 }

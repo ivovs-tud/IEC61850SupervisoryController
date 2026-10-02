@@ -1,14 +1,14 @@
-#include <catch2/catch_test_macros.hpp>
-
-#include <chrono>
-
+#include "CommunicationOrchestrator.hpp"
 #include "sc/communication/CommunicationConfig.hpp"
 #include "sc/runtime/RuntimeConfig.hpp"
-#include "CommunicationOrchestrator.hpp"
+
+#include <catch2/catch_test_macros.hpp>
+#include <chrono>
 
 using namespace std::chrono_literals;
 
-TEST_CASE("communication configuration is derived from validated runtime settings") {
+TEST_CASE("communication configuration is derived from validated runtime settings")
+{
     sc::runtime::RuntimeConfig runtime = sc::runtime::defaultRuntimeConfig();
     runtime.hmi.period = 175ms;
     runtime.hmi.windowSize = 42;
@@ -41,15 +41,14 @@ TEST_CASE("communication configuration is derived from validated runtime setting
     REQUIRE(config.mms.reportControlBlockReference == "LD0$RP$selected");
 }
 
-TEST_CASE("communication orchestrator requires initialization and initializes once") {
-    const auto config = sc::communication::makeCommunicationConfig(
-        sc::runtime::defaultRuntimeConfig());
+TEST_CASE("communication orchestrator requires initialization and initializes once")
+{
+    const auto config = sc::communication::makeCommunicationConfig(sc::runtime::defaultRuntimeConfig());
     sc::communication::CommunicationOrchestrator orchestrator(config);
 
     const auto prematureStart = orchestrator.start();
     REQUIRE_FALSE(prematureStart);
-    REQUIRE(prematureStart.stage ==
-            sc::communication::CommunicationOrchestrator::StartupStage::Initialization);
+    REQUIRE(prematureStart.stage == sc::communication::CommunicationOrchestrator::StartupStage::Initialization);
     REQUIRE(orchestrator.socketStatus() == sc::communication::COMM_DISCONNECTED);
     REQUIRE(orchestrator.iecStatus() == sc::communication::COMM_DISCONNECTED);
 

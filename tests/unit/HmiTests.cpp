@@ -1,30 +1,39 @@
-#include <catch2/catch_test_macros.hpp>
-
-#include <chrono>
-#include <cmath>
-#include <string>
-#include <thread>
-
-#include "sc/communication/hmi/HmiConfig.hpp"
 #include "HmiInterface.hpp"
 #include "SocketPlatform.hpp"
+#include "sc/communication/hmi/HmiConfig.hpp"
 
+#include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <cmath>
 #include <msgpack.hpp>
+#include <string>
+#include <thread>
 #include <zmq.hpp>
 
 namespace {
 
 class TestHmiInterface : public HmiInterface {
-public:
+    public:
     using HmiInterface::HmiInterface;
-    void open() { onStart(); }
-    void runOnce() { execute(); }
-    void close() { onStop(); }
+    void open()
+    {
+        onStart();
+    }
+    void runOnce()
+    {
+        execute();
+    }
+    void close()
+    {
+        onStop();
+    }
 };
 
-int reserveLoopbackPort() {
+int reserveLoopbackPort()
+{
     const socket_t probe = socket(AF_INET, SOCK_STREAM, 0);
-    if (probe == INVALID_SOCKET_FD) return -1;
+    if (probe == INVALID_SOCKET_FD)
+        return -1;
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -43,8 +52,8 @@ int reserveLoopbackPort() {
     return port;
 }
 
-template <typename Pack>
-void sendCommand(zmq::socket_t& socket, Pack pack) {
+template <typename Pack> void sendCommand(zmq::socket_t& socket, Pack pack)
+{
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> writer(buffer);
     pack(writer);
@@ -53,7 +62,8 @@ void sendCommand(zmq::socket_t& socket, Pack pack) {
 
 } // namespace
 
-TEST_CASE("HMI data collection reads each shared-data section") {
+TEST_CASE("HMI data collection reads each shared-data section")
+{
     SharedData shared;
     shared.configureTurbineCount(2);
     {
@@ -70,8 +80,7 @@ TEST_CASE("HMI data collection reads each shared-data section") {
     {
         std::lock_guard<std::mutex> lock(shared.control.mutex);
         shared.control.powerSetpoints = {4.0F, -1.0F};
-        shared.control.turbineController = {ControlData::controllerDownregulation,
-                                            ControlData::controllerDownregulation};
+        shared.control.turbineController = {ControlData::controllerDownregulation, ControlData::controllerDownregulation};
     }
     {
         std::lock_guard<std::mutex> lock(shared.monitoring.mutex);
@@ -97,7 +106,8 @@ TEST_CASE("HMI data collection reads each shared-data section") {
     REQUIRE(data.attackTapEnabled == 3);
 }
 
-TEST_CASE("HMI signal accessors use the collected display data") {
+TEST_CASE("HMI signal accessors use the collected display data")
+{
     const HmiConfig config = defaultHmiConfig(2);
     HmiData data;
     data.turbinePower = {1.0, 2.0};
@@ -112,11 +122,13 @@ TEST_CASE("HMI signal accessors use the collected display data") {
     REQUIRE(std::isnan(values[3]));
 }
 
-TEST_CASE("HMI drains command bursts and publishes the configured snapshot shape") {
+TEST_CASE("HMI drains command bursts and publishes the configured snapshot shape")
+{
     REQUIRE(socket_init());
     const int publisherPort = reserveLoopbackPort();
     int commandPort = reserveLoopbackPort();
-    while (commandPort == publisherPort) commandPort = reserveLoopbackPort();
+    while (commandPort == publisherPort)
+        commandPort = reserveLoopbackPort();
     REQUIRE(publisherPort > 0);
     REQUIRE(commandPort > 0);
 
@@ -146,16 +158,26 @@ TEST_CASE("HMI drains command bursts and publishes the configured snapshot shape
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     sendCommand(commands, [](auto& writer) {
-        writer.pack_array(2); writer.pack("set_mode"); writer.pack(2);
+        writer.pack_array(2);
+        writer.pack("set_mode");
+        writer.pack(2);
     });
     sendCommand(commands, [](auto& writer) {
-        writer.pack_array(3); writer.pack("set_button_state"); writer.pack("Yaw Steering"); writer.pack(1);
+        writer.pack_array(3);
+        writer.pack("set_button_state");
+        writer.pack("Yaw Steering");
+        writer.pack(1);
     });
     sendCommand(commands, [](auto& writer) {
-        writer.pack_array(3); writer.pack("set_turbine_enable"); writer.pack(2); writer.pack(0);
+        writer.pack_array(3);
+        writer.pack("set_turbine_enable");
+        writer.pack(2);
+        writer.pack(0);
     });
     sendCommand(commands, [](auto& writer) {
-        writer.pack_array(2); writer.pack("acknowledge_alarms"); writer.pack(true);
+        writer.pack_array(2);
+        writer.pack("acknowledge_alarms");
+        writer.pack(true);
     });
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
 
@@ -164,7 +186,8 @@ TEST_CASE("HMI drains command bursts and publishes the configured snapshot shape
     for (int attempt = 0; attempt < 20 && !received; ++attempt) {
         interface.runOnce();
         received = subscriber.recv(snapshot, zmq::recv_flags::dontwait).has_value();
-        if (!received) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (!received)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     {
@@ -175,13 +198,11 @@ TEST_CASE("HMI drains command bursts and publishes the configured snapshot shape
         REQUIRE(shared.control.alarmAcknowledgementRequested);
     }
     REQUIRE(received);
-    const auto unpacked = msgpack::unpack(
-        static_cast<const char*>(snapshot.data()), snapshot.size());
+    const auto unpacked = msgpack::unpack(static_cast<const char*>(snapshot.data()), snapshot.size());
     const auto object = unpacked.get();
     REQUIRE(object.type == msgpack::type::ARRAY);
     REQUIRE(object.via.array.size == 10);
-    REQUIRE(object.via.array.ptr[9].via.array.ptr[0].as<std::string>() ==
-            "alarm_acknowledgement");
+    REQUIRE(object.via.array.ptr[9].via.array.ptr[0].as<std::string>() == "alarm_acknowledgement");
 
     interface.close();
     socket_cleanup();

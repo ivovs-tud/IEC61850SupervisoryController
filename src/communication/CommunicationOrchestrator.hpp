@@ -1,5 +1,16 @@
 #pragma once
 
+#include "attack/AttackChannelZMQ.hpp"
+#include "hmi/HmiInterface.hpp"
+#include "operator/OperatorServer.hpp"
+#include "sc/communication/CommunicationConfig.hpp"
+#include "sc/communication/attack/AttackChannelTCP.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
+#include "sc/communication/data_historian/DataHistorianServer.hpp"
+#include "sc/communication/iec61850/IEC61850Manager.hpp"
+#include "sc/model/SharedData.hpp"
+#include "sc/runtime/DataHistorian.hpp"
+
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -7,24 +18,12 @@
 #include <string>
 #include <vector>
 
-#include "sc/model/SharedData.hpp"
-#include "sc/runtime/DataHistorian.hpp"
-#include "sc/communication/CommunicationConfig.hpp"
-#include "sc/communication/attack/AttackChannelTCP.hpp"
-#include "attack/AttackChannelZMQ.hpp"
-#include "sc/communication/attack/AttackInterface.hpp"
-#include "sc/communication/data_historian/DataHistorianServer.hpp"
-#include "hmi/HmiInterface.hpp"
-#include "sc/communication/iec61850/IEC61850Manager.hpp"
-#include "operator/OperatorServer.hpp"
-
 class IECCommunicator;
 
 namespace sc::communication {
 
-class CommunicationOrchestrator
-{
-public:
+class CommunicationOrchestrator {
+    public:
     enum class StartupStage {
         None,
         Initialization,
@@ -41,7 +40,10 @@ public:
         StartupStage stage{StartupStage::None};
         std::string message;
 
-        explicit operator bool() const noexcept { return success; }
+        explicit operator bool() const noexcept
+        {
+            return success;
+        }
     };
 
     using FailureHandler = std::function<void(const std::string&)>;
@@ -64,7 +66,7 @@ public:
     CommunicationStatus socketStatus() const;
     CommunicationStatus iecStatus() const;
 
-private:
+    private:
     void createCommunicators();
     void handleRuntimeFailure(const std::string& message);
     void rollbackStart(std::size_t communicatorCount);

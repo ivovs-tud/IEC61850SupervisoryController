@@ -6,11 +6,10 @@
 #include <chrono>
 #include <functional>
 #include <optional>
-
 #include <zmq.hpp>
 
 class OperatorServer final : public PeriodicTask {
-public:
+    public:
     struct Config {
         int port{9001};
         std::chrono::milliseconds pollPeriod{10};
@@ -23,12 +22,12 @@ public:
 
     void setCommandHandler(CommandHandler handler);
 
-protected:
+    protected:
     void onStart() override;
     void execute() override;
     void onStop() override;
 
-private:
+    private:
     Config config_;
     zmq::context_t context_;
     std::optional<zmq::socket_t> socket_;

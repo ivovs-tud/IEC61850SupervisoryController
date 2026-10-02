@@ -12,12 +12,12 @@
 
 using namespace std::chrono_literals;
 
-#include "ConsoleSupport.hpp"
-#include "sc/runtime/DataHistorian.hpp"
-#include "sc/model/SharedData.hpp"
-#include "sc/runtime/Logging.hpp"
 #include "CommunicationOrchestrator.hpp"
+#include "ConsoleSupport.hpp"
 #include "sc/application/YawLut.hpp"
+#include "sc/model/SharedData.hpp"
+#include "sc/runtime/DataHistorian.hpp"
+#include "sc/runtime/Logging.hpp"
 #include "sc/runtime/RuntimeConfig.hpp"
 #include "sc/tasks/ControlTask.hpp"
 #include "sc/tasks/MonitoringTask.hpp"
@@ -25,8 +25,8 @@ using namespace std::chrono_literals;
 
 #ifdef PLATFORM_WINDOWS
 #include <conio.h>
-#include <windows.h>
 #include <mmsystem.h>
+#include <windows.h>
 #pragma comment(lib, "winmm")
 #else
 #include <poll.h>
@@ -37,11 +37,13 @@ namespace {
 
 volatile std::sig_atomic_t signalShutdownRequested = 0;
 
-void handleShutdownSignal(int) {
+void handleShutdownSignal(int)
+{
     signalShutdownRequested = 1;
 }
 
-bool consoleStopRequested() {
+bool consoleStopRequested()
+{
 #ifdef PLATFORM_WINDOWS
     if (_kbhit() == 0) {
         return false;
@@ -71,7 +73,8 @@ struct CliOptions {
     bool showHelp{false};
 };
 
-CliOptions parseArguments(int argc, char* argv[]) {
+CliOptions parseArguments(int argc, char* argv[])
+{
     CliOptions options;
     for (int i = 1; i < argc; ++i) {
         const std::string argument = argv[i];
@@ -99,23 +102,30 @@ CliOptions parseArguments(int argc, char* argv[]) {
     return options;
 }
 
-void printUsage(const char* executable) {
-    std::cout << "Usage: " << executable
-              << " [--config runtime.json] [--yaw-lut yaw_lut.csv]\n"
+void printUsage(const char* executable)
+{
+    std::cout << "Usage: " << executable << " [--config runtime.json] [--yaw-lut yaw_lut.csv]\n"
               << "       " << executable << " [yaw_lut.csv]\n";
 }
 
 } // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     enableWindowsConsoleColors();
     std::signal(SIGINT, handleShutdownSignal);
     std::signal(SIGTERM, handleShutdownSignal);
 
 #ifdef _WIN32
     struct WinTimerResolutionGuard {
-        WinTimerResolutionGuard() { timeBeginPeriod(1); }
-        ~WinTimerResolutionGuard() { timeEndPeriod(1); }
+        WinTimerResolutionGuard()
+        {
+            timeBeginPeriod(1);
+        }
+        ~WinTimerResolutionGuard()
+        {
+            timeEndPeriod(1);
+        }
     } winTimerResolutionGuard;
     SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 #endif
@@ -127,9 +137,8 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        sc::runtime::RuntimeConfig runtime = options.configPath
-            ? sc::runtime::loadRuntimeConfig(*options.configPath)
-            : sc::runtime::defaultRuntimeConfig();
+        sc::runtime::RuntimeConfig runtime =
+            options.configPath ? sc::runtime::loadRuntimeConfig(*options.configPath) : sc::runtime::defaultRuntimeConfig();
         if (options.yawLutOverride) {
             runtime.control.yawLutCsvPath = *options.yawLutOverride;
         }
@@ -146,18 +155,14 @@ int main(int argc, char* argv[]) {
         controlConfig.numTurbines = numTurbines;
         controlConfig.powerSharingMode = runtime.control.powerSharingMode;
 
-        const sc::communication::CommunicationConfig communicationConfig =
-            sc::communication::makeCommunicationConfig(runtime);
+        const sc::communication::CommunicationConfig communicationConfig = sc::communication::makeCommunicationConfig(runtime);
 
         // All validation and dynamic state sizing is complete before any worker starts.
         ControlTask controlTask(controlConfig, std::move(yawLut));
         sc::application::SignalProcessingConfig signalProcessingConfig;
-        signalProcessingConfig.windSpeedSampleCount =
-            runtime.signalProcessing.windSpeedSampleCount;
-        SignalProcessingTask signalTask(
-            runtime.tasks.signalProcessingPeriod, signalProcessingConfig);
-        MonitoringTask monitoringTask(runtime.tasks.monitoringPeriod, numTurbines,
-                                      runtime.monitoring.alarmAcknowledgementEnabled);
+        signalProcessingConfig.windSpeedSampleCount = runtime.signalProcessing.windSpeedSampleCount;
+        SignalProcessingTask signalTask(runtime.tasks.signalProcessingPeriod, signalProcessingConfig);
+        MonitoringTask monitoringTask(runtime.tasks.monitoringPeriod, numTurbines, runtime.monitoring.alarmAcknowledgementEnabled);
         sc::communication::CommunicationOrchestrator commTask(communicationConfig);
 
         std::atomic<bool> shutdownRequested{false};
@@ -179,27 +184,21 @@ int main(int argc, char* argv[]) {
             throw std::runtime_error(initResult.message);
         }
 
-        DataHistorian::instance().configure(
-            runtime.historian.experimentName,
-            runtime.historian.outputDirectory,
-            runtime.historian.flushEvery,
-            runtime.historian.flushPeriod);
+        DataHistorian::instance().configure(runtime.historian.experimentName, runtime.historian.outputDirectory,
+                                            runtime.historian.flushEvery, runtime.historian.flushPeriod);
         bool historianStarted = false;
         try {
             DataHistorian::instance().start();
             historianStarted = true;
 
             if (!controlTask.start()) {
-                throw std::runtime_error(
-                    "control task failed to start: " + controlTask.failureMessage());
+                throw std::runtime_error("control task failed to start: " + controlTask.failureMessage());
             }
             if (!signalTask.start()) {
-                throw std::runtime_error(
-                    "signal-processing task failed to start: " + signalTask.failureMessage());
+                throw std::runtime_error("signal-processing task failed to start: " + signalTask.failureMessage());
             }
             if (!monitoringTask.start()) {
-                throw std::runtime_error(
-                    "monitoring task failed to start: " + monitoringTask.failureMessage());
+                throw std::runtime_error("monitoring task failed to start: " + monitoringTask.failureMessage());
             }
             const auto communicationStart = commTask.start();
             if (!communicationStart) {

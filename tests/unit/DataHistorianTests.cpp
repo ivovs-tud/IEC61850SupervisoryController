@@ -1,8 +1,7 @@
 #include "sc/runtime/DataHistorian.hpp"
 
-#include <catch2/catch_test_macros.hpp>
-
 #include <atomic>
+#include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -13,28 +12,33 @@
 namespace {
 
 class TemporaryDirectory {
-public:
-    TemporaryDirectory() {
+    public:
+    TemporaryDirectory()
+    {
         static std::atomic<unsigned long> nextId{0};
         path_ = std::filesystem::temp_directory_path() /
-                ("sc-historian-test-" + std::to_string(std::random_device{}()) + "-" +
-                 std::to_string(nextId.fetch_add(1)));
+                ("sc-historian-test-" + std::to_string(std::random_device{}()) + "-" + std::to_string(nextId.fetch_add(1)));
         std::filesystem::create_directories(path_);
     }
 
-    ~TemporaryDirectory() {
+    ~TemporaryDirectory()
+    {
         DataHistorian::instance().stopRun();
         std::error_code error;
         std::filesystem::remove_all(path_, error);
     }
 
-    const std::filesystem::path& path() const { return path_; }
+    const std::filesystem::path& path() const
+    {
+        return path_;
+    }
 
-private:
+    private:
     std::filesystem::path path_;
 };
 
-std::string readFile(const std::filesystem::path& path) {
+std::string readFile(const std::filesystem::path& path)
+{
     std::ifstream file(path, std::ios::binary);
     REQUIRE(file.is_open());
     return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
@@ -42,7 +46,8 @@ std::string readFile(const std::filesystem::path& path) {
 
 } // namespace
 
-TEST_CASE("data historian restarts into a new file without losing the previous run") {
+TEST_CASE("data historian restarts into a new file without losing the previous run")
+{
     TemporaryDirectory directory;
     auto& historian = DataHistorian::instance();
     historian.stopRun();
@@ -66,7 +71,8 @@ TEST_CASE("data historian restarts into a new file without losing the previous r
     REQUIRE(readFile(secondPath).find(",run,2") != std::string::npos);
 }
 
-TEST_CASE("data historian preserves its mixed structured and raw log format") {
+TEST_CASE("data historian preserves its mixed structured and raw log format")
+{
     TemporaryDirectory directory;
     auto& historian = DataHistorian::instance();
     historian.stopRun();

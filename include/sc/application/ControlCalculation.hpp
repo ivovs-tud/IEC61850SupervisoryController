@@ -1,9 +1,9 @@
 #pragma once
 
-#include <vector>
-
 #include "sc/application/PowerSharingMode.hpp"
 #include "sc/application/YawLut.hpp"
+
+#include <vector>
 
 namespace sc::application {
 
