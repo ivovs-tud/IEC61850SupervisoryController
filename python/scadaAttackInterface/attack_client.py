@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Transport-neutral attack client with a finite, testable lifecycle."""
 
 from __future__ import annotations

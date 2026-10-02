@@ -26,3 +26,8 @@ The complete example is
 default transport; pass `transport="tcp"` to use raw TCP. The selected
 transport must match `communication.attack_interface.transport` in the SCADA
 runtime configuration.
+
+## License
+
+The client is part of Wind Farm SCADA and is licensed under the GNU General
+Public License, version 3 or later. See [LICENSE](LICENSE).
