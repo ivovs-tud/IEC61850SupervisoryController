@@ -1,11 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <boost/property_tree/json_parser.hpp>
+
 #include <chrono>
 #include <filesystem>
 #include <string>
 
 #include "sc/model/SharedData.hpp"
 #include "sc/application/YawLut.hpp"
+#include "sc/communication/attack/AttackProtocol.hpp"
 #include "sc/runtime/RuntimeConfig.hpp"
 #include "support/TemporaryCsv.hpp"
 
@@ -64,6 +67,35 @@ TEST_CASE("Windows local configuration binds the HMI to loopback") {
 
     REQUIRE(config.hmi.publisherEndpoint == "tcp://127.0.0.1:5555");
     REQUIRE(config.hmi.commandEndpoint == "tcp://127.0.0.1:5556");
+}
+
+TEST_CASE("runtime schema limits match runtime validation boundaries") {
+    boost::property_tree::ptree schema;
+    boost::property_tree::read_json(
+        (std::filesystem::path(SC_SOURCE_DIR) / "config/runtime-config.schema.json").string(),
+        schema);
+
+    REQUIRE(schema.get<int>("properties.schema_version.const") ==
+            sc::runtime::defaultRuntimeConfig().schemaVersion);
+    REQUIRE(schema.get<int>("properties.turbines.minItems") == 1);
+    REQUIRE(schema.get<int>("properties.turbines.maxItems") == 255);
+    REQUIRE(schema.get<int>("$defs.socketServer.properties.port.minimum") == 1024);
+    REQUIRE(schema.get<int>("$defs.socketServer.properties.port.maximum") == 65535);
+    REQUIRE(schema.get<int>("$defs.attackInterfaceServer.properties.receive_buffer_bytes.minimum") ==
+            static_cast<int>(sc::protocol::attack::CFG_DATA_SIZE));
+    REQUIRE(schema.get<int>("$defs.attackInterfaceServer.properties.transmit_buffer_bytes.minimum") ==
+            static_cast<int>(sc::protocol::attack::CFG_DATA_SIZE));
+
+    auto config = sc::runtime::defaultRuntimeConfig();
+    config.communication.operatorServer.port = 1024;
+    config.communication.attackInterface.receiveBufferBytes =
+        sc::protocol::attack::CFG_DATA_SIZE;
+    config.communication.attackInterface.transmitBufferBytes =
+        sc::protocol::attack::CFG_DATA_SIZE;
+    REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config));
+
+    config.communication.operatorServer.port = 65536;
+    REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
 }
 
 TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {

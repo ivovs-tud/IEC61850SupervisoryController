@@ -2,6 +2,7 @@
 
 #include "sc/runtime/Logging.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
@@ -13,6 +14,9 @@ OperatorCommand decodeOperatorCommand(const uint8_t* data, std::size_t size) {
     if (size == sizeof(float)) {
         float value = 0.0F;
         std::memcpy(&value, data, sizeof(value));
+        if (!std::isfinite(value)) {
+            throw std::runtime_error("requested power must be finite");
+        }
         return RequestedPowerCommand{value};
     }
 

@@ -151,6 +151,25 @@ catch_discover_tests(
 )
 
 if(TARGET sc_tasks)
+    add_executable(sc_scheduled_task_tests
+        unit/ScheduledTaskTests.cpp
+    )
+
+    target_include_directories(sc_scheduled_task_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_link_libraries(sc_scheduled_task_tests PRIVATE
+        Catch2::Catch2WithMain
+        sc_tasks
+    )
+
+    catch_discover_tests(
+        sc_scheduled_task_tests
+        TEST_PREFIX "sc.scheduled_task."
+        DISCOVERY_MODE PRE_TEST
+    )
+
     add_executable(sc_monitoring_task_tests
         unit/MonitoringTaskTests.cpp
     )
@@ -301,6 +320,25 @@ if(TARGET sc_hmi)
         sc_hmi
     )
 
+    target_include_directories(sc_hmi_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/communication/hmi
+        ${PROJECT_SOURCE_DIR}/src/communication/network
+        ${MSGPACK_INCLUDE_DIR}
+    )
+
+    target_compile_definitions(sc_hmi_tests PRIVATE MSGPACK_NO_BOOST)
+
+    if(WIN32)
+        target_link_libraries(sc_hmi_tests PRIVATE ws2_32)
+        if(TARGET libzmq)
+            add_custom_command(TARGET sc_hmi_tests POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        $<TARGET_FILE:libzmq>
+                        $<TARGET_FILE_DIR:sc_hmi_tests>
+            )
+        endif()
+    endif()
+
     catch_discover_tests(
         sc_hmi_tests
         TEST_PREFIX "sc.hmi."
@@ -338,6 +376,38 @@ if(SC_BUILD_INTEGRATION_TESTS)
             "Install the Python package with: "
             "python -m pip install -e ./python")
     endif()
+
+    add_executable(sc_operator_server_tests
+        integration/OperatorServerTests.cpp
+    )
+
+    target_include_directories(sc_operator_server_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/communication/operator
+        ${PROJECT_SOURCE_DIR}/src/communication/network
+    )
+
+    target_link_libraries(sc_operator_server_tests PRIVATE
+        Catch2::Catch2WithMain
+        sc_operator_server
+        Threads::Threads
+    )
+
+    if(WIN32)
+        target_link_libraries(sc_operator_server_tests PRIVATE ws2_32)
+        if(TARGET libzmq)
+            add_custom_command(TARGET sc_operator_server_tests POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        $<TARGET_FILE:libzmq>
+                        $<TARGET_FILE_DIR:sc_operator_server_tests>
+            )
+        endif()
+    endif()
+
+    catch_discover_tests(
+        sc_operator_server_tests
+        TEST_PREFIX "sc.operator_server."
+        DISCOVERY_MODE PRE_TEST
+    )
 
     add_executable(sc_attack_loopback_server
         integration/AttackLoopbackServer.cpp

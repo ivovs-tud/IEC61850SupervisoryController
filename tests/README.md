@@ -26,9 +26,9 @@ cmake -S . -B build-tests \
   -DSC_BUILD_TESTS=ON
 ```
 
-The C++ characterization tests protect current native ABI layouts while those
-interfaces are migrated. The Python attack-codec tests protect the byte-level
-attack-interface fixtures.
+The C++ characterization tests protect the historian's remaining native ABI
+and the attack interface's explicitly encoded wire bytes. The Python
+attack-codec tests protect the same byte-level attack-interface fixtures.
 
 The attack-interface unit tests use in-memory channel and clock fakes. They
 exercise the production parser and FDI state machine without opening a socket,

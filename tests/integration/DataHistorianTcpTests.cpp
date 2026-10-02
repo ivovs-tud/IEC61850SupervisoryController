@@ -107,11 +107,11 @@ int main() {
         return 4;
     }
 
-    const std::array<DataHistorianRecord, 3> records{
-        makeRecord(1, 1001, 10.5F),
-        makeRecord(2, 1002, 20.5F),
-        makeRecord(3, 1003, 30.5F),
-    };
+    std::vector<DataHistorianRecord> records;
+    records.reserve(65);
+    for (uint32_t id = 1; id <= 65; ++id) {
+        records.push_back(makeRecord(id, 1000 + id, 0.5F + static_cast<float>(id)));
+    }
     const auto* first = reinterpret_cast<const uint8_t*>(&records[0]);
     constexpr std::size_t split = 13;
     if (!writeAll(client, first, split)) {
@@ -133,9 +133,11 @@ int main() {
         }
     }
 
-    std::vector<uint8_t> remainder(sizeof(DataHistorianRecord) - split + 2 * sizeof(DataHistorianRecord));
+    const std::size_t burstBytes = (records.size() - 1) * sizeof(DataHistorianRecord);
+    std::vector<uint8_t> remainder(sizeof(DataHistorianRecord) - split + burstBytes);
     std::memcpy(remainder.data(), first + split, sizeof(DataHistorianRecord) - split);
-    std::memcpy(remainder.data() + sizeof(DataHistorianRecord) - split, &records[1], 2 * sizeof(DataHistorianRecord));
+    std::memcpy(remainder.data() + sizeof(DataHistorianRecord) - split,
+                records.data() + 1, burstBytes);
     if (!writeAll(client, remainder.data(), remainder.size())) {
         std::cerr << "failed to write coalesced historian records\n";
         socket_close(client);
