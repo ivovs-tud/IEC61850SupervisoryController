@@ -8,18 +8,20 @@
 
 namespace {
 
-template <typename HistoryType>
-std::vector<double> copyHistory(const HistoryType& history) {
+template <typename HistoryType> std::vector<double> copyHistory(const HistoryType& history)
+{
     return {history.begin(), history.end()};
 }
 
-std::size_t checkedTurbineCount(int turbineCount) {
-    if (turbineCount <= 0) throw std::invalid_argument("MonitoringTask requires at least one turbine");
+std::size_t checkedTurbineCount(int turbineCount)
+{
+    if (turbineCount <= 0)
+        throw std::invalid_argument("MonitoringTask requires at least one turbine");
     return static_cast<std::size_t>(turbineCount);
 }
 
-sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int turbineCount,
-                                                     uint64_t currentTimeMs) {
+sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int turbineCount, uint64_t currentTimeMs)
+{
     sc::application::MonitoringInput input;
     input.currentTimeMs = currentTimeMs;
     input.turbines.resize(static_cast<std::size_t>(turbineCount));
@@ -72,8 +74,8 @@ sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int
             target.powerSetpoint = data.control.powerSetpoints[index];
             target.yawSetpoint = data.control.yawSetpoints[index];
             target.maximumPowerMode = data.control.turbineController[index] == ControlData::controllerKomega2;
-            target.commandedOff = data.control.turbineEnabled[index] == 0 ||
-                                  data.control.turbineController[index] == ControlData::controllerShutdown;
+            target.commandedOff =
+                data.control.turbineEnabled[index] == 0 || data.control.turbineController[index] == ControlData::controllerShutdown;
         }
     }
 
@@ -82,17 +84,19 @@ sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int
 
 } // namespace
 
-MonitoringTask::MonitoringTask(std::chrono::milliseconds period, int numTurbines,
-                               bool alarmAcknowledgementEnabled)
-    : PeriodicTask(period), numTurbines_(numTurbines),
-      alarmAcknowledgementEnabled_(alarmAcknowledgementEnabled),
-      detectors_(checkedTurbineCount(numTurbines)) {}
+MonitoringTask::MonitoringTask(std::chrono::milliseconds period, int numTurbines, bool alarmAcknowledgementEnabled) :
+    PeriodicTask(period), numTurbines_(numTurbines), alarmAcknowledgementEnabled_(alarmAcknowledgementEnabled),
+    detectors_(checkedTurbineCount(numTurbines))
+{
+}
 
-void MonitoringTask::execute() {
+void MonitoringTask::execute()
+{
     auto& data = SharedData::instance();
     {
         std::lock_guard<std::mutex> lock(data.interface.mutex);
-        if (!data.interface.systemRunning) return;
+        if (!data.interface.systemRunning)
+            return;
     }
 
     const uint64_t currentTimeMs = getCurrentTimeMs();
@@ -107,7 +111,8 @@ void MonitoringTask::execute() {
     std::lock_guard<std::mutex> lock(data.monitoring.mutex);
     auto& alarms = data.monitoring;
     if (alarmAcknowledgementEnabled_) {
-        if (acknowledgementRequested) alarmStates_.acknowledge();
+        if (acknowledgementRequested)
+            alarmStates_.acknowledge();
         alarmStates_.update(result);
         alarms.alarmWRecMeas = alarmStates_.visible(sc::application::AlarmType::PowerGeneratedVsReceived);
         alarms.alarmPowerExpected = alarmStates_.visible(sc::application::AlarmType::MeasuredPowerVsExpected);

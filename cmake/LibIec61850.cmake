@@ -25,7 +25,7 @@ function(sc_configure_libiec61850)
     find_path(SC_LIBIEC61850_INCLUDE_DIR
         NAMES iec61850_client.h
         HINTS ${_sc_libiec_hints}
-        PATH_SUFFIXES include src/iec61850/inc
+        PATH_SUFFIXES include include/libiec61850 src/iec61850/inc
     )
     find_library(SC_LIBIEC61850_LIBRARY
         NAMES iec61850 libiec61850

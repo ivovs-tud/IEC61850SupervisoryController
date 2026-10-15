@@ -1,6 +1,13 @@
+#include "LibIecGooseReceiver.hpp"
+#include "sc/communication/CommunicationConfig.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
+#include "sc/communication/iec61850/IEC61850Manager.hpp"
+#include "sc/communication/iec61850/IECCommunicator.hpp"
+#include "support/FakeAttackChannel.hpp"
+#include "support/FakeClock.hpp"
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-
 #include <chrono>
 #include <cstddef>
 #include <future>
@@ -9,81 +16,86 @@
 #include <string>
 #include <vector>
 
-#include "sc/communication/attack/AttackInterface.hpp"
-#include "sc/communication/CommunicationConfig.hpp"
-#include "sc/communication/iec61850/IEC61850Manager.hpp"
-#include "sc/communication/iec61850/IECCommunicator.hpp"
-#include "LibIecGooseReceiver.hpp"
-#include "support/FakeAttackChannel.hpp"
-#include "support/FakeClock.hpp"
-
 using namespace std::chrono_literals;
 
 struct IEC61850ManagerTestAccess {
-    static std::shared_ptr<TurbineConnection> turbine(IEC61850Manager& manager, int turbineId) {
+    static std::shared_ptr<TurbineConnection> turbine(IEC61850Manager& manager, int turbineId)
+    {
         return manager.findTurbine(turbineId);
     }
 
-    static std::size_t reportCount(IEC61850Manager& manager) {
+    static std::size_t reportCount(IEC61850Manager& manager)
+    {
         std::lock_guard<std::mutex> lock(manager.reportMutex_);
         return manager.reportSubscriptions_.size();
     }
 
-    static bool reportActive(IEC61850Manager& manager, int turbineId) {
+    static bool reportActive(IEC61850Manager& manager, int turbineId)
+    {
         std::lock_guard<std::mutex> lock(manager.reportMutex_);
         for (const auto& [key, subscription] : manager.reportSubscriptions_) {
             (void)key;
-            if (subscription->turbineId == turbineId) return subscription->active;
+            if (subscription->turbineId == turbineId)
+                return subscription->active;
         }
         return false;
     }
 
-    static std::size_t gooseSubscriptionCount(IEC61850Manager& manager) {
+    static std::size_t gooseSubscriptionCount(IEC61850Manager& manager)
+    {
         std::lock_guard<std::mutex> lock(manager.gooseMutex_);
         return manager.gooseSubscriptions_.size();
     }
 };
 
 struct IECCommunicatorTestAccess {
-    static void handleReportValues(IECCommunicator& communicator,
-                                   int turbineId,
-                                   const std::vector<IecReportValue>& values) {
+    static void handleReportValues(IECCommunicator& communicator, int turbineId, const std::vector<IecReportValue>& values)
+    {
         communicator.handleReportValues(turbineId, values);
     }
 
-    static void startReporting(IECCommunicator& communicator) {
+    static void startReporting(IECCommunicator& communicator)
+    {
         communicator.startReporting();
     }
 
-    static void stopReporting(IECCommunicator& communicator) {
+    static void stopReporting(IECCommunicator& communicator)
+    {
         communicator.stopReporting();
     }
 
-    static bool reportStarted(const IECCommunicator& communicator) {
+    static bool reportStarted(const IECCommunicator& communicator)
+    {
         return communicator.reportStarted_.load();
     }
 
-    static void executeRx(IECCommunicator& communicator) {
+    static void executeRx(IECCommunicator& communicator)
+    {
         communicator.executeRx();
     }
 
-    static void executeTx(IECCommunicator& communicator) {
+    static void executeTx(IECCommunicator& communicator)
+    {
         communicator.executeTx();
     }
 
-    static std::size_t scheduledRxCount(const IECCommunicator& communicator) {
+    static std::size_t scheduledRxCount(const IECCommunicator& communicator)
+    {
         std::size_t count = 0;
         for (const auto executionTime : communicator.rxNextExecutionTimes_) {
-            if (executionTime != 0) ++count;
+            if (executionTime != 0)
+                ++count;
         }
         return count;
     }
 
-    static std::size_t bufferedReportCount(IECCommunicator& communicator) {
+    static std::size_t bufferedReportCount(IECCommunicator& communicator)
+    {
         std::lock_guard<std::mutex> lock(communicator.reportRxBufferMutex_);
         std::size_t count = 0;
         for (const auto& value : communicator.reportRxBuffer_) {
-            if (value) ++count;
+            if (value)
+                ++count;
         }
         return count;
     }
@@ -95,13 +107,15 @@ namespace {
 // locally without depending on test-machine port allocation.
 constexpr int unavailableLocalPort = 0;
 
-std::vector<IecReportValue> mappedReport(float value = 8.5F) {
+std::vector<IecReportValue> mappedReport(float value = 8.5F)
+{
     return {{"WMET1$MX$HorWdSpd", value, 1'234}};
 }
 
 } // namespace
 
-TEST_CASE("IEC connection intent does not perform network I/O") {
+TEST_CASE("IEC connection intent does not perform network I/O")
+{
     FakeClock clock;
     IEC61850Manager manager(clock, 100ms, 400ms);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
@@ -117,7 +131,8 @@ TEST_CASE("IEC connection intent does not perform network I/O") {
     REQUIRE(turbine->reconnectDelay == 100ms);
 }
 
-TEST_CASE("IEC reconnect attempts are time-gated and capped") {
+TEST_CASE("IEC reconnect attempts are time-gated and capped")
+{
     FakeClock clock;
     IEC61850Manager manager(clock, 100ms, 400ms);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
@@ -145,7 +160,8 @@ TEST_CASE("IEC reconnect attempts are time-gated and capped") {
     REQUIRE(turbine->status == IEC_LINK_RECONNECTING);
 }
 
-TEST_CASE("IEC reconnect state is independent for each turbine") {
+TEST_CASE("IEC reconnect state is independent for each turbine")
+{
     FakeClock clock;
     IEC61850Manager manager(clock, 100ms, 400ms);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
@@ -166,7 +182,8 @@ TEST_CASE("IEC reconnect state is independent for each turbine") {
     REQUIRE(second->reconnectDelay == 200ms);
 }
 
-TEST_CASE("IEC turbine operations use independent locks") {
+TEST_CASE("IEC turbine operations use independent locks")
+{
     FakeClock clock;
     IEC61850Manager manager(clock);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort);
@@ -174,12 +191,8 @@ TEST_CASE("IEC turbine operations use independent locks") {
 
     const auto first = IEC61850ManagerTestAccess::turbine(manager, 1);
     std::unique_lock<std::mutex> firstLock(first->mutex);
-    auto firstStatus = std::async(std::launch::async, [&manager]() {
-        return manager.status(1);
-    });
-    auto secondStatus = std::async(std::launch::async, [&manager]() {
-        return manager.status(2);
-    });
+    auto firstStatus = std::async(std::launch::async, [&manager]() { return manager.status(1); });
+    auto secondStatus = std::async(std::launch::async, [&manager]() { return manager.status(2); });
 
     const bool secondCompleted = secondStatus.wait_for(1s) == std::future_status::ready;
     const bool firstWaited = firstStatus.wait_for(20ms) == std::future_status::timeout;
@@ -191,19 +204,15 @@ TEST_CASE("IEC turbine operations use independent locks") {
     REQUIRE(firstStatus.get() == IEC_LINK_CLOSED);
 }
 
-TEST_CASE("IEC report configuration remains pending while disconnected") {
+TEST_CASE("IEC report configuration remains pending while disconnected")
+{
     FakeClock clock;
     IEC61850Manager manager(clock, 100ms, 400ms);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort, "LD0", "IED1");
     REQUIRE(manager.connectTurbine(1));
 
-    REQUIRE_FALSE(manager.startPeriodicReport(
-        1,
-        "LLN0$RP$Measurements",
-        "LLN0$Measurements",
-        500,
-        {"MMXU1.TotW.mag.f"},
-        [](int, const std::vector<IecReportValue>&) {}));
+    REQUIRE_FALSE(manager.startPeriodicReport(1, "LLN0$RP$Measurements", "LLN0$Measurements", 500, {"MMXU1.TotW.mag.f"},
+                                              [](int, const std::vector<IecReportValue>&) {}));
     REQUIRE(IEC61850ManagerTestAccess::reportCount(manager) == 1);
     REQUIRE_FALSE(IEC61850ManagerTestAccess::reportActive(manager, 1));
 
@@ -215,7 +224,8 @@ TEST_CASE("IEC report configuration remains pending while disconnected") {
     REQUIRE(IEC61850ManagerTestAccess::reportCount(manager) == 0);
 }
 
-TEST_CASE("IEC communicator falls back to polling while its report is pending") {
+TEST_CASE("IEC communicator falls back to polling while its report is pending")
+{
     SharedData::instance().configureTurbineCount(1);
     FakeClock clock;
     FakeAttackChannel channel;
@@ -242,7 +252,8 @@ TEST_CASE("IEC communicator falls back to polling while its report is pending") 
     REQUIRE(IEC61850ManagerTestAccess::reportCount(manager) == 0);
 }
 
-TEST_CASE("IEC communicator records activity only for accepted report values") {
+TEST_CASE("IEC communicator records activity only for accepted report values")
+{
     SharedData::instance().configureTurbineCount(1);
     FakeClock clock;
     FakeAttackChannel channel;
@@ -258,8 +269,7 @@ TEST_CASE("IEC communicator records activity only for accepted report values") {
     REQUIRE(communicator.lastActivityTime() == noActivity);
     IECCommunicatorTestAccess::handleReportValues(communicator, 2, mappedReport());
     REQUIRE(communicator.lastActivityTime() == noActivity);
-    IECCommunicatorTestAccess::handleReportValues(
-        communicator, 1, {{"unknown", 1.0F, 1'234}});
+    IECCommunicatorTestAccess::handleReportValues(communicator, 1, {{"unknown", 1.0F, 1'234}});
     REQUIRE(communicator.lastActivityTime() == noActivity);
     REQUIRE(IECCommunicatorTestAccess::bufferedReportCount(communicator) == 0);
 
@@ -269,7 +279,8 @@ TEST_CASE("IEC communicator records activity only for accepted report values") {
     REQUIRE(IECCommunicatorTestAccess::bufferedReportCount(communicator) == 1);
 }
 
-TEST_CASE("IEC communicator maps typed control fields to their attack signals") {
+TEST_CASE("IEC communicator maps typed control fields to their attack signals")
+{
     SharedData::instance().configureTurbineCount(1);
     {
         auto& control = SharedData::instance().control;
@@ -283,16 +294,11 @@ TEST_CASE("IEC communicator maps typed control fields to their attack signals") 
     FakeClock clock;
     FakeAttackChannel channel;
     AttackInterface::AttackInterface attackInterface(1, channel, clock);
+    channel.receive(sc::protocol::attack::encode(AttackInterface::CfgDataMessage{"typed transmit test", 0, 0}));
     channel.receive(sc::protocol::attack::encode(
-        AttackInterface::CfgDataMessage{"typed transmit test", 0, 0}));
-    channel.receive(sc::protocol::attack::encode(AttackInterface::CtDataMessage{
-        AttackInterface::ControlSignal::TAP,
-        AttackInterface::SignalType::POWER_SETPOINT,
-        {1}}));
-    channel.receive(sc::protocol::attack::encode(AttackInterface::CtDataMessage{
-        AttackInterface::ControlSignal::TAP,
-        AttackInterface::SignalType::YAW_SETPOINT,
-        {1}}));
+        AttackInterface::CtDataMessage{AttackInterface::ControlSignal::TAP, AttackInterface::SignalType::POWER_SETPOINT, {1}}));
+    channel.receive(sc::protocol::attack::encode(
+        AttackInterface::CtDataMessage{AttackInterface::ControlSignal::TAP, AttackInterface::SignalType::YAW_SETPOINT, {1}}));
     channel.clearSentMessages();
 
     IEC61850Manager manager(clock);
@@ -313,13 +319,11 @@ TEST_CASE("IEC communicator maps typed control fields to their attack signals") 
     REQUIRE(std::get<float>(yawMessage.value) == Catch::Approx(271.25F));
 }
 
-TEST_CASE("GOOSE resources can be configured and stopped repeatedly without starting reception") {
+TEST_CASE("GOOSE resources can be configured and stopped repeatedly without starting reception")
+{
     LibIecGooseReceiver wrapper;
     REQUIRE(wrapper.configureGooseReceiver("test-interface"));
-    REQUIRE(wrapper.addGooseSubscriber(
-        "IED1LD0/LLN0$GO$TurbineState",
-        1000,
-        [](const std::string&, int32_t) {}));
+    REQUIRE(wrapper.addGooseSubscriber("IED1LD0/LLN0$GO$TurbineState", 1000, [](const std::string&, int32_t) {}));
     REQUIRE_FALSE(wrapper.gooseReceiverRunning());
 
     wrapper.stopGooseReceiver();
@@ -331,16 +335,15 @@ TEST_CASE("GOOSE resources can be configured and stopped repeatedly without star
     REQUIRE_FALSE(wrapper.gooseReceiverRunning());
 }
 
-TEST_CASE("GOOSE configuration retains desired turbine subscriptions") {
+TEST_CASE("GOOSE configuration retains desired turbine subscriptions")
+{
     FakeClock clock;
     IEC61850Manager manager(clock);
     manager.addTurbine(1, "127.0.0.1", unavailableLocalPort, "LD0", "IED1");
 
     REQUIRE_FALSE(manager.configureGoose(""));
-    REQUIRE_FALSE(manager.addGooseSubscription(
-        2, "LLN0$GO$TurbineState", [](const std::string&, int32_t) {}));
-    REQUIRE(manager.addGooseSubscription(
-        1, "LLN0$GO$TurbineState", [](const std::string&, int32_t) {}));
+    REQUIRE_FALSE(manager.addGooseSubscription(2, "LLN0$GO$TurbineState", [](const std::string&, int32_t) {}));
+    REQUIRE(manager.addGooseSubscription(1, "LLN0$GO$TurbineState", [](const std::string&, int32_t) {}));
     REQUIRE(IEC61850ManagerTestAccess::gooseSubscriptionCount(manager) == 1);
 
     REQUIRE(manager.configureGoose("first-interface"));

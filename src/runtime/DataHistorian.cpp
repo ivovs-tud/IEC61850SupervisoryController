@@ -3,14 +3,20 @@
 #include <stdexcept>
 #include <utility>
 
-DataHistorian& DataHistorian::instance() {
+DataHistorian& DataHistorian::instance()
+{
     static DataHistorian historian;
     return historian;
 }
 
-DataHistorian::~DataHistorian() { stopRun(); }
+DataHistorian::~DataHistorian()
+{
+    stopRun();
+}
 
-void DataHistorian::configure(std::string experimentName, std::filesystem::path outputDir, std::size_t flushEvery, std::chrono::milliseconds flushPeriod) {
+void DataHistorian::configure(std::string experimentName, std::filesystem::path outputDir, std::size_t flushEvery,
+                              std::chrono::milliseconds flushPeriod)
+{
     std::lock_guard<std::mutex> lock(mutex_);
     outputDir_ = std::move(outputDir);
     flushEvery_ = flushEvery == 0 ? 1 : flushEvery;
@@ -18,19 +24,22 @@ void DataHistorian::configure(std::string experimentName, std::filesystem::path 
     currentExperimentName_ = sanitizeName(std::move(experimentName));
 }
 
-void DataHistorian::start() {
+void DataHistorian::start()
+{
     std::lock_guard<std::mutex> lock(mutex_);
     if (!started_) {
         startNewRunUnlocked(currentExperimentName_);
     }
 }
 
-void DataHistorian::startNewRun(std::string experimentName) {
+void DataHistorian::startNewRun(std::string experimentName)
+{
     std::lock_guard<std::mutex> lock(mutex_);
     startNewRunUnlocked(std::move(experimentName));
 }
 
-void DataHistorian::startNewRunUnlocked(std::string experimentName) {
+void DataHistorian::startNewRunUnlocked(std::string experimentName)
+{
     flushUnlocked();
     if (file_.is_open()) {
         file_.close();
@@ -59,7 +68,8 @@ void DataHistorian::startNewRunUnlocked(std::string experimentName) {
     started_ = true;
 }
 
-void DataHistorian::stopRun() {
+void DataHistorian::stopRun()
+{
     std::lock_guard<std::mutex> lock(mutex_);
     flushUnlocked();
     if (file_.is_open()) {
@@ -68,7 +78,8 @@ void DataHistorian::stopRun() {
     started_ = false;
 }
 
-void DataHistorian::log(const std::string& key, double value) {
+void DataHistorian::log(const std::string& key, double value)
+{
     std::lock_guard<std::mutex> lock(mutex_);
     if (!started_) {
         return;
@@ -82,7 +93,8 @@ void DataHistorian::log(const std::string& key, double value) {
     maybeFlushUnlocked();
 }
 
-void DataHistorian::log(const std::string& rawMessage) {
+void DataHistorian::log(const std::string& rawMessage)
+{
     std::lock_guard<std::mutex> lock(mutex_);
     if (!started_) {
         return;
@@ -94,23 +106,26 @@ void DataHistorian::log(const std::string& rawMessage) {
     maybeFlushUnlocked();
 }
 
-void DataHistorian::flush() {
+void DataHistorian::flush()
+{
     std::lock_guard<std::mutex> lock(mutex_);
     flushUnlocked();
 }
 
-const std::filesystem::path& DataHistorian::currentFilePath() const noexcept { return filePath_; }
+const std::filesystem::path& DataHistorian::currentFilePath() const noexcept
+{
+    return filePath_;
+}
 
-std::string DataHistorian::sanitizeName(std::string name) {
+std::string DataHistorian::sanitizeName(std::string name)
+{
     if (name.empty()) {
         return "run";
     }
 
     for (char& character : name) {
-        const bool safe = (character >= 'a' && character <= 'z') ||
-                          (character >= 'A' && character <= 'Z') ||
-                          (character >= '0' && character <= '9') ||
-                          character == '-' || character == '_';
+        const bool safe = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+                          (character >= '0' && character <= '9') || character == '-' || character == '_';
         if (!safe) {
             character = '_';
         }
@@ -119,13 +134,15 @@ std::string DataHistorian::sanitizeName(std::string name) {
     return name;
 }
 
-void DataHistorian::ensureFileOpen() {
+void DataHistorian::ensureFileOpen()
+{
     if (!file_.is_open()) {
         throw std::runtime_error("DataHistorian has no active output file");
     }
 }
 
-void DataHistorian::flushUnlocked() {
+void DataHistorian::flushUnlocked()
+{
     if (!file_.is_open() || bufferedRecords_ == 0) {
         return;
     }
@@ -138,7 +155,8 @@ void DataHistorian::flushUnlocked() {
     lastFlushTime_ = std::chrono::steady_clock::now();
 }
 
-void DataHistorian::maybeFlushUnlocked() {
+void DataHistorian::maybeFlushUnlocked()
+{
     if (bufferedRecords_ >= flushEvery_) {
         flushUnlocked();
         return;

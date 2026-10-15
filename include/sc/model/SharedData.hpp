@@ -10,14 +10,12 @@
 
 inline constexpr std::size_t DEFAULT_TURBINE_COUNT = 9;
 
-template <typename T>
-using History = boost::circular_buffer<T>;
+template <typename T> using History = boost::circular_buffer<T>;
 
-template <typename T>
-using TurbineHistory = std::vector<History<T>>;
+template <typename T> using TurbineHistory = std::vector<History<T>>;
 
-template <typename T>
-inline TurbineHistory<T> makeTurbineHistory(std::size_t turbineCount, std::size_t capacity) {
+template <typename T> inline TurbineHistory<T> makeTurbineHistory(std::size_t turbineCount, std::size_t capacity)
+{
     return TurbineHistory<T>(turbineCount, History<T>(capacity));
 }
 
@@ -112,7 +110,8 @@ struct InterfaceData {
 };
 
 struct SharedData {
-    static SharedData& instance() {
+    static SharedData& instance()
+    {
         static SharedData data;
         return data;
     }
@@ -123,7 +122,8 @@ struct SharedData {
     MonitoringData monitoring;
     InterfaceData interface;
 
-    void configureTurbineCount(std::size_t turbineCount) {
+    void configureTurbineCount(std::size_t turbineCount)
+    {
         if (turbineCount == 0) {
             throw std::invalid_argument("SharedData requires at least one turbine");
         }

@@ -8,9 +8,8 @@
 
 // Owns raw libiec61850 GOOSE resources. Connection and retry policy belong to
 // IEC61850Manager.
-class LibIecGooseReceiver
-{
-public:
+class LibIecGooseReceiver {
+    public:
     LibIecGooseReceiver();
     ~LibIecGooseReceiver();
 
@@ -18,14 +17,12 @@ public:
     LibIecGooseReceiver& operator=(const LibIecGooseReceiver&) = delete;
 
     bool configureGooseReceiver(const std::string& networkInterface);
-    bool addGooseSubscriber(const std::string& controlBlockReference,
-                            uint16_t appId,
-                            GooseCallback callback);
+    bool addGooseSubscriber(const std::string& controlBlockReference, uint16_t appId, GooseCallback callback);
     bool startGooseReceiver();
     void stopGooseReceiver();
     bool gooseReceiverRunning() const;
 
-private:
+    private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

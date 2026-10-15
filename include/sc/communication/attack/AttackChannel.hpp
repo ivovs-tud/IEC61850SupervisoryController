@@ -12,7 +12,7 @@ using AttackLeaseCheckHandler = std::function<void()>;
 using AttackDisconnectHandler = std::function<void(const std::string&)>;
 
 class AttackChannel {
-public:
+    public:
     virtual ~AttackChannel() = default;
 
     virtual void setReceiveHandler(AttackReceiveHandler handler) = 0;

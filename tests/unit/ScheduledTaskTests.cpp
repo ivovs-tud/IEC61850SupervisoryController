@@ -1,13 +1,11 @@
-#include "sc/tasks/ControlTask.hpp"
-#include "sc/tasks/SignalProcessingTask.hpp"
-
 #include "sc/model/SharedData.hpp"
 #include "sc/runtime/Time.hpp"
+#include "sc/tasks/ControlTask.hpp"
+#include "sc/tasks/SignalProcessingTask.hpp"
 #include "support/TemporaryCsv.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-
 #include <chrono>
 #include <limits>
 #include <stdexcept>
@@ -16,30 +14,37 @@
 namespace {
 
 class TestControlTask : public ControlTask {
-public:
+    public:
     using ControlTask::ControlTask;
-    void runOnce() { execute(); }
+    void runOnce()
+    {
+        execute();
+    }
 };
 
 class TestSignalProcessingTask : public SignalProcessingTask {
-public:
+    public:
     using SignalProcessingTask::SignalProcessingTask;
-    void runOnce() { execute(); }
+    void runOnce()
+    {
+        execute();
+    }
 };
 
-sc::application::YawLut testYawLut() {
-    const sc::test::TemporaryCsv file(
-        "ws,wd,WT1,WT2\n"
-        "0,0,0.5,-0.5\n"
-        "0,20,0.5,-0.5\n"
-        "10,0,0.5,-0.5\n"
-        "10,20,0.5,-0.5\n");
+sc::application::YawLut testYawLut()
+{
+    const sc::test::TemporaryCsv file("ws,wd,WT1,WT2\n"
+                                      "0,0,0.5,-0.5\n"
+                                      "0,20,0.5,-0.5\n"
+                                      "10,0,0.5,-0.5\n"
+                                      "10,20,0.5,-0.5\n");
     return sc::application::YawLut(file.path());
 }
 
 } // namespace
 
-TEST_CASE("control task publishes one complete setpoint update") {
+TEST_CASE("control task publishes one complete setpoint update")
+{
     auto& data = SharedData::instance();
     data.configureTurbineCount(2);
     {
@@ -61,7 +66,8 @@ TEST_CASE("control task publishes one complete setpoint update") {
     REQUIRE(data.control.yawSetpoints == std::vector<float>{359.0F, 1.0F});
 }
 
-TEST_CASE("control task leaves both outputs unchanged when publication cannot complete") {
+TEST_CASE("control task leaves both outputs unchanged when publication cannot complete")
+{
     auto& data = SharedData::instance();
     data.configureTurbineCount(3);
     {
@@ -85,7 +91,8 @@ TEST_CASE("control task leaves both outputs unchanged when publication cannot co
     REQUIRE(data.control.yawSetpoints == std::vector<float>{21.0F, 22.0F, 23.0F});
 }
 
-TEST_CASE("control task uses the published available-power estimates in available-power mode") {
+TEST_CASE("control task uses the published available-power estimates in available-power mode")
+{
     auto& data = SharedData::instance();
     data.configureTurbineCount(2);
     {
@@ -100,16 +107,15 @@ TEST_CASE("control task uses the published available-power estimates in availabl
         data.processed.availablePower = {20.0, 80.0};
     }
 
-    TestControlTask task(
-        {2, std::chrono::milliseconds(10), sc::application::PowerSharingMode::AVAILABLE_POWER},
-        testYawLut());
+    TestControlTask task({2, std::chrono::milliseconds(10), sc::application::PowerSharingMode::AVAILABLE_POWER}, testYawLut());
     task.runOnce();
 
     std::lock_guard<std::mutex> lock(data.control.mutex);
     REQUIRE(data.control.powerSetpoints == std::vector<float>{20.0F, 80.0F});
 }
 
-TEST_CASE("signal-processing task publishes finite farm data from fresh measurements") {
+TEST_CASE("signal-processing task publishes finite farm data from fresh measurements")
+{
     auto& data = SharedData::instance();
     data.configureTurbineCount(2);
     const uint64_t now = getCurrentTimeMs();

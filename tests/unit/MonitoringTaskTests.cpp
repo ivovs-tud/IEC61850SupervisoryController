@@ -1,23 +1,27 @@
-#include "sc/tasks/MonitoringTask.hpp"
-
 #include "sc/model/SharedData.hpp"
 #include "sc/runtime/Time.hpp"
+#include "sc/tasks/MonitoringTask.hpp"
 
 #include <catch2/catch_test_macros.hpp>
-
 #include <chrono>
 
 namespace {
 
 class TestMonitoringTask : public MonitoringTask {
-public:
-    TestMonitoringTask() : MonitoringTask(std::chrono::milliseconds(50), 1, false) {}
-    void runOnce() { execute(); }
+    public:
+    TestMonitoringTask() : MonitoringTask(std::chrono::milliseconds(50), 1, false)
+    {
+    }
+    void runOnce()
+    {
+        execute();
+    }
 };
 
 } // namespace
 
-TEST_CASE("legacy alarm reset does not hide an alarm active in the current cycle") {
+TEST_CASE("legacy alarm reset does not hide an alarm active in the current cycle")
+{
     auto& data = SharedData::instance();
     data.configureTurbineCount(1);
     {

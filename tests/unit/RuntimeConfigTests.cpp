@@ -1,20 +1,19 @@
-#include <catch2/catch_test_macros.hpp>
+#include "sc/application/YawLut.hpp"
+#include "sc/communication/attack/AttackProtocol.hpp"
+#include "sc/model/SharedData.hpp"
+#include "sc/runtime/RuntimeConfig.hpp"
+#include "support/TemporaryCsv.hpp"
 
 #include <boost/property_tree/json_parser.hpp>
-
+#include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <filesystem>
 #include <string>
 
-#include "sc/model/SharedData.hpp"
-#include "sc/application/YawLut.hpp"
-#include "sc/communication/attack/AttackProtocol.hpp"
-#include "sc/runtime/RuntimeConfig.hpp"
-#include "support/TemporaryCsv.hpp"
-
 using namespace std::chrono_literals;
 
-TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 through 110") {
+TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 through 110")
+{
     const auto config = sc::runtime::defaultRuntimeConfig();
 
     REQUIRE(config.turbines.size() == 9);
@@ -43,17 +42,17 @@ TEST_CASE("runtime defaults define nine localhost MMS turbines on ports 102 thro
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, 9));
 }
 
-TEST_CASE("default runtime turbine list matches the shipped yaw LUT") {
+TEST_CASE("default runtime turbine list matches the shipped yaw LUT")
+{
     const auto config = sc::runtime::defaultRuntimeConfig();
-    const sc::application::YawLut yawLut(
-        (std::filesystem::path(SC_SOURCE_DIR) / "config/yaw_lut.csv").string());
+    const sc::application::YawLut yawLut((std::filesystem::path(SC_SOURCE_DIR) / "config/yaw_lut.csv").string());
 
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, yawLut.turbineCount()));
 }
 
-TEST_CASE("shipped versioned JSON example loads and matches its yaw LUT") {
-    const auto config = sc::runtime::loadRuntimeConfig(
-        std::filesystem::path(SC_SOURCE_DIR) / "config/default.json");
+TEST_CASE("shipped versioned JSON example loads and matches its yaw LUT")
+{
+    const auto config = sc::runtime::loadRuntimeConfig(std::filesystem::path(SC_SOURCE_DIR) / "config/default.json");
     const sc::application::YawLut yawLut(config.control.yawLutCsvPath.string());
 
     REQUIRE(config.turbines.size() == 9);
@@ -63,26 +62,23 @@ TEST_CASE("shipped versioned JSON example loads and matches its yaw LUT") {
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config, yawLut.turbineCount()));
 }
 
-TEST_CASE("Windows local configuration binds the HMI to loopback") {
-    const auto config = sc::runtime::loadRuntimeConfig(
-        std::filesystem::path(SC_SOURCE_DIR) / "config/windows-local.json");
+TEST_CASE("Windows local configuration binds the HMI to loopback")
+{
+    const auto config = sc::runtime::loadRuntimeConfig(std::filesystem::path(SC_SOURCE_DIR) / "config/windows-local.json");
 
     REQUIRE(config.hmi.publisherEndpoint == "tcp://127.0.0.1:5555");
     REQUIRE(config.hmi.commandEndpoint == "tcp://127.0.0.1:5556");
 }
 
-TEST_CASE("runtime schema limits match runtime validation boundaries") {
+TEST_CASE("runtime schema limits match runtime validation boundaries")
+{
     boost::property_tree::ptree schema;
-    boost::property_tree::read_json(
-        (std::filesystem::path(SC_SOURCE_DIR) / "config/runtime-config.schema.json").string(),
-        schema);
+    boost::property_tree::read_json((std::filesystem::path(SC_SOURCE_DIR) / "config/runtime-config.schema.json").string(), schema);
 
-    REQUIRE(schema.get<int>("properties.schema_version.const") ==
-            sc::runtime::defaultRuntimeConfig().schemaVersion);
+    REQUIRE(schema.get<int>("properties.schema_version.const") == sc::runtime::defaultRuntimeConfig().schemaVersion);
     REQUIRE(schema.get<int>("properties.turbines.minItems") == 1);
     REQUIRE(schema.get<int>("properties.turbines.maxItems") == 255);
-    REQUIRE(schema.get<int>(
-        "properties.signal_processing.properties.wind_speed_sample_count.minimum") == 1);
+    REQUIRE(schema.get<int>("properties.signal_processing.properties.wind_speed_sample_count.minimum") == 1);
     REQUIRE(schema.get<int>("$defs.socketServer.properties.port.minimum") == 1024);
     REQUIRE(schema.get<int>("$defs.socketServer.properties.port.maximum") == 65535);
     REQUIRE(schema.get<int>("$defs.attackInterfaceServer.properties.receive_buffer_bytes.minimum") ==
@@ -92,17 +88,16 @@ TEST_CASE("runtime schema limits match runtime validation boundaries") {
 
     auto config = sc::runtime::defaultRuntimeConfig();
     config.communication.operatorServer.port = 1024;
-    config.communication.attackInterface.receiveBufferBytes =
-        sc::protocol::attack::CFG_DATA_SIZE;
-    config.communication.attackInterface.transmitBufferBytes =
-        sc::protocol::attack::CFG_DATA_SIZE;
+    config.communication.attackInterface.receiveBufferBytes = sc::protocol::attack::CFG_DATA_SIZE;
+    config.communication.attackInterface.transmitBufferBytes = sc::protocol::attack::CFG_DATA_SIZE;
     REQUIRE_NOTHROW(sc::runtime::validateRuntimeConfig(config));
 
     config.communication.operatorServer.port = 65536;
     REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
 }
 
-TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
+TEST_CASE("runtime JSON overrides defaults and resolves configured paths")
+{
     const sc::test::TemporaryCsv file(
         "{\n"
         "  \"turbines\": [\n"
@@ -156,31 +151,31 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths") {
     REQUIRE(config.communication.goose.networkInterface == "test0");
 }
 
-TEST_CASE("runtime JSON accepts future turbine metadata and named report definitions") {
-    const sc::test::TemporaryCsv file(
-        "{\n"
-        "  \"schema_version\": 1,\n"
-        "  \"turbines\": [\n"
-        "    {\n"
-        "      \"id\": \"north-01\",\n"
-        "      \"mms\": {\"host\": \"10.0.0.1\", \"port\": 102},\n"
-        "      \"model\": {\"name\": \"custom\", \"parameters\": {\"rated_power_w\": 6000000}},\n"
-        "      \"metadata\": {\"location\": \"north row\"},\n"
-        "      \"extensions\": {\"vendor.example\": {\"asset_id\": 17}}\n"
-        "    }\n"
-        "  ],\n"
-        "  \"communication\": {\"mms\": {\"reports\": [\n"
-        "    {\n"
-        "      \"name\": \"operational\", \"enabled\": true,\n"
-        "      \"integrity_period_ms\": 750,\n"
-        "      \"dataset_reference\": \"LD0$dataset\",\n"
-        "      \"control_block_reference\": \"LD0$RP$report\",\n"
-        "      \"data_references\": [\"WTUR1$MX$W\"]\n"
-        "    },\n"
-        "    {\"name\": \"diagnostics\", \"enabled\": false}\n"
-        "  ]}},\n"
-        "  \"extensions\": {\"site.example\": {\"region\": \"test\"}}\n"
-        "}\n");
+TEST_CASE("runtime JSON accepts future turbine metadata and named report definitions")
+{
+    const sc::test::TemporaryCsv file("{\n"
+                                      "  \"schema_version\": 1,\n"
+                                      "  \"turbines\": [\n"
+                                      "    {\n"
+                                      "      \"id\": \"north-01\",\n"
+                                      "      \"mms\": {\"host\": \"10.0.0.1\", \"port\": 102},\n"
+                                      "      \"model\": {\"name\": \"custom\", \"parameters\": {\"rated_power_w\": 6000000}},\n"
+                                      "      \"metadata\": {\"location\": \"north row\"},\n"
+                                      "      \"extensions\": {\"vendor.example\": {\"asset_id\": 17}}\n"
+                                      "    }\n"
+                                      "  ],\n"
+                                      "  \"communication\": {\"mms\": {\"reports\": [\n"
+                                      "    {\n"
+                                      "      \"name\": \"operational\", \"enabled\": true,\n"
+                                      "      \"integrity_period_ms\": 750,\n"
+                                      "      \"dataset_reference\": \"LD0$dataset\",\n"
+                                      "      \"control_block_reference\": \"LD0$RP$report\",\n"
+                                      "      \"data_references\": [\"WTUR1$MX$W\"]\n"
+                                      "    },\n"
+                                      "    {\"name\": \"diagnostics\", \"enabled\": false}\n"
+                                      "  ]}},\n"
+                                      "  \"extensions\": {\"site.example\": {\"region\": \"test\"}}\n"
+                                      "}\n");
 
     const auto config = sc::runtime::loadRuntimeConfig(file.path());
 
@@ -191,24 +186,27 @@ TEST_CASE("runtime JSON accepts future turbine metadata and named report definit
     REQUIRE(config.communication.mms.reports.size() == 2);
     REQUIRE(config.communication.mms.reports[0].name == "operational");
     REQUIRE(config.communication.mms.reports[0].integrityPeriod == 750ms);
-    REQUIRE(config.communication.mms.reports[0].dataReferences ==
-            std::vector<std::string>{"WTUR1$MX$W"});
+    REQUIRE(config.communication.mms.reports[0].dataReferences == std::vector<std::string>{"WTUR1$MX$W"});
     REQUIRE_FALSE(config.communication.mms.reports[1].enabled);
 }
 
-TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
-    SECTION("JSON explicitly contains no turbines") {
+TEST_CASE("runtime validation rejects inconsistent or unsafe configuration")
+{
+    SECTION("JSON explicitly contains no turbines")
+    {
         const sc::test::TemporaryCsv file("{\"turbines\": []}\n");
         REQUIRE_THROWS_AS(sc::runtime::loadRuntimeConfig(file.path()), std::runtime_error);
     }
 
-    SECTION("empty turbine list") {
+    SECTION("empty turbine list")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.turbines.clear();
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("attack protocol limits the turbine count to uint8 identifiers") {
+    SECTION("attack protocol limits the turbine count to uint8 identifiers")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.turbines.resize(256, config.turbines.front());
         for (std::size_t index = 0; index < config.turbines.size(); ++index) {
@@ -217,102 +215,115 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("controller servers cannot use privileged ports") {
+    SECTION("controller servers cannot use privileged ports")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.operatorServer.port = 1023;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("yaw LUT count mismatch") {
+    SECTION("yaw LUT count mismatch")
+    {
         const auto config = sc::runtime::defaultRuntimeConfig();
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config, 8), std::runtime_error);
     }
 
-    SECTION("duplicate server ports") {
+    SECTION("duplicate server ports")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.port = config.communication.operatorServer.port;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("non-positive period") {
+    SECTION("non-positive period")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.tasks.monitoringPeriod = 0ms;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("wind-speed sample count must be positive") {
+    SECTION("wind-speed sample count must be positive")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.signalProcessing.windSpeedSampleCount = 0;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
 
-        const sc::test::TemporaryCsv file(
-            "{\"signal_processing\":{\"wind_speed_sample_count\":-1}}\n");
+        const sc::test::TemporaryCsv file("{\"signal_processing\":{\"wind_speed_sample_count\":-1}}\n");
         REQUIRE_THROWS_AS(sc::runtime::loadRuntimeConfig(file.path()), std::runtime_error);
     }
 
-    SECTION("attack lease must exceed its heartbeat interval") {
+    SECTION("attack lease must exceed its heartbeat interval")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.leaseTimeout = config.communication.attackInterface.heartbeatInterval;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("attack buffers must fit the configuration message") {
+    SECTION("attack buffers must fit the configuration message")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.receiveBufferBytes = 267;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("attack configuration timeout must be positive") {
+    SECTION("attack configuration timeout must be positive")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.configurationTimeout = 0ms;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("raw TCP bind address must be an IPv4 address") {
+    SECTION("raw TCP bind address must be an IPv4 address")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.attackInterface.transport = sc::ports::AttackTransport::TCP;
         config.communication.attackInterface.bindAddress = "localhost";
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("unknown attack transport") {
-        const sc::test::TemporaryCsv file(
-            "{\"communication\":{\"attack_interface\":{\"transport\":\"udp\"}}}\n");
+    SECTION("unknown attack transport")
+    {
+        const sc::test::TemporaryCsv file("{\"communication\":{\"attack_interface\":{\"transport\":\"udp\"}}}\n");
         REQUIRE_THROWS_AS(sc::runtime::loadRuntimeConfig(file.path()), std::runtime_error);
     }
 
-    SECTION("unknown power-sharing mode") {
-        const sc::test::TemporaryCsv file(
-            "{\"control\":{\"power_sharing_mode\":\"unknown\"}}\n");
+    SECTION("unknown power-sharing mode")
+    {
+        const sc::test::TemporaryCsv file("{\"control\":{\"power_sharing_mode\":\"unknown\"}}\n");
         REQUIRE_THROWS_AS(sc::runtime::loadRuntimeConfig(file.path()), std::runtime_error);
     }
 
-    SECTION("unsupported schema version") {
+    SECTION("unsupported schema version")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.schemaVersion = 2;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("duplicate turbine IDs") {
+    SECTION("duplicate turbine IDs")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.turbines[1].id = config.turbines[0].id;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("multiple enabled reports are reserved for a later implementation") {
+    SECTION("multiple enabled reports are reserved for a later implementation")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.mms.reports.push_back({"diagnostics"});
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("MMS reconnect maximum must not be shorter than the initial delay") {
+    SECTION("MMS reconnect maximum must not be shorter than the initial delay")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.mms.reconnectInitialDelay = 500ms;
         config.communication.mms.reconnectMaxDelay = 100ms;
         REQUIRE_THROWS_AS(sc::runtime::validateRuntimeConfig(config), std::runtime_error);
     }
 
-    SECTION("enabled GOOSE requires a network interface") {
+    SECTION("enabled GOOSE requires a network interface")
+    {
         auto config = sc::runtime::defaultRuntimeConfig();
         config.communication.goose.enabled = true;
         config.communication.goose.networkInterface.clear();
@@ -320,7 +331,8 @@ TEST_CASE("runtime validation rejects inconsistent or unsafe configuration") {
     }
 }
 
-TEST_CASE("shared task data can be sized from runtime configuration") {
+TEST_CASE("shared task data can be sized from runtime configuration")
+{
     SharedData data;
     data.configureTurbineCount(4);
 
@@ -338,7 +350,8 @@ TEST_CASE("shared task data can be sized from runtime configuration") {
     REQUIRE(data.control.turbineController[0] == ControlData::controllerKomega2);
 }
 
-TEST_CASE("shared task data sections have independent mutexes") {
+TEST_CASE("shared task data sections have independent mutexes")
+{
     SharedData data;
     std::lock_guard<std::mutex> collectedLock(data.collected.mutex);
     std::unique_lock<std::mutex> processedLock(data.processed.mutex, std::try_to_lock);

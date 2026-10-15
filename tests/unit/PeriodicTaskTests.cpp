@@ -1,65 +1,88 @@
-#include <catch2/catch_test_macros.hpp>
+#include "sc/runtime/PeriodicTask.hpp"
 
 #include <atomic>
+#include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <future>
 #include <stdexcept>
 #include <string>
 #include <thread>
 
-#include "sc/runtime/PeriodicTask.hpp"
-
 using namespace std::chrono_literals;
 
 namespace {
 
 class CountingTask : public PeriodicTask {
-public:
-    explicit CountingTask(std::chrono::milliseconds period) : PeriodicTask(period) {}
+    public:
+    explicit CountingTask(std::chrono::milliseconds period) : PeriodicTask(period)
+    {
+    }
     std::atomic<int> executions{0};
 
-protected:
-    void execute() override { executions.fetch_add(1); }
+    protected:
+    void execute() override
+    {
+        executions.fetch_add(1);
+    }
 };
 
 class StartAwareTask : public PeriodicTask {
-public:
-    StartAwareTask() : PeriodicTask(10ms) {}
+    public:
+    StartAwareTask() : PeriodicTask(10ms)
+    {
+    }
     std::atomic<bool> ready{false};
 
-protected:
-    void onStart() override {
+    protected:
+    void onStart() override
+    {
         std::this_thread::sleep_for(20ms);
         ready.store(true);
     }
-    void execute() override {}
+    void execute() override
+    {
+    }
 };
 
 class FailingStartTask : public PeriodicTask {
-public:
-    FailingStartTask() : PeriodicTask(10ms) {}
+    public:
+    FailingStartTask() : PeriodicTask(10ms)
+    {
+    }
 
-protected:
-    void onStart() override { throw std::runtime_error("startup failed"); }
-    void execute() override {}
+    protected:
+    void onStart() override
+    {
+        throw std::runtime_error("startup failed");
+    }
+    void execute() override
+    {
+    }
 };
 
 class FailingExecuteTask : public PeriodicTask {
-public:
-    FailingExecuteTask() : PeriodicTask(10ms) {}
+    public:
+    FailingExecuteTask() : PeriodicTask(10ms)
+    {
+    }
 
-protected:
-    void execute() override { throw std::runtime_error("execution failed"); }
+    protected:
+    void execute() override
+    {
+        throw std::runtime_error("execution failed");
+    }
 };
 
 } // namespace
 
-TEST_CASE("periodic task rejects non-positive periods") {
+TEST_CASE("periodic task rejects non-positive periods")
+{
     REQUIRE_THROWS_AS(CountingTask(0ms), std::invalid_argument);
     REQUIRE_THROWS_AS(CountingTask(-1ms), std::invalid_argument);
 }
 
-TEST_CASE("periodic task start waits for worker readiness") {
+TEST_CASE("periodic task start waits for worker readiness")
+{
     StartAwareTask task;
 
     REQUIRE(task.start());
@@ -69,7 +92,8 @@ TEST_CASE("periodic task start waits for worker readiness") {
     REQUIRE(task.state() == PeriodicTask::State::Stopped);
 }
 
-TEST_CASE("periodic task rejects a second active start") {
+TEST_CASE("periodic task rejects a second active start")
+{
     CountingTask task(10ms);
 
     REQUIRE(task.start());
@@ -78,7 +102,8 @@ TEST_CASE("periodic task rejects a second active start") {
     REQUIRE_NOTHROW(task.stop());
 }
 
-TEST_CASE("periodic task reports startup failure without escaping its thread") {
+TEST_CASE("periodic task reports startup failure without escaping its thread")
+{
     FailingStartTask task;
 
     REQUIRE_FALSE(task.start());
@@ -87,13 +112,12 @@ TEST_CASE("periodic task reports startup failure without escaping its thread") {
     REQUIRE(task.failureMessage() == "startup failed");
 }
 
-TEST_CASE("periodic task captures execution failure and invokes its handler") {
+TEST_CASE("periodic task captures execution failure and invokes its handler")
+{
     FailingExecuteTask task;
     std::promise<std::string> reportedFailure;
     auto reported = reportedFailure.get_future();
-    task.setFailureHandler([&reportedFailure](const std::string& message) {
-        reportedFailure.set_value(message);
-    });
+    task.setFailureHandler([&reportedFailure](const std::string& message) { reportedFailure.set_value(message); });
 
     REQUIRE(task.start());
     REQUIRE(reported.wait_for(500ms) == std::future_status::ready);
@@ -103,7 +127,8 @@ TEST_CASE("periodic task captures execution failure and invokes its handler") {
     REQUIRE(task.failureMessage() == "execution failed");
 }
 
-TEST_CASE("periodic task stop interrupts a long period and destruction joins") {
+TEST_CASE("periodic task stop interrupts a long period and destruction joins")
+{
     const auto startTime = std::chrono::steady_clock::now();
     {
         CountingTask task(10s);

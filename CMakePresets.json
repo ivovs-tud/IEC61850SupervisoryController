@@ -8,28 +8,17 @@
   "configurePresets": [
     {
       "name": "hardware-free-tests",
-      "displayName": "Hardware-free unit and protocol tests",
+      "displayName": "Complete hardware-free test suite",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "SC_BUILD_CONTROLLER": "OFF",
-        "SC_BUILD_TESTS": "ON",
-        "SC_BUILD_INTEGRATION_TESTS": "OFF"
+        "SC_BUILD_TESTS": "ON"
       }
     },
     {
-      "name": "hardware-free-integration",
-      "displayName": "Hardware-free C++/Python integration tests",
+      "name": "vcpkg-hardware-free-tests",
+      "displayName": "Hardware-free tests with vcpkg",
       "inherits": "hardware-free-tests",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": {
-        "SC_BUILD_INTEGRATION_TESTS": "ON"
-      }
-    },
-    {
-      "name": "vcpkg-hardware-free-integration",
-      "displayName": "Hardware-free integration tests with vcpkg",
-      "inherits": "hardware-free-integration",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
@@ -44,13 +33,8 @@
       "configuration": "Debug"
     },
     {
-      "name": "hardware-free-integration",
-      "configurePreset": "hardware-free-integration",
-      "configuration": "Debug"
-    },
-    {
-      "name": "vcpkg-hardware-free-integration",
-      "configurePreset": "vcpkg-hardware-free-integration",
+      "name": "vcpkg-hardware-free-tests",
+      "configurePreset": "vcpkg-hardware-free-tests",
       "configuration": "Debug"
     }
   ],
@@ -64,16 +48,8 @@
       }
     },
     {
-      "name": "hardware-free-integration",
-      "configurePreset": "hardware-free-integration",
-      "configuration": "Debug",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "vcpkg-hardware-free-integration",
-      "configurePreset": "vcpkg-hardware-free-integration",
+      "name": "vcpkg-hardware-free-tests",
+      "configurePreset": "vcpkg-hardware-free-tests",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true

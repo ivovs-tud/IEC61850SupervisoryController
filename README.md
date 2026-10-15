@@ -16,6 +16,11 @@ cmake --build --preset hardware-free-tests
 ctest --preset hardware-free-tests
 ```
 
+Contributor formatting and naming conventions are documented in
+[docs/development/cpp-style.md](docs/development/cpp-style.md). The formatter
+is pinned to clang-format 18.1.8 and can be checked with
+`cmake -DSC_FORMAT_MODE=check -P cmake/RunClangFormat.cmake`.
+
 A controller build first looks for a CMake package that provides the target
 `libiec61850::iec61850`. When using an existing libiec61850 source build, pass
 its location explicitly instead of relying on a machine-specific path:

@@ -9,7 +9,7 @@
 #include <string>
 
 class DataHistorian {
-public:
+    public:
     static DataHistorian& instance();
 
     DataHistorian(const DataHistorian&) = delete;
@@ -19,8 +19,8 @@ public:
 
     ~DataHistorian();
 
-    void configure(std::string experimentName = "run", std::filesystem::path outputDir = "data", std::size_t flushEvery = 512, 
-                    std::chrono::milliseconds flushPeriod = std::chrono::milliseconds(5000));
+    void configure(std::string experimentName = "run", std::filesystem::path outputDir = "data", std::size_t flushEvery = 512,
+                   std::chrono::milliseconds flushPeriod = std::chrono::milliseconds(5000));
     void start();
     void startNewRun(std::string experimentName);
     void stopRun();
@@ -29,7 +29,7 @@ public:
     void flush();
     const std::filesystem::path& currentFilePath() const noexcept;
 
-private:
+    private:
     DataHistorian() = default;
 
     static std::string sanitizeName(std::string name);

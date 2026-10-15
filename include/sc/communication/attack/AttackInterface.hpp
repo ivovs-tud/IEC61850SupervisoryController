@@ -47,8 +47,9 @@ enum AIRC {
 using AuditCallback = std::function<void(const std::string&)>;
 
 class AttackInterface {
-public:
-    AttackInterface(int numTurbines, sc::ports::AttackChannel& channel, sc::ports::Clock& clock = sc::ports::systemClock(), AttackTiming timing = {});
+    public:
+    AttackInterface(int numTurbines, sc::ports::AttackChannel& channel, sc::ports::Clock& clock = sc::ports::systemClock(),
+                    AttackTiming timing = {});
 
     AttackInterface(const AttackInterface&) = delete;
     AttackInterface& operator=(const AttackInterface&) = delete;
@@ -63,7 +64,7 @@ public:
     AIRC processValue(unsigned int turbineId, SignalType signalType, float& value);
     void processValue(unsigned int turbineId, SignalType signalType, uint32_t value);
 
-private:
+    private:
     void txDataUnlocked(unsigned int turbineId, SignalType signalType, float value);
     void txDataUnlocked(unsigned int turbineId, SignalType signalType, uint32_t value);
     AIRC overwriteUnlocked(unsigned int turbineId, SignalType signalType, float& value);
@@ -89,9 +90,7 @@ private:
     void endSession(const std::string& reason);
     void audit(const sc::application::AttackSessionInfo& session, const std::string& event) const;
     void audit(const sc::application::ClosedAttackSession& session, const std::string& event) const;
-    void emitAudit(sc::application::AttackSessionId id,
-                   const std::string& label,
-                   const std::string& event) const;
+    void emitAudit(sc::application::AttackSessionId id, const std::string& label, const std::string& event) const;
 
     int numTurbines_;
     sc::ports::AttackChannel& channel_;

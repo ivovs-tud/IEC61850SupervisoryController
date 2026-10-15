@@ -1,9 +1,8 @@
 #include "sc/runtime/RuntimeConfig.hpp"
 
+#include <algorithm>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
-
-#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <set>
@@ -16,29 +15,30 @@ namespace {
 
 using boost::property_tree::ptree;
 
-template <typename Duration>
-void loadMilliseconds(const ptree& tree, const std::string& path, Duration& destination) {
+template <typename Duration> void loadMilliseconds(const ptree& tree, const std::string& path, Duration& destination)
+{
     if (const auto value = tree.get_optional<long long>(path)) {
         destination = std::chrono::milliseconds(*value);
     }
 }
 
-void requirePositive(std::chrono::milliseconds value, const std::string& field) {
+void requirePositive(std::chrono::milliseconds value, const std::string& field)
+{
     if (value.count() <= 0) {
         throw std::runtime_error(field + " must be greater than zero");
     }
 }
 
-template <typename Server>
-void validateServer(const Server& server, const std::string& name) {
+template <typename Server> void validateServer(const Server& server, const std::string& name)
+{
     if (server.port < 1024 || server.port > 65535) {
         throw std::runtime_error(name + ".port must be between 1024 and 65535");
     }
     requirePositive(server.pollPeriod, name + ".poll_period_ms");
 }
 
-std::filesystem::path configuredPath(const std::filesystem::path& configPath,
-                                     const std::string& value) {
+std::filesystem::path configuredPath(const std::filesystem::path& configPath, const std::string& value)
+{
     std::filesystem::path path(value);
     if (path.is_relative()) {
         path = configPath.parent_path() / path;
@@ -46,41 +46,51 @@ std::filesystem::path configuredPath(const std::filesystem::path& configPath,
     return path.lexically_normal();
 }
 
-sc::ports::AttackTransport parseAttackTransport(const std::string& value) {
-    if (value == "zeromq") return sc::ports::AttackTransport::ZEROMQ;
-    if (value == "tcp") return sc::ports::AttackTransport::TCP;
+sc::ports::AttackTransport parseAttackTransport(const std::string& value)
+{
+    if (value == "zeromq")
+        return sc::ports::AttackTransport::ZEROMQ;
+    if (value == "tcp")
+        return sc::ports::AttackTransport::TCP;
     throw std::runtime_error("communication.attack_interface.transport must be 'zeromq' or 'tcp'");
 }
 
-sc::application::PowerSharingMode parsePowerSharingMode(const std::string& value) {
-    if (value == "equal") return sc::application::PowerSharingMode::EQUAL;
-    if (value == "available_power") return sc::application::PowerSharingMode::AVAILABLE_POWER;
+sc::application::PowerSharingMode parsePowerSharingMode(const std::string& value)
+{
+    if (value == "equal")
+        return sc::application::PowerSharingMode::EQUAL;
+    if (value == "available_power")
+        return sc::application::PowerSharingMode::AVAILABLE_POWER;
     throw std::runtime_error("control.power_sharing_mode must be 'equal' or 'available_power'");
 }
 
-bool isIpv4Address(const std::string& value) {
+bool isIpv4Address(const std::string& value)
+{
     std::istringstream input(value);
     for (int index = 0; index < 4; ++index) {
         int octet = -1;
-        if (!(input >> octet) || octet < 0 || octet > 255) return false;
-        if (index < 3 && input.get() != '.') return false;
+        if (!(input >> octet) || octet < 0 || octet > 255)
+            return false;
+        if (index < 3 && input.get() != '.')
+            return false;
     }
     return input.peek() == std::char_traits<char>::eof();
 }
 
 } // namespace
 
-RuntimeConfig defaultRuntimeConfig() {
+RuntimeConfig defaultRuntimeConfig()
+{
     RuntimeConfig config;
     config.turbines.reserve(9);
     for (int port = 102; port <= 110; ++port) {
-        config.turbines.push_back({
-            "WT" + std::to_string(port - 101), "localhost", port, "WTURBINE", "LD0"});
+        config.turbines.push_back({"WT" + std::to_string(port - 101), "localhost", port, "WTURBINE", "LD0"});
     }
     return config;
 }
 
-RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
+RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath)
+{
     RuntimeConfig config = defaultRuntimeConfig();
     ptree root;
     try {
@@ -95,8 +105,7 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
                 const auto nestedMms = node.get_child_optional("mms");
                 const auto& mms = nestedMms ? *nestedMms : node;
                 TurbineEndpointConfig endpoint;
-                endpoint.id = node.get<std::string>(
-                    "id", "WT" + std::to_string(turbineIndex + 1));
+                endpoint.id = node.get<std::string>("id", "WT" + std::to_string(turbineIndex + 1));
                 endpoint.host = mms.get<std::string>("host");
                 endpoint.port = mms.get<int>("port");
                 endpoint.iedName = mms.get<std::string>("ied_name", "WTURBINE");
@@ -116,96 +125,72 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
         if (const auto value = root.get_optional<std::string>("control.power_sharing_mode")) {
             config.control.powerSharingMode = parsePowerSharingMode(*value);
         }
-        if (const auto value = root.get_optional<long long>(
-                "signal_processing.wind_speed_sample_count")) {
+        if (const auto value = root.get_optional<long long>("signal_processing.wind_speed_sample_count")) {
             if (*value <= 0) {
-                throw std::runtime_error(
-                    "signal_processing.wind_speed_sample_count must be greater than zero");
+                throw std::runtime_error("signal_processing.wind_speed_sample_count must be greater than zero");
             }
             config.signalProcessing.windSpeedSampleCount = static_cast<std::size_t>(*value);
         }
 
-        config.monitoring.alarmAcknowledgementEnabled = root.get<bool>(
-            "monitoring.alarm_acknowledgement_enabled",
-            config.monitoring.alarmAcknowledgementEnabled);
+        config.monitoring.alarmAcknowledgementEnabled =
+            root.get<bool>("monitoring.alarm_acknowledgement_enabled", config.monitoring.alarmAcknowledgementEnabled);
 
         loadMilliseconds(root, "hmi.period_ms", config.hmi.period);
         config.hmi.windowSize = root.get<int>("hmi.window_size", config.hmi.windowSize);
-        config.hmi.publisherEndpoint = root.get<std::string>(
-            "hmi.publisher_endpoint", config.hmi.publisherEndpoint);
-        config.hmi.commandEndpoint = root.get<std::string>(
-            "hmi.command_endpoint", config.hmi.commandEndpoint);
+        config.hmi.publisherEndpoint = root.get<std::string>("hmi.publisher_endpoint", config.hmi.publisherEndpoint);
+        config.hmi.commandEndpoint = root.get<std::string>("hmi.command_endpoint", config.hmi.commandEndpoint);
 
-        config.historian.experimentName = root.get<std::string>(
-            "historian.experiment_name", config.historian.experimentName);
+        config.historian.experimentName = root.get<std::string>("historian.experiment_name", config.historian.experimentName);
         if (const auto value = root.get_optional<std::string>("historian.output_directory")) {
             config.historian.outputDirectory = configuredPath(jsonPath, *value);
         }
-        config.historian.flushEvery = root.get<std::size_t>(
-            "historian.flush_every", config.historian.flushEvery);
+        config.historian.flushEvery = root.get<std::size_t>("historian.flush_every", config.historian.flushEvery);
         loadMilliseconds(root, "historian.flush_period_ms", config.historian.flushPeriod);
 
-        config.communication.operatorServer.port = root.get<int>(
-            "communication.operator.port", config.communication.operatorServer.port);
-        loadMilliseconds(root, "communication.operator.poll_period_ms",
-                         config.communication.operatorServer.pollPeriod);
-        config.communication.attackInterface.port = root.get<int>(
-            "communication.attack_interface.port", config.communication.attackInterface.port);
-        if (const auto value = root.get_optional<std::string>(
-                "communication.attack_interface.transport")) {
+        config.communication.operatorServer.port = root.get<int>("communication.operator.port", config.communication.operatorServer.port);
+        loadMilliseconds(root, "communication.operator.poll_period_ms", config.communication.operatorServer.pollPeriod);
+        config.communication.attackInterface.port =
+            root.get<int>("communication.attack_interface.port", config.communication.attackInterface.port);
+        if (const auto value = root.get_optional<std::string>("communication.attack_interface.transport")) {
             config.communication.attackInterface.transport = parseAttackTransport(*value);
         }
-        config.communication.attackInterface.bindAddress = root.get<std::string>(
-            "communication.attack_interface.bind_address",
-            config.communication.attackInterface.bindAddress);
-        loadMilliseconds(root, "communication.attack_interface.poll_period_ms",
-                         config.communication.attackInterface.pollPeriod);
+        config.communication.attackInterface.bindAddress =
+            root.get<std::string>("communication.attack_interface.bind_address", config.communication.attackInterface.bindAddress);
+        loadMilliseconds(root, "communication.attack_interface.poll_period_ms", config.communication.attackInterface.pollPeriod);
         loadMilliseconds(root, "communication.attack_interface.heartbeat_interval_ms",
                          config.communication.attackInterface.heartbeatInterval);
-        loadMilliseconds(root, "communication.attack_interface.lease_timeout_ms",
-                         config.communication.attackInterface.leaseTimeout);
-        config.communication.attackInterface.reuseLastFdiValueOnFailure = root.get<bool>(
-            "communication.attack_interface.reuse_last_fdi_value_on_failure",
-            config.communication.attackInterface.reuseLastFdiValueOnFailure);
+        loadMilliseconds(root, "communication.attack_interface.lease_timeout_ms", config.communication.attackInterface.leaseTimeout);
+        config.communication.attackInterface.reuseLastFdiValueOnFailure =
+            root.get<bool>("communication.attack_interface.reuse_last_fdi_value_on_failure",
+                           config.communication.attackInterface.reuseLastFdiValueOnFailure);
         config.communication.attackInterface.receiveBufferBytes = root.get<std::size_t>(
-            "communication.attack_interface.receive_buffer_bytes",
-            config.communication.attackInterface.receiveBufferBytes);
+            "communication.attack_interface.receive_buffer_bytes", config.communication.attackInterface.receiveBufferBytes);
         config.communication.attackInterface.transmitBufferBytes = root.get<std::size_t>(
-            "communication.attack_interface.transmit_buffer_bytes",
-            config.communication.attackInterface.transmitBufferBytes);
+            "communication.attack_interface.transmit_buffer_bytes", config.communication.attackInterface.transmitBufferBytes);
         loadMilliseconds(root, "communication.attack_interface.configuration_timeout_ms",
                          config.communication.attackInterface.configurationTimeout);
-        loadMilliseconds(root, "communication.attack_interface.tcp_user_timeout_ms",
-                         config.communication.attackInterface.tcpUserTimeout);
-        config.communication.dataHistorian.port = root.get<int>(
-            "communication.data_historian.port", config.communication.dataHistorian.port);
-        loadMilliseconds(root, "communication.data_historian.poll_period_ms",
-                         config.communication.dataHistorian.pollPeriod);
-        loadMilliseconds(root, "communication.mms.poll_period_ms",
-                         config.communication.mms.pollPeriod);
-        loadMilliseconds(root, "communication.mms.reconnect_initial_delay_ms",
-                         config.communication.mms.reconnectInitialDelay);
-        loadMilliseconds(root, "communication.mms.reconnect_max_delay_ms",
-                         config.communication.mms.reconnectMaxDelay);
+        loadMilliseconds(root, "communication.attack_interface.tcp_user_timeout_ms", config.communication.attackInterface.tcpUserTimeout);
+        config.communication.dataHistorian.port =
+            root.get<int>("communication.data_historian.port", config.communication.dataHistorian.port);
+        loadMilliseconds(root, "communication.data_historian.poll_period_ms", config.communication.dataHistorian.pollPeriod);
+        loadMilliseconds(root, "communication.mms.poll_period_ms", config.communication.mms.pollPeriod);
+        loadMilliseconds(root, "communication.mms.reconnect_initial_delay_ms", config.communication.mms.reconnectInitialDelay);
+        loadMilliseconds(root, "communication.mms.reconnect_max_delay_ms", config.communication.mms.reconnectMaxDelay);
         if (const auto reports = root.get_child_optional("communication.mms.reports")) {
             config.communication.mms.reports.clear();
             std::size_t reportIndex = 0;
             for (const auto& entry : *reports) {
                 const auto& node = entry.second;
                 ReportConfig report;
-                report.name = node.get<std::string>(
-                    "name", "report-" + std::to_string(reportIndex + 1));
+                report.name = node.get<std::string>("name", "report-" + std::to_string(reportIndex + 1));
                 report.enabled = node.get<bool>("enabled", report.enabled);
                 loadMilliseconds(node, "integrity_period_ms", report.integrityPeriod);
-                report.dataSetReference = node.get<std::string>(
-                    "dataset_reference", report.dataSetReference);
-                report.controlBlockReference = node.get<std::string>(
-                    "control_block_reference", report.controlBlockReference);
+                report.dataSetReference = node.get<std::string>("dataset_reference", report.dataSetReference);
+                report.controlBlockReference = node.get<std::string>("control_block_reference", report.controlBlockReference);
                 if (const auto references = node.get_child_optional("data_references")) {
                     report.dataReferences.clear();
                     for (const auto& reference : *references) {
-                        report.dataReferences.push_back(
-                            reference.second.get_value<std::string>());
+                        report.dataReferences.push_back(reference.second.get_value<std::string>());
                     }
                 }
                 config.communication.mms.reports.push_back(std::move(report));
@@ -214,17 +199,12 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
         } else {
             // Version-1 compatibility for the original single-report fields.
             auto& report = config.communication.mms.reports.front();
-            report.enabled = root.get<bool>(
-                "communication.mms.reporting_enabled", report.enabled);
-            loadMilliseconds(root, "communication.mms.report_trigger_period_ms",
-                             report.integrityPeriod);
-            report.dataSetReference = root.get<std::string>(
-                "communication.mms.report_dataset_reference", report.dataSetReference);
-            report.controlBlockReference = root.get<std::string>(
-                "communication.mms.report_control_block_reference",
-                report.controlBlockReference);
-            if (const auto references = root.get_child_optional(
-                    "communication.mms.report_data_references")) {
+            report.enabled = root.get<bool>("communication.mms.reporting_enabled", report.enabled);
+            loadMilliseconds(root, "communication.mms.report_trigger_period_ms", report.integrityPeriod);
+            report.dataSetReference = root.get<std::string>("communication.mms.report_dataset_reference", report.dataSetReference);
+            report.controlBlockReference =
+                root.get<std::string>("communication.mms.report_control_block_reference", report.controlBlockReference);
+            if (const auto references = root.get_child_optional("communication.mms.report_data_references")) {
                 report.dataReferences.clear();
                 for (const auto& entry : *references) {
                     report.dataReferences.push_back(entry.second.get_value<std::string>());
@@ -232,24 +212,21 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath) {
             }
         }
 
-        config.communication.goose.enabled = root.get<bool>(
-            "communication.goose.enabled", config.communication.goose.enabled);
-        config.communication.goose.networkInterface = root.get<std::string>(
-            "communication.goose.network_interface",
-            config.communication.goose.networkInterface);
+        config.communication.goose.enabled = root.get<bool>("communication.goose.enabled", config.communication.goose.enabled);
+        config.communication.goose.networkInterface =
+            root.get<std::string>("communication.goose.network_interface", config.communication.goose.networkInterface);
     } catch (const std::exception& error) {
-        throw std::runtime_error(
-            "Failed to load runtime configuration '" + jsonPath.string() + "': " + error.what());
+        throw std::runtime_error("Failed to load runtime configuration '" + jsonPath.string() + "': " + error.what());
     }
 
     validateRuntimeConfig(config);
     return config;
 }
 
-void validateRuntimeConfig(const RuntimeConfig& config) {
+void validateRuntimeConfig(const RuntimeConfig& config)
+{
     if (config.schemaVersion != 1) {
-        throw std::runtime_error(
-            "unsupported schema_version " + std::to_string(config.schemaVersion));
+        throw std::runtime_error("unsupported schema_version " + std::to_string(config.schemaVersion));
     }
     if (config.turbines.empty()) {
         throw std::runtime_error("turbines must contain at least one endpoint");
@@ -288,8 +265,7 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
         throw std::runtime_error("control.yaw_lut_csv must not be empty");
     }
     if (config.signalProcessing.windSpeedSampleCount == 0) {
-        throw std::runtime_error(
-            "signal_processing.wind_speed_sample_count must be greater than zero");
+        throw std::runtime_error("signal_processing.wind_speed_sample_count must be greater than zero");
     }
 
     requirePositive(config.hmi.period, "hmi.period_ms");
@@ -313,47 +289,32 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
 
     validateServer(config.communication.operatorServer, "communication.operator");
     validateServer(config.communication.attackInterface, "communication.attack_interface");
-    requirePositive(config.communication.attackInterface.heartbeatInterval,
-                    "communication.attack_interface.heartbeat_interval_ms");
-    requirePositive(config.communication.attackInterface.leaseTimeout,
-                    "communication.attack_interface.lease_timeout_ms");
-    if (config.communication.attackInterface.leaseTimeout <=
-        config.communication.attackInterface.heartbeatInterval) {
-        throw std::runtime_error(
-            "communication.attack_interface.lease_timeout_ms must exceed heartbeat_interval_ms");
+    requirePositive(config.communication.attackInterface.heartbeatInterval, "communication.attack_interface.heartbeat_interval_ms");
+    requirePositive(config.communication.attackInterface.leaseTimeout, "communication.attack_interface.lease_timeout_ms");
+    if (config.communication.attackInterface.leaseTimeout <= config.communication.attackInterface.heartbeatInterval) {
+        throw std::runtime_error("communication.attack_interface.lease_timeout_ms must exceed heartbeat_interval_ms");
     }
-    if (config.communication.attackInterface.heartbeatInterval.count() >
-            std::numeric_limits<int>::max() ||
-        config.communication.attackInterface.leaseTimeout.count() >
-            std::numeric_limits<int>::max()) {
-        throw std::runtime_error(
-            "communication.attack_interface heartbeat values exceed the socket option range");
+    if (config.communication.attackInterface.heartbeatInterval.count() > std::numeric_limits<int>::max() ||
+        config.communication.attackInterface.leaseTimeout.count() > std::numeric_limits<int>::max()) {
+        throw std::runtime_error("communication.attack_interface heartbeat values exceed the socket option range");
     }
     if (config.communication.attackInterface.transport == sc::ports::AttackTransport::TCP &&
         !isIpv4Address(config.communication.attackInterface.bindAddress)) {
-        throw std::runtime_error(
-            "communication.attack_interface.bind_address must be an IPv4 address");
+        throw std::runtime_error("communication.attack_interface.bind_address must be an IPv4 address");
     }
-    const std::size_t minimumReceiveBuffer = std::max(
-        std::size_t{268}, std::size_t{12} + config.turbines.size());
+    const std::size_t minimumReceiveBuffer = std::max(std::size_t{268}, std::size_t{12} + config.turbines.size());
     if (config.communication.attackInterface.receiveBufferBytes < minimumReceiveBuffer) {
-        throw std::runtime_error(
-            "communication.attack_interface.receive_buffer_bytes is too small for a complete message");
+        throw std::runtime_error("communication.attack_interface.receive_buffer_bytes is too small for a complete message");
     }
     if (config.communication.attackInterface.transmitBufferBytes < 268) {
-        throw std::runtime_error(
-            "communication.attack_interface.transmit_buffer_bytes must be at least 268");
+        throw std::runtime_error("communication.attack_interface.transmit_buffer_bytes must be at least 268");
     }
-    requirePositive(config.communication.attackInterface.configurationTimeout,
-                    "communication.attack_interface.configuration_timeout_ms");
+    requirePositive(config.communication.attackInterface.configurationTimeout, "communication.attack_interface.configuration_timeout_ms");
     if (config.communication.attackInterface.tcpUserTimeout.count() < 0) {
-        throw std::runtime_error(
-            "communication.attack_interface.tcp_user_timeout_ms must not be negative");
+        throw std::runtime_error("communication.attack_interface.tcp_user_timeout_ms must not be negative");
     }
-    if (config.communication.attackInterface.tcpUserTimeout.count() >
-        std::numeric_limits<int>::max()) {
-        throw std::runtime_error(
-            "communication.attack_interface.tcp_user_timeout_ms exceeds the socket option range");
+    if (config.communication.attackInterface.tcpUserTimeout.count() > std::numeric_limits<int>::max()) {
+        throw std::runtime_error("communication.attack_interface.tcp_user_timeout_ms exceeds the socket option range");
     }
     validateServer(config.communication.dataHistorian, "communication.data_historian");
     const std::set<int> serverPorts{
@@ -365,23 +326,17 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
         throw std::runtime_error("communication server ports must be distinct");
     }
 
-    requirePositive(config.communication.mms.pollPeriod,
-                    "communication.mms.poll_period_ms");
-    requirePositive(config.communication.mms.reconnectInitialDelay,
-                    "communication.mms.reconnect_initial_delay_ms");
-    requirePositive(config.communication.mms.reconnectMaxDelay,
-                    "communication.mms.reconnect_max_delay_ms");
-    if (config.communication.mms.reconnectMaxDelay <
-        config.communication.mms.reconnectInitialDelay) {
-        throw std::runtime_error(
-            "communication.mms.reconnect_max_delay_ms must be greater than or equal to reconnect_initial_delay_ms");
+    requirePositive(config.communication.mms.pollPeriod, "communication.mms.poll_period_ms");
+    requirePositive(config.communication.mms.reconnectInitialDelay, "communication.mms.reconnect_initial_delay_ms");
+    requirePositive(config.communication.mms.reconnectMaxDelay, "communication.mms.reconnect_max_delay_ms");
+    if (config.communication.mms.reconnectMaxDelay < config.communication.mms.reconnectInitialDelay) {
+        throw std::runtime_error("communication.mms.reconnect_max_delay_ms must be greater than or equal to reconnect_initial_delay_ms");
     }
     std::set<std::string> reportNames;
     std::size_t enabledReportCount = 0;
     for (std::size_t index = 0; index < config.communication.mms.reports.size(); ++index) {
         const auto& report = config.communication.mms.reports[index];
-        const std::string prefix =
-            "communication.mms.reports[" + std::to_string(index) + "]";
+        const std::string prefix = "communication.mms.reports[" + std::to_string(index) + "]";
         if (report.name.empty()) {
             throw std::runtime_error(prefix + ".name must not be empty");
         }
@@ -397,27 +352,25 @@ void validateRuntimeConfig(const RuntimeConfig& config) {
         if (report.enabled) {
             ++enabledReportCount;
             if (report.dataSetReference.empty() || report.controlBlockReference.empty()) {
-                throw std::runtime_error(
-                    prefix + " requires dataset and control-block references when enabled");
+                throw std::runtime_error(prefix + " requires dataset and control-block references when enabled");
             }
         }
     }
     if (enabledReportCount > 1) {
-        throw std::runtime_error(
-            "the current IEC communicator supports at most one enabled MMS report; "
-            "additional report definitions must remain disabled");
+        throw std::runtime_error("the current IEC communicator supports at most one enabled MMS report; "
+                                 "additional report definitions must remain disabled");
     }
     if (config.communication.goose.enabled && config.communication.goose.networkInterface.empty()) {
         throw std::runtime_error("communication.goose.network_interface must not be empty");
     }
 }
 
-void validateRuntimeConfig(const RuntimeConfig& config, std::size_t yawLutTurbineCount) {
+void validateRuntimeConfig(const RuntimeConfig& config, std::size_t yawLutTurbineCount)
+{
     validateRuntimeConfig(config);
     if (yawLutTurbineCount != config.turbines.size()) {
         std::ostringstream message;
-        message << "yaw LUT defines " << yawLutTurbineCount
-                << " turbine columns, but runtime configuration defines "
+        message << "yaw LUT defines " << yawLutTurbineCount << " turbine columns, but runtime configuration defines "
                 << config.turbines.size() << " turbine endpoints";
         throw std::runtime_error(message.str());
     }

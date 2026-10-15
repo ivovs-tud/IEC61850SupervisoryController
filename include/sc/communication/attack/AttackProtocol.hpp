@@ -88,49 +88,53 @@ struct SimCtrlMessage {
 struct HeartbeatMessage {};
 struct ReleaseMessage {};
 
-using Message = std::variant<TxDataMessage, RqDataMessage, AtDataMessage, CtDataMessage, 
-                             CfgDataMessage, SimCtrlMessage, HeartbeatMessage, ReleaseMessage>;
+using Message = std::variant<TxDataMessage, RqDataMessage, AtDataMessage, CtDataMessage, CfgDataMessage, SimCtrlMessage, HeartbeatMessage,
+                             ReleaseMessage>;
 
 class ProtocolError : public std::runtime_error {
-public:
+    public:
     using std::runtime_error::runtime_error;
 };
 
 namespace detail {
 
-inline void writeU32(Bytes& bytes, std::size_t offset, uint32_t value) {
+inline void writeU32(Bytes& bytes, std::size_t offset, uint32_t value)
+{
     bytes[offset] = static_cast<uint8_t>(value);
     bytes[offset + 1] = static_cast<uint8_t>(value >> 8U);
     bytes[offset + 2] = static_cast<uint8_t>(value >> 16U);
     bytes[offset + 3] = static_cast<uint8_t>(value >> 24U);
 }
 
-inline void writeU64(Bytes& bytes, std::size_t offset, uint64_t value) {
+inline void writeU64(Bytes& bytes, std::size_t offset, uint64_t value)
+{
     for (std::size_t index = 0; index < sizeof(value); ++index) {
         bytes[offset + index] = static_cast<uint8_t>(value >> (index * 8U));
     }
 }
 
-inline void writeI32(Bytes& bytes, std::size_t offset, int32_t value) {
+inline void writeI32(Bytes& bytes, std::size_t offset, int32_t value)
+{
     uint32_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     writeU32(bytes, offset, bits);
 }
 
-inline void writeFloat(Bytes& bytes, std::size_t offset, float value) {
+inline void writeFloat(Bytes& bytes, std::size_t offset, float value)
+{
     uint32_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     writeU32(bytes, offset, bits);
 }
 
-inline uint32_t readU32(const uint8_t* data, std::size_t offset) {
-    return static_cast<uint32_t>(data[offset]) |
-           (static_cast<uint32_t>(data[offset + 1]) << 8U) |
-           (static_cast<uint32_t>(data[offset + 2]) << 16U) |
-           (static_cast<uint32_t>(data[offset + 3]) << 24U);
+inline uint32_t readU32(const uint8_t* data, std::size_t offset)
+{
+    return static_cast<uint32_t>(data[offset]) | (static_cast<uint32_t>(data[offset + 1]) << 8U) |
+           (static_cast<uint32_t>(data[offset + 2]) << 16U) | (static_cast<uint32_t>(data[offset + 3]) << 24U);
 }
 
-inline uint64_t readU64(const uint8_t* data, std::size_t offset) {
+inline uint64_t readU64(const uint8_t* data, std::size_t offset)
+{
     uint64_t value = 0;
     for (std::size_t index = 0; index < sizeof(value); ++index) {
         value |= static_cast<uint64_t>(data[offset + index]) << (index * 8U);
@@ -138,85 +142,103 @@ inline uint64_t readU64(const uint8_t* data, std::size_t offset) {
     return value;
 }
 
-inline int32_t readI32(const uint8_t* data, std::size_t offset) {
+inline int32_t readI32(const uint8_t* data, std::size_t offset)
+{
     const uint32_t bits = readU32(data, offset);
     int32_t value = 0;
     std::memcpy(&value, &bits, sizeof(value));
     return value;
 }
 
-inline float readFloat(const uint8_t* data, std::size_t offset) {
+inline float readFloat(const uint8_t* data, std::size_t offset)
+{
     const uint32_t bits = readU32(data, offset);
     float value = 0.0F;
     std::memcpy(&value, &bits, sizeof(value));
     return value;
 }
 
-inline AttackInterface::SignalType signalType(uint32_t value) {
+inline AttackInterface::SignalType signalType(uint32_t value)
+{
     using AttackInterface::SignalType;
     switch (static_cast<SignalType>(value)) {
-        case SignalType::WIND_SPEED:
-        case SignalType::WIND_DIRECTION:
-        case SignalType::TURBINE_STATUS:
-        case SignalType::POWER:
-        case SignalType::YAW_ANGLE:
-        case SignalType::ROTOR_SPEED:
-        case SignalType::PITCH_ANGLE:
-        case SignalType::YAW_SETPOINT:
-        case SignalType::POWER_SETPOINT:
-        case SignalType::GENERATOR_TORQUE:
-        case SignalType::OPERATION_COMMAND:
-        case SignalType::NONE:
-        case SignalType::ARRAY: return static_cast<SignalType>(value);
+    case SignalType::WIND_SPEED:
+    case SignalType::WIND_DIRECTION:
+    case SignalType::TURBINE_STATUS:
+    case SignalType::POWER:
+    case SignalType::YAW_ANGLE:
+    case SignalType::ROTOR_SPEED:
+    case SignalType::PITCH_ANGLE:
+    case SignalType::YAW_SETPOINT:
+    case SignalType::POWER_SETPOINT:
+    case SignalType::GENERATOR_TORQUE:
+    case SignalType::OPERATION_COMMAND:
+    case SignalType::NONE:
+    case SignalType::ARRAY:
+        return static_cast<SignalType>(value);
     }
     throw ProtocolError("unknown attack signal type");
 }
 
-inline ControlSignal controlSignal(uint32_t value) {
+inline ControlSignal controlSignal(uint32_t value)
+{
     switch (static_cast<ControlSignal>(value)) {
-        case ControlSignal::NONE:
-        case ControlSignal::TAP:
-        case ControlSignal::FDI: return static_cast<ControlSignal>(value);
+    case ControlSignal::NONE:
+    case ControlSignal::TAP:
+    case ControlSignal::FDI:
+        return static_cast<ControlSignal>(value);
     }
     throw ProtocolError("unknown attack control signal");
 }
 
-inline bool integerTxValue(AttackInterface::SignalType signalType) {
-    return signalType == AttackInterface::SignalType::TURBINE_STATUS ||
-           signalType == AttackInterface::SignalType::OPERATION_COMMAND;
+inline bool integerTxValue(AttackInterface::SignalType signalType)
+{
+    return signalType == AttackInterface::SignalType::TURBINE_STATUS || signalType == AttackInterface::SignalType::OPERATION_COMMAND;
 }
 
 } // namespace detail
 
-inline MessageType messageType(uint8_t header) {
+inline MessageType messageType(uint8_t header)
+{
     switch (static_cast<MessageType>(header)) {
-        case MessageType::TX_DATA:
-        case MessageType::RQ_DATA:
-        case MessageType::AT_DATA:
-        case MessageType::CT_DATA:
-        case MessageType::CFG_DATA:
-        case MessageType::SIM_CTRL:
-        case MessageType::HEARTBEAT:
-        case MessageType::RELEASE: return static_cast<MessageType>(header);
+    case MessageType::TX_DATA:
+    case MessageType::RQ_DATA:
+    case MessageType::AT_DATA:
+    case MessageType::CT_DATA:
+    case MessageType::CFG_DATA:
+    case MessageType::SIM_CTRL:
+    case MessageType::HEARTBEAT:
+    case MessageType::RELEASE:
+        return static_cast<MessageType>(header);
     }
     throw ProtocolError("unknown attack message header");
 }
 
-inline std::size_t messageSize(MessageType type, std::size_t turbineCount) {
+inline std::size_t messageSize(MessageType type, std::size_t turbineCount)
+{
     switch (type) {
-        case MessageType::TX_DATA: return TX_DATA_SIZE;
-        case MessageType::RQ_DATA: return RQ_DATA_SIZE;
-        case MessageType::AT_DATA: return AT_DATA_SIZE;
-        case MessageType::CT_DATA: return CT_DATA_PREFIX_SIZE + turbineCount;
-        case MessageType::CFG_DATA: return CFG_DATA_SIZE;
-        case MessageType::SIM_CTRL: return SIM_CTRL_SIZE;
-        case MessageType::HEARTBEAT: return HEARTBEAT_SIZE;
-        case MessageType::RELEASE: return RELEASE_SIZE;
+    case MessageType::TX_DATA:
+        return TX_DATA_SIZE;
+    case MessageType::RQ_DATA:
+        return RQ_DATA_SIZE;
+    case MessageType::AT_DATA:
+        return AT_DATA_SIZE;
+    case MessageType::CT_DATA:
+        return CT_DATA_PREFIX_SIZE + turbineCount;
+    case MessageType::CFG_DATA:
+        return CFG_DATA_SIZE;
+    case MessageType::SIM_CTRL:
+        return SIM_CTRL_SIZE;
+    case MessageType::HEARTBEAT:
+        return HEARTBEAT_SIZE;
+    case MessageType::RELEASE:
+        return RELEASE_SIZE;
     }
     throw ProtocolError("unknown attack message type");
 }
 
-inline Bytes encode(const TxDataMessage& message) {
+inline Bytes encode(const TxDataMessage& message)
+{
     Bytes bytes(TX_DATA_SIZE, 0);
     bytes[0] = static_cast<uint8_t>(MessageType::TX_DATA);
     bytes[1] = message.turbineId;
@@ -224,18 +246,22 @@ inline Bytes encode(const TxDataMessage& message) {
     bytes[8] = 1;
     if (detail::integerTxValue(message.dataType)) {
         const auto* value = std::get_if<uint32_t>(&message.value);
-        if (value == nullptr) throw ProtocolError("attack signal requires an integer value");
+        if (value == nullptr)
+            throw ProtocolError("attack signal requires an integer value");
         detail::writeU32(bytes, 12, *value);
     } else {
         const auto* value = std::get_if<float>(&message.value);
-        if (value == nullptr) throw ProtocolError("attack signal requires a floating-point value");
-        if (!std::isfinite(*value)) throw ProtocolError("attack observation must be finite");
+        if (value == nullptr)
+            throw ProtocolError("attack signal requires a floating-point value");
+        if (!std::isfinite(*value))
+            throw ProtocolError("attack observation must be finite");
         detail::writeFloat(bytes, 12, *value);
     }
     return bytes;
 }
 
-inline Bytes encode(const RqDataMessage& message) {
+inline Bytes encode(const RqDataMessage& message)
+{
     Bytes bytes(RQ_DATA_SIZE, 0);
     bytes[0] = static_cast<uint8_t>(MessageType::RQ_DATA);
     bytes[1] = message.turbineId;
@@ -245,7 +271,8 @@ inline Bytes encode(const RqDataMessage& message) {
     return bytes;
 }
 
-inline Bytes encode(const AtDataMessage& message) {
+inline Bytes encode(const AtDataMessage& message)
+{
     if (std::isinf(message.fakeValue)) {
         throw ProtocolError("attack replacement must not be infinite");
     }
@@ -258,7 +285,8 @@ inline Bytes encode(const AtDataMessage& message) {
     return bytes;
 }
 
-inline Bytes encode(const CtDataMessage& message) {
+inline Bytes encode(const CtDataMessage& message)
+{
     Bytes bytes(CT_DATA_PREFIX_SIZE + message.enabled.size(), 0);
     bytes[0] = static_cast<uint8_t>(MessageType::CT_DATA);
     detail::writeU32(bytes, 4, static_cast<uint32_t>(message.signal));
@@ -267,7 +295,8 @@ inline Bytes encode(const CtDataMessage& message) {
     return bytes;
 }
 
-inline Bytes encode(const CfgDataMessage& message) {
+inline Bytes encode(const CfgDataMessage& message)
+{
     if (message.teamName.size() > 255) {
         throw ProtocolError("attack session label exceeds 255 bytes");
     }
@@ -279,103 +308,116 @@ inline Bytes encode(const CfgDataMessage& message) {
     return bytes;
 }
 
-inline Bytes encode(const SimCtrlMessage& message) {
+inline Bytes encode(const SimCtrlMessage& message)
+{
     return {static_cast<uint8_t>(MessageType::SIM_CTRL), static_cast<uint8_t>(message.simStart)};
 }
 
-inline Bytes encode(const HeartbeatMessage&) {
+inline Bytes encode(const HeartbeatMessage&)
+{
     return {static_cast<uint8_t>(MessageType::HEARTBEAT)};
 }
 
-inline Bytes encode(const ReleaseMessage&) {
+inline Bytes encode(const ReleaseMessage&)
+{
     return {static_cast<uint8_t>(MessageType::RELEASE)};
 }
 
-inline Bytes encode(const Message& message) {
+inline Bytes encode(const Message& message)
+{
     return std::visit([](const auto& value) { return encode(value); }, message);
 }
 
-inline Message decode(const uint8_t* data, std::size_t size, std::size_t turbineCount) {
-    if (data == nullptr || size == 0) throw ProtocolError("empty attack message");
+inline Message decode(const uint8_t* data, std::size_t size, std::size_t turbineCount)
+{
+    if (data == nullptr || size == 0)
+        throw ProtocolError("empty attack message");
     const MessageType type = messageType(data[0]);
     const std::size_t expectedSize = messageSize(type, turbineCount);
-    if (size != expectedSize) throw ProtocolError("invalid attack message size");
+    if (size != expectedSize)
+        throw ProtocolError("invalid attack message size");
 
     switch (type) {
-        case MessageType::TX_DATA: {
-            if (data[8] != 1) throw ProtocolError("invalid TX_DATA payload length");
-            const auto signalType = detail::signalType(detail::readU32(data, 4));
-            if (detail::integerTxValue(signalType)) {
-                return TxDataMessage{data[1], signalType, detail::readU32(data, 12)};
-            }
-            const float value = detail::readFloat(data, 12);
-            if (!std::isfinite(value)) throw ProtocolError("attack observation must be finite");
-            return TxDataMessage{data[1], signalType, value};
+    case MessageType::TX_DATA: {
+        if (data[8] != 1)
+            throw ProtocolError("invalid TX_DATA payload length");
+        const auto signalType = detail::signalType(detail::readU32(data, 4));
+        if (detail::integerTxValue(signalType)) {
+            return TxDataMessage{data[1], signalType, detail::readU32(data, 12)};
         }
-        case MessageType::RQ_DATA:
-            return RqDataMessage{data[1], detail::signalType(detail::readU32(data, 4)), detail::readU64(data, 8), detail::readU64(data, 16)};
-        case MessageType::AT_DATA: {
-            const float value = detail::readFloat(data, 16);
-            if (std::isinf(value)) throw ProtocolError("attack replacement must not be infinite");
-            return AtDataMessage{
-                data[1],
-                detail::signalType(detail::readU32(data, 4)),
-                detail::readU64(data, 8),
-                value};
+        const float value = detail::readFloat(data, 12);
+        if (!std::isfinite(value))
+            throw ProtocolError("attack observation must be finite");
+        return TxDataMessage{data[1], signalType, value};
+    }
+    case MessageType::RQ_DATA:
+        return RqDataMessage{data[1], detail::signalType(detail::readU32(data, 4)), detail::readU64(data, 8), detail::readU64(data, 16)};
+    case MessageType::AT_DATA: {
+        const float value = detail::readFloat(data, 16);
+        if (std::isinf(value))
+            throw ProtocolError("attack replacement must not be infinite");
+        return AtDataMessage{data[1], detail::signalType(detail::readU32(data, 4)), detail::readU64(data, 8), value};
+    }
+    case MessageType::CT_DATA: {
+        const auto flagsBegin = data + CT_DATA_PREFIX_SIZE;
+        if (!std::all_of(flagsBegin, data + size, [](uint8_t value) { return value <= 1; })) {
+            // Pointer bytes from the retired native CT_DATA layout must never become enable flags.
+            throw ProtocolError("invalid attack control enable flag");
         }
-        case MessageType::CT_DATA: {
-            const auto flagsBegin = data + CT_DATA_PREFIX_SIZE;
-            if (!std::all_of(flagsBegin, data + size, [](uint8_t value) { return value <= 1; })) {
-                // Pointer bytes from the retired native CT_DATA layout must never become enable flags.
-                throw ProtocolError("invalid attack control enable flag");
-            }
-            return CtDataMessage{
-                detail::controlSignal(detail::readU32(data, 4)),
-                detail::signalType(detail::readU32(data, 8)),
-                std::vector<uint8_t>(flagsBegin, data + size)};
-        }
-        case MessageType::CFG_DATA: {
-            const uint8_t* nameBegin = data + 1;
-            const uint8_t* nameEnd = std::find(nameBegin, data + 257, uint8_t{0});
-            return CfgDataMessage{
-                std::string(reinterpret_cast<const char*>(nameBegin), reinterpret_cast<const char*>(nameEnd)),
-                detail::readI32(data, 260),
-                detail::readI32(data, 264)};
-        }
-        case MessageType::SIM_CTRL:
-            if (data[1] > 1) throw ProtocolError("invalid simulation control flag");
-            return SimCtrlMessage{data[1] != 0};
-        case MessageType::HEARTBEAT: return HeartbeatMessage{};
-        case MessageType::RELEASE: return ReleaseMessage{};
+        return CtDataMessage{detail::controlSignal(detail::readU32(data, 4)), detail::signalType(detail::readU32(data, 8)),
+                             std::vector<uint8_t>(flagsBegin, data + size)};
+    }
+    case MessageType::CFG_DATA: {
+        const uint8_t* nameBegin = data + 1;
+        const uint8_t* nameEnd = std::find(nameBegin, data + 257, uint8_t{0});
+        return CfgDataMessage{std::string(reinterpret_cast<const char*>(nameBegin), reinterpret_cast<const char*>(nameEnd)),
+                              detail::readI32(data, 260), detail::readI32(data, 264)};
+    }
+    case MessageType::SIM_CTRL:
+        if (data[1] > 1)
+            throw ProtocolError("invalid simulation control flag");
+        return SimCtrlMessage{data[1] != 0};
+    case MessageType::HEARTBEAT:
+        return HeartbeatMessage{};
+    case MessageType::RELEASE:
+        return ReleaseMessage{};
     }
     throw ProtocolError("unknown attack message type");
 }
 
-inline Message decode(const Bytes& bytes, std::size_t turbineCount) {
+inline Message decode(const Bytes& bytes, std::size_t turbineCount)
+{
     return decode(bytes.data(), bytes.size(), turbineCount);
 }
 
 class StreamDecoder {
-public:
-    explicit StreamDecoder(std::size_t turbineCount, std::size_t maxBufferedBytes = DEFAULT_BUFFER_LIMIT)
-        : turbineCount_(turbineCount), maxBufferedBytes_(maxBufferedBytes) {
-        if (turbineCount_ == 0) throw std::invalid_argument("turbine count must be positive");
-        if (maxBufferedBytes_ == 0) throw std::invalid_argument("attack receive buffer limit must be positive");
+    public:
+    explicit StreamDecoder(std::size_t turbineCount, std::size_t maxBufferedBytes = DEFAULT_BUFFER_LIMIT) :
+        turbineCount_(turbineCount), maxBufferedBytes_(maxBufferedBytes)
+    {
+        if (turbineCount_ == 0)
+            throw std::invalid_argument("turbine count must be positive");
+        if (maxBufferedBytes_ == 0)
+            throw std::invalid_argument("attack receive buffer limit must be positive");
     }
 
-    std::vector<Bytes> push(const uint8_t* data, std::size_t size) {
-        if (data == nullptr && size != 0) throw std::invalid_argument("attack stream data is null");
+    std::vector<Bytes> push(const uint8_t* data, std::size_t size)
+    {
+        if (data == nullptr && size != 0)
+            throw std::invalid_argument("attack stream data is null");
         if (size > maxBufferedBytes_ - buffer_.size()) {
             throw ProtocolError("attack receive buffer limit exceeded");
         }
-        if (size != 0) buffer_.insert(buffer_.end(), data, data + size);
+        if (size != 0)
+            buffer_.insert(buffer_.end(), data, data + size);
 
         std::vector<Bytes> messages;
         std::size_t consumed = 0;
         while (consumed < buffer_.size()) {
             const MessageType type = messageType(buffer_[consumed]);
             const std::size_t expectedSize = messageSize(type, turbineCount_);
-            if (buffer_.size() - consumed < expectedSize) break;
+            if (buffer_.size() - consumed < expectedSize)
+                break;
 
             Bytes message(buffer_.begin() + static_cast<std::ptrdiff_t>(consumed),
                           buffer_.begin() + static_cast<std::ptrdiff_t>(consumed + expectedSize));
@@ -387,16 +429,27 @@ public:
         return messages;
     }
 
-    std::vector<Bytes> push(const Bytes& bytes) { return push(bytes.data(), bytes.size()); }
-
-    void finish() const {
-        if (!buffer_.empty()) throw ProtocolError("truncated attack message at end of stream");
+    std::vector<Bytes> push(const Bytes& bytes)
+    {
+        return push(bytes.data(), bytes.size());
     }
 
-    void reset() { buffer_.clear(); }
-    std::size_t bufferedBytes() const { return buffer_.size(); }
+    void finish() const
+    {
+        if (!buffer_.empty())
+            throw ProtocolError("truncated attack message at end of stream");
+    }
 
-private:
+    void reset()
+    {
+        buffer_.clear();
+    }
+    std::size_t bufferedBytes() const
+    {
+        return buffer_.size();
+    }
+
+    private:
     std::size_t turbineCount_;
     std::size_t maxBufferedBytes_;
     Bytes buffer_;

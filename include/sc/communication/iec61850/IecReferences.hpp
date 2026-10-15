@@ -28,10 +28,8 @@ inline constexpr const char* PITCH_SP = "WROT1.BlPthAngTgt.f";
 inline constexpr const char* PITCH_VAL = "WROT1.BlPthAngVal.f";
 inline constexpr const char* SECR_S = "SECR1.S.stVal";
 
-inline const std::vector<std::string> REQ_CMDS = {
-    WTUR_DmdWSpt, XWYAW_YawSpt, WTUR_OP_CMD, WTUR_TURCTL};
-inline const std::vector<std::string> REQ_REFS = {
-    POWER_MEAS, YAW_MEAS, WS_MEAS, WD_MEAS, RPM_MEAS, TOT_W, PITCH_VAL, SECR_S};
+inline const std::vector<std::string> REQ_CMDS = {WTUR_DmdWSpt, XWYAW_YawSpt, WTUR_OP_CMD, WTUR_TURCTL};
+inline const std::vector<std::string> REQ_REFS = {POWER_MEAS, YAW_MEAS, WS_MEAS, WD_MEAS, RPM_MEAS, TOT_W, PITCH_VAL, SECR_S};
 
 inline constexpr const char* GOOSE_SUB_TEST = "LLN0$gocb01";
 inline constexpr const char* GOOSE_SUB_TurSt = "WTUR1$GO$TurSt";

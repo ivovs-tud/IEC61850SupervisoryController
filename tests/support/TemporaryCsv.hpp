@@ -11,12 +11,12 @@
 namespace sc::test {
 
 class TemporaryCsv {
-public:
-    explicit TemporaryCsv(const std::string& contents) {
+    public:
+    explicit TemporaryCsv(const std::string& contents)
+    {
         static std::atomic<unsigned long> nextId{0};
         path_ = std::filesystem::temp_directory_path() /
-                ("sc-test-" + std::to_string(std::random_device{}()) + "-" +
-                 std::to_string(nextId.fetch_add(1)) + ".csv");
+                ("sc-test-" + std::to_string(std::random_device{}()) + "-" + std::to_string(nextId.fetch_add(1)) + ".csv");
 
         std::ofstream file(path_, std::ios::binary | std::ios::trunc);
         if (!file.is_open()) {
@@ -28,7 +28,8 @@ public:
         }
     }
 
-    ~TemporaryCsv() {
+    ~TemporaryCsv()
+    {
         std::error_code error;
         std::filesystem::remove(path_, error);
     }
@@ -36,11 +37,12 @@ public:
     TemporaryCsv(const TemporaryCsv&) = delete;
     TemporaryCsv& operator=(const TemporaryCsv&) = delete;
 
-    std::string path() const {
+    std::string path() const
+    {
         return path_.string();
     }
 
-private:
+    private:
     std::filesystem::path path_;
 };
 

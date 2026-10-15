@@ -1,15 +1,14 @@
 #pragma once
 
+#include "sc/application/PowerSharingMode.hpp"
+#include "sc/application/YawLut.hpp"
+#include "sc/runtime/PeriodicTask.hpp"
+
 #include <chrono>
 
-#include "sc/application/PowerSharingMode.hpp"
-#include "sc/runtime/PeriodicTask.hpp"
-#include "sc/application/YawLut.hpp"
-
 /// Periodic adapter for the pure control calculation
-class ControlTask : public PeriodicTask
-{
-public:
+class ControlTask : public PeriodicTask {
+    public:
     /// Startup dependencies and schedule
     struct Config {
         int numTurbines;
@@ -20,16 +19,19 @@ public:
     ControlTask(Config config, sc::application::YawLut yawLut);
 
     /// Worker shutdown before referenced dependencies are destroyed
-    ~ControlTask() override { stop(); }
+    ~ControlTask() override
+    {
+        stop();
+    }
 
-protected:
+    protected:
     /// Coherent read -> calculation -> complete publication
     void execute() override;
 
     /// Stop lifecycle log
     void onStop() override;
 
-private:
+    private:
     sc::application::YawLut yawLut_;
     int numTurbines_;
     sc::application::PowerSharingMode powerSharingMode_;

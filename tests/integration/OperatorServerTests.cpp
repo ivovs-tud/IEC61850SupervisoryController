@@ -2,10 +2,9 @@
 #include "OperatorServer.hpp"
 #include "SocketPlatform.hpp"
 
+#include <array>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -16,14 +15,15 @@
 #include <thread>
 #include <variant>
 #include <vector>
-
 #include <zmq.hpp>
 
 namespace {
 
-int reserveLoopbackPort() {
+int reserveLoopbackPort()
+{
     const socket_t probe = socket(AF_INET, SOCK_STREAM, 0);
-    if (probe == INVALID_SOCKET_FD) return -1;
+    if (probe == INVALID_SOCKET_FD)
+        return -1;
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -44,7 +44,8 @@ int reserveLoopbackPort() {
 
 } // namespace
 
-TEST_CASE("operator server decodes commands and rejects invalid reference power") {
+TEST_CASE("operator server decodes commands and rejects invalid reference power")
+{
     REQUIRE(socket_init());
     const int port = reserveLoopbackPort();
     REQUIRE(port > 0);
@@ -66,16 +67,12 @@ TEST_CASE("operator server decodes commands and rejects invalid reference power"
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
 
     const float reference = 123.5F;
-    REQUIRE(client.send(zmq::buffer(&reference, sizeof(reference)),
-                        zmq::send_flags::none).has_value());
+    REQUIRE(client.send(zmq::buffer(&reference, sizeof(reference)), zmq::send_flags::none).has_value());
     {
         std::unique_lock<std::mutex> lock(mutex);
-        REQUIRE(changed.wait_for(lock, std::chrono::seconds(2), [&]() {
-            return received.size() == 1;
-        }));
+        REQUIRE(changed.wait_for(lock, std::chrono::seconds(2), [&]() { return received.size() == 1; }));
         REQUIRE(std::holds_alternative<RequestedPowerCommand>(received[0]));
-        REQUIRE(std::get<RequestedPowerCommand>(received[0]).value ==
-                Catch::Approx(reference));
+        REQUIRE(std::get<RequestedPowerCommand>(received[0]).value == Catch::Approx(reference));
     }
 
     std::array<uint8_t, 5> simulation{};
@@ -85,16 +82,13 @@ TEST_CASE("operator server decodes commands and rejects invalid reference power"
     REQUIRE(client.send(zmq::buffer(simulation), zmq::send_flags::none).has_value());
     {
         std::unique_lock<std::mutex> lock(mutex);
-        REQUIRE(changed.wait_for(lock, std::chrono::seconds(2), [&]() {
-            return received.size() == 2;
-        }));
+        REQUIRE(changed.wait_for(lock, std::chrono::seconds(2), [&]() { return received.size() == 2; }));
         REQUIRE(std::holds_alternative<SimulationStateCommand>(received[1]));
         REQUIRE(std::get<SimulationStateCommand>(received[1]).running);
     }
 
     const float invalidReference = std::numeric_limits<float>::infinity();
-    REQUIRE(client.send(zmq::buffer(&invalidReference, sizeof(invalidReference)),
-                        zmq::send_flags::none).has_value());
+    REQUIRE(client.send(zmq::buffer(&invalidReference, sizeof(invalidReference)), zmq::send_flags::none).has_value());
     const std::array<uint8_t, 3> malformed{1, 2, 3};
     REQUIRE(client.send(zmq::buffer(malformed), zmq::send_flags::none).has_value());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

@@ -8,7 +8,8 @@
 
 namespace sc::util {
 
-double mean(const std::vector<double>& values) {
+double mean(const std::vector<double>& values)
+{
     if (values.empty()) {
         return 0.0;
     }
@@ -16,7 +17,8 @@ double mean(const std::vector<double>& values) {
     return std::accumulate(values.begin(), values.end(), 0.0) / static_cast<double>(values.size());
 }
 
-double median(std::vector<double> values) {
+double median(std::vector<double> values)
+{
     if (values.empty()) {
         return 0.0;
     }
@@ -26,7 +28,8 @@ double median(std::vector<double> values) {
     return *middle;
 }
 
-double medianAbsoluteDeviation(std::vector<double> values, double center) {
+double medianAbsoluteDeviation(std::vector<double> values, double center)
+{
     for (double& value : values) {
         value = std::abs(value - center);
     }
@@ -34,11 +37,12 @@ double medianAbsoluteDeviation(std::vector<double> values, double center) {
     return median(std::move(values));
 }
 
-double valueRange(const std::vector<double>& values) {
+double valueRange(const std::vector<double>& values)
+{
     if (values.empty()) {
         return 0.0;
     }
-    
+
     const auto [minimum, maximum] = std::minmax_element(values.begin(), values.end());
     return *maximum - *minimum;
 }

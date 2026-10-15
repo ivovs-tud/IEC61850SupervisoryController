@@ -80,7 +80,7 @@ struct AlarmState {
 };
 
 class AlarmStateTracker {
-public:
+    public:
     void update(const MonitoringResult& result);
     void acknowledge();
     void reset();
@@ -88,20 +88,20 @@ public:
     const AlarmState& state(AlarmType alarm) const;
     bool visible(AlarmType alarm) const;
 
-private:
+    private:
     std::array<AlarmState, static_cast<std::size_t>(AlarmType::Count)> states_{};
 };
 
 // Owns detector history; input and output contain no shared-state references.
 class MonitoringDetectors {
-public:
+    public:
     explicit MonitoringDetectors(std::size_t turbineCount);
 
     MonitoringResult evaluate(const MonitoringInput& input);
     MonitoringResult evaluateDetector(AlarmType alarm, const MonitoringInput& input);
     void reset();
 
-private:
+    private:
     void checkPowerBalance(const MonitoringInput& input, MonitoringResult& result) const;
     void checkPowerTracking(const MonitoringInput& input, MonitoringResult& result);
     void checkOrientation(const MonitoringInput& input, MonitoringResult& result);

@@ -10,7 +10,7 @@
 #include <vector>
 
 class DataHistorianServer final : public PeriodicTask {
-public:
+    public:
     struct Config {
         int port{9003};
         std::chrono::milliseconds pollPeriod{10};
@@ -19,16 +19,19 @@ public:
     using RecordHandler = std::function<void(const DataHistorianRecord&)>;
 
     explicit DataHistorianServer(Config config);
-    ~DataHistorianServer() override { stop(); }
+    ~DataHistorianServer() override
+    {
+        stop();
+    }
 
     void setRecordHandler(RecordHandler handler);
 
-protected:
+    protected:
     void onStart() override;
     void execute() override;
     void onStop() override;
 
-private:
+    private:
     void clientConnected(TcpServer::ClientId clientId);
     void bytesReceived(TcpServer::ClientId clientId, const uint8_t* data, std::size_t size);
     void clientDisconnected(TcpServer::ClientId clientId, const std::string& reason);

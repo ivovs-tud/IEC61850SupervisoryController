@@ -1,16 +1,16 @@
 #pragma once
 
-#include <functional>
+#include "sc/communication/iec61850/IecReferences.hpp"
+#include "sc/runtime/Clock.hpp"
+
 #include <chrono>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include "sc/runtime/Clock.hpp"
-#include "sc/communication/iec61850/IecReferences.hpp"
 
 class LibIecGooseReceiver;
 
@@ -28,8 +28,7 @@ struct IecReportValue {
     uint64_t timestampMs{0};
 };
 
-using IecReportCallback =
-    std::function<void(int turbineId, const std::vector<IecReportValue>& values)>;
+using IecReportCallback = std::function<void(int turbineId, const std::vector<IecReportValue>& values)>;
 
 // Forward-declare the libiec61850 connection handle so this header stays
 // clean of C includes.  The actual libiec61850 headers are pulled in by the
@@ -44,8 +43,7 @@ struct IEC61850ManagerTestAccess;
 // use the IEC61850_FC_* integer constants defined in <iec61850_client.h>.
 // Example: mgr.readFloat(id, ref, IEC61850_FC_MX);
 
-struct IecDataSetAndReportControlBlocks
-{
+struct IecDataSetAndReportControlBlocks {
     std::vector<std::string> dataSets;
     std::vector<std::string> bufferedReportControlBlocks;
     std::vector<std::string> unbufferedReportControlBlocks;
@@ -56,19 +54,18 @@ struct IecDataSetAndReportControlBlocks
 // Turbine IDs are integers: 0 = supercontroller (this process),
 // 1…N = individual wind turbines.
 // ---------------------------------------------------------------------------
-struct TurbineConnection
-{
-    int                 id               {0};
-    uint8_t             mac[6]           {0x00, 0x15, 0x5d, 0xb4, 0x81, 0xad};  ///< Populated from IED on connect, used for GOOSE subscription filtering
-    uint16_t            appId            {1000};       ///< Optional GOOSE AppID for subscription filtering
-    std::string         ip;
-    int                 port             {102};
-    std::string         logicalDevice;
-    std::string         iedName;
-    IedConnection       connection       {nullptr};  ///< nullptr = not connected
-    std::mutex          mutex;                       ///< per-turbine lock
-    IecConnectionStatus status           {IEC_LINK_CLOSED};
-    bool                intentConnected  {false};    ///< true only after an explicit connect call
+struct TurbineConnection {
+    int id{0};
+    uint8_t mac[6]{0x00, 0x15, 0x5d, 0xb4, 0x81, 0xad}; ///< Populated from IED on connect, used for GOOSE subscription filtering
+    uint16_t appId{1000};                               ///< Optional GOOSE AppID for subscription filtering
+    std::string ip;
+    int port{102};
+    std::string logicalDevice;
+    std::string iedName;
+    IedConnection connection{nullptr}; ///< nullptr = not connected
+    std::mutex mutex;                  ///< per-turbine lock
+    IecConnectionStatus status{IEC_LINK_CLOSED};
+    bool intentConnected{false}; ///< true only after an explicit connect call
     sc::ports::Clock::SteadyTimePoint nextReconnectAttempt{};
     std::chrono::milliseconds reconnectDelay{100};
 };
@@ -90,17 +87,15 @@ struct TurbineConnection
 ///   if (v) std::cout << "Voltage: " << *v << "\n";
 /// @endcode
 // ---------------------------------------------------------------------------
-class IEC61850Manager
-{
-public:
-    explicit IEC61850Manager(
-        sc::ports::Clock& clock = sc::ports::systemClock(),
-        std::chrono::milliseconds reconnectInitialDelay = std::chrono::milliseconds(100),
-        std::chrono::milliseconds reconnectMaxDelay = std::chrono::milliseconds(5000));
+class IEC61850Manager {
+    public:
+    explicit IEC61850Manager(sc::ports::Clock& clock = sc::ports::systemClock(),
+                             std::chrono::milliseconds reconnectInitialDelay = std::chrono::milliseconds(100),
+                             std::chrono::milliseconds reconnectMaxDelay = std::chrono::milliseconds(5000));
     ~IEC61850Manager();
     /** @brief Calls disconnectAll() on destruction. */
 
-    IEC61850Manager(const IEC61850Manager&)            = delete;
+    IEC61850Manager(const IEC61850Manager&) = delete;
     IEC61850Manager& operator=(const IEC61850Manager&) = delete;
 
     // ── Registration ────────────────────────────────────────────────────────
@@ -197,8 +192,9 @@ public:
     std::optional<std::string> readString(int turbineId, const std::string& daReference, int fc);
     /** @brief Read a string from a turbine data attribute. */
 
-    bool startPeriodicReport(int turbineId, const std::string& rcbReference, const std::string& dataSetReference, uint32_t integrityPeriodMs, 
-                                const std::vector<std::string>& fallbackDataReferences, IecReportCallback callback);
+    bool startPeriodicReport(int turbineId, const std::string& rcbReference, const std::string& dataSetReference,
+                             uint32_t integrityPeriodMs, const std::vector<std::string>& fallbackDataReferences,
+                             IecReportCallback callback);
     /**
      * @brief Configure and enable an IEC 61850 periodic integrity report.
      *
@@ -276,7 +272,7 @@ public:
     /** @brief Print all data set and report control block references. */
 
     struct ReportSubscription {
-        int turbineId {0};
+        int turbineId{0};
         std::string rcbReference;
         std::string dataSetReference;
         std::vector<std::string> fallbackDataReferences;
@@ -294,7 +290,7 @@ public:
     void stopGoose();
     bool gooseRunning() const;
 
-private:
+    private:
     friend struct IEC61850ManagerTestAccess;
 
     // ── Internal helpers ────────────────────────────────────────────────────
@@ -320,8 +316,8 @@ private:
      *        Caller must hold the turbine mutex.
      */
 
-    bool performSelectAndOperate(void* controlObjectClient, void* mmsValue, int turbineId, const std::string& controlObjectReference, 
-                                    const std::string& functionName, bool useSelectBeforeOperate);
+    bool performSelectAndOperate(void* controlObjectClient, void* mmsValue, int turbineId, const std::string& controlObjectReference,
+                                 const std::string& functionName, bool useSelectBeforeOperate);
     /**
      * @brief Common select-and-operate logic for controlled writes.
      *        Caller must hold the turbine mutex.  Passed as void* to avoid
@@ -329,8 +325,8 @@ private:
      * @return true if select+operate succeeded, false otherwise.
      */
 
-    bool writeControlledGeneric(int turbineId, const std::string& controlObjectReference, const std::string& functionName, 
-                                    std::function<void*()> createMmsValue, bool useSelectBeforeOperate);
+    bool writeControlledGeneric(int turbineId, const std::string& controlObjectReference, const std::string& functionName,
+                                std::function<void*()> createMmsValue, bool useSelectBeforeOperate);
     /**
      * @brief Generic helper for all writeControlled* variants.
      *        Handles turbine lookup, connection check, control object creation,
@@ -356,13 +352,13 @@ private:
     // turbine entries are protected by their own TurbineConnection::mutex.
     std::map<int, std::shared_ptr<TurbineConnection>> turbines_;
     std::map<std::string, std::unique_ptr<ReportSubscription>> reportSubscriptions_;
-    mutable std::mutex               mapMutex_;
-    mutable std::mutex               reportMutex_;
-    mutable std::mutex               gooseMutex_;
-    std::unique_ptr<LibIecGooseReceiver>  gooseReceiver_;
-    std::vector<GooseSubscription>   gooseSubscriptions_;
-    std::string                      gooseNetworkInterface_;
-    sc::ports::Clock&                clock_;
-    std::chrono::milliseconds        reconnectInitialDelay_;
-    std::chrono::milliseconds        reconnectMaxDelay_;
+    mutable std::mutex mapMutex_;
+    mutable std::mutex reportMutex_;
+    mutable std::mutex gooseMutex_;
+    std::unique_ptr<LibIecGooseReceiver> gooseReceiver_;
+    std::vector<GooseSubscription> gooseSubscriptions_;
+    std::string gooseNetworkInterface_;
+    sc::ports::Clock& clock_;
+    std::chrono::milliseconds reconnectInitialDelay_;
+    std::chrono::milliseconds reconnectMaxDelay_;
 };

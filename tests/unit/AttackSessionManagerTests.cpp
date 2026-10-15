@@ -1,30 +1,29 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "sc/communication/attack/AttackSessionManager.hpp"
 #include "support/FakeClock.hpp"
 
+#include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <stdexcept>
 #include <vector>
 
-using sc::application::AttackSessionManager;
 using AttackInterface::SignalType;
+using sc::application::AttackSessionManager;
 
-TEST_CASE("attack session state validates its configuration") {
+TEST_CASE("attack session state validates its configuration")
+{
     FakeClock clock;
 
     REQUIRE_THROWS_AS(AttackSessionManager(0, {SignalType::WIND_SPEED}, clock), std::invalid_argument);
     REQUIRE_THROWS_AS(AttackSessionManager(1, {}, clock), std::invalid_argument);
-    REQUIRE_THROWS_AS(
-        AttackSessionManager(1, {SignalType::WIND_SPEED}, clock, std::chrono::milliseconds(0)),
-        std::invalid_argument);
+    REQUIRE_THROWS_AS(AttackSessionManager(1, {SignalType::WIND_SPEED}, clock, std::chrono::milliseconds(0)), std::invalid_argument);
 
     AttackSessionManager state(1, {SignalType::WIND_SPEED}, clock);
     REQUIRE_FALSE(state.startSession(""));
     REQUIRE_FALSE(state.startSession("bad\nlabel"));
 }
 
-TEST_CASE("one attack client owns the tap and FDI state") {
+TEST_CASE("one attack client owns the tap and FDI state")
+{
     FakeClock clock;
     AttackSessionManager state(2, {SignalType::WIND_SPEED, SignalType::YAW_ANGLE}, clock);
 
@@ -45,7 +44,8 @@ TEST_CASE("one attack client owns the tap and FDI state") {
     REQUIRE_FALSE(state.setFdiEnabled(1, SignalType::NONE, true));
 }
 
-TEST_CASE("ending an attack session resets every link") {
+TEST_CASE("ending an attack session resets every link")
+{
     FakeClock clock;
     AttackSessionManager state(2, {SignalType::WIND_SPEED, SignalType::YAW_ANGLE}, clock);
     REQUIRE(state.startSession("temporary attack"));
@@ -61,7 +61,8 @@ TEST_CASE("ending an attack session resets every link") {
     REQUIRE_FALSE(state.endSession("duplicate release"));
 }
 
-TEST_CASE("heartbeats extend the attack client lease") {
+TEST_CASE("heartbeats extend the attack client lease")
+{
     FakeClock clock;
     AttackSessionManager state(1, {SignalType::WIND_SPEED}, clock, std::chrono::milliseconds(750));
     REQUIRE(state.startSession("lease test"));
@@ -78,7 +79,8 @@ TEST_CASE("heartbeats extend the attack client lease") {
     REQUIRE_FALSE(state.heartbeat());
 }
 
-TEST_CASE("a new session cannot revive controls or values from an ended session") {
+TEST_CASE("a new session cannot revive controls or values from an ended session")
+{
     FakeClock clock;
     AttackSessionManager state(1, {SignalType::YAW_SETPOINT}, clock);
 

@@ -1,15 +1,15 @@
 #pragma once
 
+#include "sc/application/PowerSharingMode.hpp"
+#include "sc/communication/attack/AttackProtocol.hpp"
+#include "sc/communication/attack/AttackTransport.hpp"
+
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "sc/application/PowerSharingMode.hpp"
-#include "sc/communication/attack/AttackTransport.hpp"
-#include "sc/communication/attack/AttackProtocol.hpp"
 
 namespace sc::runtime {
 
@@ -23,7 +23,9 @@ struct TurbineEndpointConfig {
 
 struct ReportConfig {
     ReportConfig() = default;
-    ReportConfig(std::string reportName) : name(std::move(reportName)) {}
+    ReportConfig(std::string reportName) : name(std::move(reportName))
+    {
+    }
 
     std::string name;
     bool enabled{true};
@@ -45,8 +47,7 @@ struct RuntimeConfig {
 
     struct Control {
         std::filesystem::path yawLutCsvPath{"config/yaw_lut.csv"};
-        sc::application::PowerSharingMode powerSharingMode{
-            sc::application::PowerSharingMode::EQUAL};
+        sc::application::PowerSharingMode powerSharingMode{sc::application::PowerSharingMode::EQUAL};
     } control;
 
     struct SignalProcessing {

@@ -1,32 +1,29 @@
 #pragma once
 
+#include "sc/communication/CommunicationConfig.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
+#include "sc/communication/iec61850/IEC61850Manager.hpp"
+#include "sc/communication/iec61850/IecReferences.hpp"
+#include "sc/model/SharedData.hpp"
+#include "sc/runtime/DataHistorian.hpp"
+#include "sc/runtime/Logging.hpp"
+#include "sc/runtime/PeriodicTask.hpp"
+#include "sc/runtime/Time.hpp"
+
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
-#include <chrono>
-
-#include "sc/runtime/PeriodicTask.hpp"
-#include "sc/model/SharedData.hpp"
-#include "sc/runtime/DataHistorian.hpp"
-#include "sc/communication/iec61850/IecReferences.hpp"
-#include "sc/communication/iec61850/IEC61850Manager.hpp"
-#include "sc/communication/attack/AttackInterface.hpp"
-#include "sc/communication/CommunicationConfig.hpp"
-#include "sc/runtime/Logging.hpp"
-#include "sc/runtime/Time.hpp"
 
 struct IECCommunicatorTestAccess;
 
-class IECCommunicator
-{
-public:
-    explicit IECCommunicator(const sc::communication::CommunicationConfig& config,
-                             int turbineId,
-                             IEC61850Manager& iecManager,
+class IECCommunicator {
+    public:
+    explicit IECCommunicator(const sc::communication::CommunicationConfig& config, int turbineId, IEC61850Manager& iecManager,
                              AttackInterface::AttackInterface& attackInterface);
     ~IECCommunicator();
 
@@ -34,69 +31,75 @@ public:
     void stop();
     void setFailureHandler(PeriodicTask::FailureHandler handler);
 
-    int turbineId() const { return turbineId_; }
-    sc::communication::CommunicationStatus status() const { return iecStatus_.load(); }
+    int turbineId() const
+    {
+        return turbineId_;
+    }
+    sc::communication::CommunicationStatus status() const
+    {
+        return iecStatus_.load();
+    }
     std::chrono::system_clock::time_point lastActivityTime() const;
 
-private:
+    private:
     friend struct IECCommunicatorTestAccess;
 
-    class RxTask : public PeriodicTask
-    {
-    public:
-        RxTask(IECCommunicator& owner, std::chrono::milliseconds period)
-            : PeriodicTask(period),
-              owner_(owner)
+    class RxTask : public PeriodicTask {
+        public:
+        RxTask(IECCommunicator& owner, std::chrono::milliseconds period) : PeriodicTask(period), owner_(owner)
         {
         }
 
-    private:
-        void execute() override { owner_.executeRx(); }
+        private:
+        void execute() override
+        {
+            owner_.executeRx();
+        }
 
         IECCommunicator& owner_;
     };
 
-    class TxTask : public PeriodicTask
-    {
-    public:
-        TxTask(IECCommunicator& owner, std::chrono::milliseconds period)
-            : PeriodicTask(period),
-              owner_(owner)
+    class TxTask : public PeriodicTask {
+        public:
+        TxTask(IECCommunicator& owner, std::chrono::milliseconds period) : PeriodicTask(period), owner_(owner)
         {
         }
 
-    private:
-        void execute() override { owner_.executeTx(); }
+        private:
+        void execute() override
+        {
+            owner_.executeTx();
+        }
 
         IECCommunicator& owner_;
     };
 
     struct RxDescriptor {
-        const char*                              name;
-        const char*                              unit;
-        const char*                              daReference;
-        const char*                              reportReference;
-        AttackInterface::SignalType              txDataType;
-        std::vector<double> CollectedData::*     lastField;
-        TurbineHistory<double> CollectedData::*  historyField;
-        std::vector<uint64_t> CollectedData::*   lastTimestamp;
-        uint32_t                                 intervalMs;
+        const char* name;
+        const char* unit;
+        const char* daReference;
+        const char* reportReference;
+        AttackInterface::SignalType txDataType;
+        std::vector<double> CollectedData::*lastField;
+        TurbineHistory<double> CollectedData::*historyField;
+        std::vector<uint64_t> CollectedData::*lastTimestamp;
+        uint32_t intervalMs;
     };
 
     struct FloatTxDescriptor {
-        const char*                              name;
-        std::vector<float> ControlData::*         values;
-        AttackInterface::SignalType              signalType;
-        const char*                              controlReference;
-        uint32_t                                 intervalMs;
+        const char* name;
+        std::vector<float> ControlData::*values;
+        AttackInterface::SignalType signalType;
+        const char* controlReference;
+        uint32_t intervalMs;
     };
 
     struct EnumTxDescriptor {
-        const char*                              name;
-        std::vector<uint32_t> ControlData::*      values;
-        const char*                              controlReference;
-        const char*                              stateReference;
-        uint32_t                                 intervalMs;
+        const char* name;
+        std::vector<uint32_t> ControlData::*values;
+        const char* controlReference;
+        const char* stateReference;
+        uint32_t intervalMs;
     };
 
     uint64_t getRxNextExecutionTimeMs(size_t index) const;
@@ -131,17 +134,17 @@ private:
     RxTask rxTask_;
     TxTask txTask_;
 
-    std::vector<uint64_t> rxNextExecutionTimes_;    ///< next execution times for RX descriptors
+    std::vector<uint64_t> rxNextExecutionTimes_; ///< next execution times for RX descriptors
     std::vector<uint64_t> floatTxNextExecutionTimes_;
     std::vector<uint64_t> enumTxNextExecutionTimes_;
     struct BufferedRxMeasurement {
-        float value {0.0f};
-        uint64_t timestampMs {0};
+        float value{0.0f};
+        uint64_t timestampMs{0};
     };
     std::vector<std::optional<BufferedRxMeasurement>> reportRxBuffer_;
     std::mutex reportRxBufferMutex_;
-    std::atomic<bool> reportStarted_ {false};
-    bool started_ {false};
+    std::atomic<bool> reportStarted_{false};
+    bool started_{false};
     std::mutex lifecycleMutex_;
     PeriodicTask::FailureHandler failureHandler_;
     std::mutex failureHandlerMutex_;

@@ -1,18 +1,34 @@
 #pragma once
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
+#include "sc/runtime/Logging.hpp"
+
 #include <cerrno>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
 
-#include "sc/runtime/Logging.hpp"
-
 #if defined(PLATFORM_WINDOWS)
 
+// WinSock2 must precede windows.h to prevent inclusion of legacy winsock.h.
+#if defined(_WINSOCKAPI_) && !defined(_WINSOCK2API_)
+#error "winsock.h was included before SocketPlatform.hpp"
+#endif
+
+// clang-format off
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <basetsd.h>
+// clang-format on
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -71,14 +87,9 @@ inline const char* socket_strerror()
 {
     thread_local char msg_buffer[256] = {0};
     const DWORD err = static_cast<DWORD>(WSAGetLastError());
-    const DWORD len = FormatMessageA(
-        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        nullptr,
-        err,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        msg_buffer,
-        static_cast<DWORD>(sizeof(msg_buffer)),
-        nullptr);
+    const DWORD len =
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                       msg_buffer, static_cast<DWORD>(sizeof(msg_buffer)), nullptr);
 
     if (len == 0) {
         std::snprintf(msg_buffer, sizeof(msg_buffer), "Winsock error %lu", static_cast<unsigned long>(err));
@@ -114,7 +125,9 @@ inline bool socket_init()
     return true;
 }
 
-inline void socket_cleanup() {}
+inline void socket_cleanup()
+{
+}
 
 inline void socket_close(socket_t fd)
 {

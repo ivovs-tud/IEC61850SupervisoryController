@@ -1,3 +1,6 @@
+#include "AttackChannelZMQ.hpp"
+#include "sc/communication/attack/AttackInterface.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -5,10 +8,8 @@
 #include <string>
 #include <thread>
 
-#include "sc/communication/attack/AttackInterface.hpp"
-#include "AttackChannelZMQ.hpp"
-
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     if (argc < 2 || argc > 3) {
         std::cerr << "usage: sc_attack_loopback_server <port> [slow-reader|burst]\n";
         return 2;
@@ -46,8 +47,7 @@ int main(int argc, char* argv[]) {
                 attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
             }
         }
-        if (event.find("event=tap;") != std::string::npos ||
-            event.find("event=fdi;") != std::string::npos) {
+        if (event.find("event=tap;") != std::string::npos || event.find("event=fdi;") != std::string::npos) {
             controlChangeCount.fetch_add(1);
         }
         if (event.find("event=disconnected") != std::string::npos) {
@@ -74,8 +74,7 @@ int main(int argc, char* argv[]) {
         attack.txData(1, AttackInterface::SignalType::YAW_ANGLE, yaw);
 
         float yawSetpoint = -1.0F;
-        const auto result = attack.processValue(
-            1, AttackInterface::SignalType::YAW_SETPOINT, yawSetpoint);
+        const auto result = attack.processValue(1, AttackInterface::SignalType::YAW_SETPOINT, yawSetpoint);
         if (result == AttackInterface::AI_OK) {
             ++overwriteSuccessCount;
         } else if (result == AttackInterface::AI_TIMEOUT) {
@@ -87,15 +86,11 @@ int main(int argc, char* argv[]) {
     channel.stop();
     float authoritativeValue = 321.0F;
     const bool restored =
-        attack.overwrite(1, AttackInterface::SignalType::YAW_SETPOINT, authoritativeValue) ==
-            AttackInterface::AI_DISABLED &&
+        attack.overwrite(1, AttackInterface::SignalType::YAW_SETPOINT, authoritativeValue) == AttackInterface::AI_DISABLED &&
         authoritativeValue == 321.0F;
-    std::cout << "SC_LOOPBACK_RESULT configurations=" << configurationCount.load()
-              << " disconnects=" << disconnectCount.load()
-              << " overwrite_successes=" << overwriteSuccessCount
-              << " overwrite_timeouts=" << overwriteTimeoutCount
-              << " control_changes=" << controlChangeCount.load()
-              << " client_release=" << static_cast<int>(releasedByClient.load())
+    std::cout << "SC_LOOPBACK_RESULT configurations=" << configurationCount.load() << " disconnects=" << disconnectCount.load()
+              << " overwrite_successes=" << overwriteSuccessCount << " overwrite_timeouts=" << overwriteTimeoutCount
+              << " control_changes=" << controlChangeCount.load() << " client_release=" << static_cast<int>(releasedByClient.load())
               << " restored=" << static_cast<int>(restored) << '\n';
     return 0;
 }
