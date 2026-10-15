@@ -46,7 +46,9 @@ int disconnectReasonCode(const std::string& reason)
         return 1;
     if (reason == "peer closed connection")
         return 2;
-    if (reason.find("receive error") != std::string::npos || reason == "connection closed")
+    // A reset can surface from recv, send, or poll depending on the platform.
+    if (reason.find("receive error") != std::string::npos || reason.find("send error") != std::string::npos ||
+        reason == "send returned zero" || reason == "connection closed")
         return 3;
     if (reason.find("protocol error") != std::string::npos)
         return 4;

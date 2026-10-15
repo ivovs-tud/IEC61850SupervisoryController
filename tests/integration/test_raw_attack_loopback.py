@@ -114,9 +114,7 @@ class RawAttackLoopbackTests(unittest.TestCase):
                     second_server.terminate()
                     second_output, second_errors = second_server.communicate(timeout=2.0)
 
-            counters = self.assert_server_success(
-                second_server, second_output, second_errors
-            )
+            counters = self.assert_server_success(second_server, second_output, second_errors)
             self.assertEqual(counters["configurations"], 1)
             self.assert_cleanup(counters, {1})
         finally:
@@ -169,6 +167,7 @@ class RawAttackLoopbackTests(unittest.TestCase):
                 rejected_data = second.recv(1)
             except ConnectionResetError:
                 rejected_data = b""
+
             self.assertEqual(rejected_data, b"")
             second.close()
 
@@ -176,29 +175,16 @@ class RawAttackLoopbackTests(unittest.TestCase):
             payload = configuration.pack()
             for byte in payload:
                 client.sendall(bytes((byte,)))
-            acknowledgement = self.wait_for_message(
-                client, decoder, lambda message: message == configuration
-            )
+
+            acknowledgement = self.wait_for_message(client, decoder, lambda message: message == configuration)
             self.assertEqual(acknowledgement, configuration)
 
             client.sendall(
                 b"".join(
                     (
-                        CtDataMessage(
-                            ControlSignal.CTRL_TAP,
-                            TxDataType.TX_YAW,
-                            (True, False),
-                        ).pack(),
-                        CtDataMessage(
-                            ControlSignal.CTRL_TAP,
-                            TxDataType.TX_SPT_YAW,
-                            (True, False),
-                        ).pack(),
-                        CtDataMessage(
-                            ControlSignal.CTRL_FDI,
-                            TxDataType.TX_SPT_YAW,
-                            (True, False),
-                        ).pack(),
+                        CtDataMessage(ControlSignal.CTRL_TAP, TxDataType.TX_YAW, (True, False)).pack(),
+                        CtDataMessage(ControlSignal.CTRL_TAP, TxDataType.TX_SPT_YAW, (True, False)).pack(),
+                        CtDataMessage(ControlSignal.CTRL_FDI, TxDataType.TX_SPT_YAW, (True, False)).pack(),
                     )
                 )
             )
@@ -206,13 +192,12 @@ class RawAttackLoopbackTests(unittest.TestCase):
             saw_yaw = False
             saw_request_after_observation = False
             response_sent = False
-            saw_cycle_after_response = False
+            request_count = 0
+            saw_request_after_timeout = False
             last_yaw_setpoint = None
             next_heartbeat = time.monotonic()
             deadline = time.monotonic() + 5.0
-            while time.monotonic() < deadline and not (
-                saw_yaw and saw_request_after_observation and saw_cycle_after_response
-            ):
+            while time.monotonic() < deadline and not (saw_yaw and response_sent and saw_request_after_timeout):
                 now = time.monotonic()
                 if now >= next_heartbeat:
                     client.sendall(HeartbeatMessage().pack())
@@ -221,29 +206,25 @@ class RawAttackLoopbackTests(unittest.TestCase):
                     if isinstance(message, TxDataMessage):
                         if message.data_type == TxDataType.TX_YAW:
                             saw_yaw = math.isclose(message.value, 7.0)
-                            if response_sent:
-                                saw_cycle_after_response = True
                         elif message.data_type == TxDataType.TX_SPT_YAW:
                             last_yaw_setpoint = message.value
                     elif isinstance(message, RqDataMessage):
                         if message.data_type == TxDataType.TX_SPT_YAW:
-                            saw_request_after_observation = (
-                                last_yaw_setpoint is not None
-                                and math.isclose(last_yaw_setpoint, -1.0)
+                            saw_request_after_observation = saw_request_after_observation or (
+                                last_yaw_setpoint is not None and math.isclose(last_yaw_setpoint, -1.0)
                             )
-                            client.sendall(
-                                AtDataMessage(
-                                    message.turbine_id,
-                                    message.data_type,
-                                    message.request_time_ms,
-                                    123.5,
-                                ).pack()
-                            )
-                            response_sent = True
+                            request_count += 1
+                            if request_count == 1:
+                                client.sendall(AtDataMessage(message.turbine_id, message.data_type, message.request_time_ms, 123.5,).pack())
+                                response_sent = True
+                            elif request_count >= 3:
+                                # Reaching the next request proves the ignored second request timed out.
+                                saw_request_after_timeout = True
 
             self.assertTrue(saw_yaw)
             self.assertTrue(saw_request_after_observation)
-            self.assertTrue(saw_cycle_after_response)
+            self.assertTrue(response_sent)
+            self.assertTrue(saw_request_after_timeout)
 
             client.sendall(ReleaseMessage().pack())
             client.close()
@@ -271,11 +252,7 @@ class RawAttackLoopbackTests(unittest.TestCase):
             client.sendall(configuration.pack())
             self.wait_for_message(client, decoder, lambda message: message == configuration)
             client.sendall(
-                CtDataMessage(
-                    ControlSignal.CTRL_TAP,
-                    TxDataType.TX_YAW,
-                    (True, False),
-                ).pack()
+                CtDataMessage(ControlSignal.CTRL_TAP, TxDataType.TX_YAW, (True, False)).pack()
             )
             self.wait_for_message(
                 client,
