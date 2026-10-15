@@ -9,8 +9,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(SC_BUILD_TESTS "Build supervisory controller tests" OFF)
-option(SC_BUILD_INTEGRATION_TESTS "Build tests that require optional network dependencies" OFF)
-option(SC_BUILD_CONTROLLER "Build the IEC 61850 supervisory controller executable" ON)
 
 find_program(SC_CLANG_FORMAT_EXECUTABLE NAMES clang-format clang-format-18)
 add_custom_target(format
@@ -29,10 +27,6 @@ add_custom_target(format-check
         -P ${CMAKE_SOURCE_DIR}/cmake/RunClangFormat.cmake
     VERBATIM
 )
-
-if(SC_BUILD_INTEGRATION_TESTS AND NOT SC_BUILD_TESTS)
-    message(FATAL_ERROR "SC_BUILD_INTEGRATION_TESTS requires SC_BUILD_TESTS=ON")
-endif()
 
 # Default to Debug if no build type is specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -62,22 +56,19 @@ endif()
 find_package(Boost 1.70 REQUIRED)
 message(STATUS "Boost ${Boost_VERSION} found at ${Boost_INCLUDE_DIRS}")
 
-# ZeroMQ and cppzmq are needed by the controller and network integration test.
-# MsgPack is needed only by the controller's HMI target.
-if((SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS) AND WIN32)
+# ZeroMQ, cppzmq, and MsgPack are required by the controller interfaces.
+if(WIN32)
     # Windows with vcpkg: use CONFIG mode for all packages
     find_package(ZeroMQ CONFIG REQUIRED)
     find_package(cppzmq CONFIG REQUIRED)
     find_path(ZMQ_INCLUDE_DIR NAMES zmq.h REQUIRED)
     find_path(CPPZMQ_INCLUDE_DIR NAMES zmq.hpp REQUIRED)
-    if(SC_BUILD_CONTROLLER)
-        find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp REQUIRED)
-    endif()
-    
+    find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp REQUIRED)
+
     # Set variables for compatibility with subdirectories
     set(ZMQ_INCLUDE_DIRS ${ZMQ_INCLUDE_DIR})
     set(ZMQ_LIBRARIES libzmq)
-elseif(SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS)
+else()
     # Linux: Use pkg-config (or vcpkg if CMAKE_TOOLCHAIN_FILE is set)
     if(DEFINED CMAKE_TOOLCHAIN_FILE)
         # Using vcpkg on Linux
@@ -85,10 +76,8 @@ elseif(SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS)
         find_package(cppzmq CONFIG REQUIRED)
         find_path(ZMQ_INCLUDE_DIR NAMES zmq.h REQUIRED)
         find_path(CPPZMQ_INCLUDE_DIR NAMES zmq.hpp REQUIRED)
-        if(SC_BUILD_CONTROLLER)
-            find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp REQUIRED)
-        endif()
-        
+        find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp REQUIRED)
+
         set(ZMQ_INCLUDE_DIRS ${ZMQ_INCLUDE_DIR})
         set(ZMQ_LIBRARIES libzmq)
     else()
@@ -97,10 +86,8 @@ elseif(SC_BUILD_CONTROLLER OR SC_BUILD_INTEGRATION_TESTS)
         pkg_check_modules(ZMQ REQUIRED libzmq)
         find_path(CPPZMQ_INCLUDE_DIR NAMES zmq.hpp
             PATHS /usr/local/include /usr/include REQUIRED)
-        if(SC_BUILD_CONTROLLER)
-            find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp
-                PATHS /usr/local/include /usr/include REQUIRED)
-        endif()
+        find_path(MSGPACK_INCLUDE_DIR NAMES msgpack.hpp
+            PATHS /usr/local/include /usr/include REQUIRED)
     endif()
 endif()
 
@@ -108,14 +95,8 @@ add_subdirectory(src/util)
 add_subdirectory(src/runtime)
 add_subdirectory(src/application)
 add_subdirectory(src/communication)
-
-if(SC_BUILD_CONTROLLER)
-    add_subdirectory(src/tasks)
-endif()
-
-if(SC_BUILD_CONTROLLER)
-    add_subdirectory(apps/wind_farm_scada)
-endif()
+add_subdirectory(src/tasks)
+add_subdirectory(apps/wind_farm_scada)
 
 if(SC_BUILD_TESTS)
     enable_testing()
