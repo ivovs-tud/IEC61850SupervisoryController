@@ -57,6 +57,8 @@ jobs:
       VCPKG_INSTALLED_DIR: ${{ github.workspace }}/.cache/vcpkg-installed
       LIBIEC61850_REF: v1.6.2.1
       LIBIEC61850_ROOT: ${{ github.workspace }}/.cache/libiec61850/install
+      WINPCAP_SDK_SHA256: ea799cf2f26e4afb1892938070fd2b1ca37ce5cf75fec4349247df12b784edbd
+      WINPCAP_INSTALLER_SHA256: fc4623b113a1f603c0d9ad5f83130bd6de1c62b973be9892305132389c8588de
 
     steps:
       - name: Check out supervisory controller
@@ -107,11 +109,57 @@ jobs:
           $archive = Join-Path $env:RUNNER_TEMP "WpdPack_4_1_2.zip"
           $extracted = Join-Path $env:RUNNER_TEMP "WpdPack_4_1_2"
           Invoke-WebRequest "https://www.winpcap.org/install/bin/WpdPack_4_1_2.zip" -OutFile $archive
+          $actualHash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:WINPCAP_SDK_SHA256) {
+            throw "Unexpected WinPcap SDK hash: $actualHash"
+          }
           Expand-Archive -Path $archive -DestinationPath $extracted
           New-Item -ItemType Directory -Force -Path "libiec61850/third_party/winpcap" | Out-Null
           Copy-Item -Recurse -Force "$extracted/WpdPack/Include" "libiec61850/third_party/winpcap/Include"
           Copy-Item -Recurse -Force "$extracted/WpdPack/Lib" "libiec61850/third_party/winpcap/Lib"
           Copy-Item -Force "libiec61850/third_party/winpcap/Lib/x64/*.lib" "libiec61850/third_party/winpcap/Lib"
+
+      - name: Prepare WinPcap runtime for Windows tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "WinPcap_4_1_3.exe"
+          $extracted = Join-Path $env:RUNNER_TEMP "WinPcap_4_1_3"
+          $runtime = Join-Path $env:RUNNER_TEMP "winpcap-runtime"
+          Invoke-WebRequest "https://www.winpcap.org/install/bin/WinPcap_4_1_3.exe" -OutFile $installer
+
+          $actualHash = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:WINPCAP_INSTALLER_SHA256) {
+            throw "Unexpected WinPcap installer hash: $actualHash"
+          }
+
+          & 7z x -y -aou "-o$extracted" $installer
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to extract the WinPcap runtime"
+          }
+
+          function Get-PeMachine([string] $path) {
+            $bytes = [System.IO.File]::ReadAllBytes($path)
+            $headerOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+            return [BitConverter]::ToUInt16($bytes, $headerOffset + 4)
+          }
+
+          $systemDirectory = Join-Path $extracted '$SYSDIR'
+          $wpcap = @(Get-ChildItem $systemDirectory -Filter "wpcap*.dll" |
+            Where-Object { (Get-PeMachine $_.FullName) -eq 0x8664 })
+          $packet = @(Get-ChildItem $systemDirectory -Filter "Packet*.dll" |
+            Where-Object {
+              (Get-PeMachine $_.FullName) -eq 0x8664 -and
+              [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($_.FullName)) -notmatch "NPPTools.dll"
+            })
+          if ($wpcap.Count -ne 1 -or $packet.Count -ne 1) {
+            throw "Could not identify the x64 WinPcap runtime DLLs"
+          }
+
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+          Copy-Item $wpcap[0].FullName (Join-Path $runtime "wpcap.dll")
+          Copy-Item $packet[0].FullName (Join-Path $runtime "Packet.dll")
+          $runtime | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Configure libiec61850
         if: steps.libiec61850-cache.outputs.cache-hit != 'true'
