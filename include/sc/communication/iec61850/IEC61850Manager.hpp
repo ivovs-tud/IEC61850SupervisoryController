@@ -3,6 +3,7 @@
 #include "sc/communication/iec61850/IecReferences.hpp"
 #include "sc/runtime/Clock.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <map>
@@ -64,7 +65,7 @@ struct TurbineConnection {
     std::string iedName;
     IedConnection connection{nullptr}; ///< nullptr = not connected
     std::mutex mutex;                  ///< per-turbine lock
-    IecConnectionStatus status{IEC_LINK_CLOSED};
+    std::atomic<IecConnectionStatus> status{IEC_LINK_CLOSED};
     bool intentConnected{false}; ///< true only after an explicit connect call
     sc::ports::Clock::SteadyTimePoint nextReconnectAttempt{};
     std::chrono::milliseconds reconnectDelay{100};
@@ -349,7 +350,8 @@ class IEC61850Manager {
 
     // Map from turbine ID → connection state.
     // The map itself is protected by mapMutex_ for insertions; individual
-    // turbine entries are protected by their own TurbineConnection::mutex.
+    // turbine operations are protected by their own TurbineConnection::mutex;
+    // status remains lock-free so observers never wait behind network I/O.
     std::map<int, std::shared_ptr<TurbineConnection>> turbines_;
     std::map<std::string, std::unique_ptr<ReportSubscription>> reportSubscriptions_;
     mutable std::mutex mapMutex_;

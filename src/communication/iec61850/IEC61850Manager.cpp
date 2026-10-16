@@ -523,9 +523,9 @@ IecConnectionStatus IEC61850Manager::status() const
         }
     }
     for (const auto& tc : turbines) {
-        std::lock_guard<std::mutex> tcLock(tc->mutex);
-        if (tc->status < result)
-            result = tc->status;
+        const IecConnectionStatus turbineStatus = tc->status.load();
+        if (turbineStatus < result)
+            result = turbineStatus;
     }
     return result;
 }
@@ -535,8 +535,7 @@ IecConnectionStatus IEC61850Manager::status(int turbineId) const
     const auto tc = findTurbine(turbineId);
     if (!tc)
         return IEC_LINK_ERROR;
-    std::lock_guard<std::mutex> tcLock(tc->mutex);
-    return tc->status;
+    return tc->status.load();
 }
 
 std::shared_ptr<TurbineConnection> IEC61850Manager::findTurbine(int turbineId) const

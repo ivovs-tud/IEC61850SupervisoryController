@@ -126,7 +126,7 @@ TEST_CASE("IEC connection intent does not perform network I/O")
     REQUIRE(turbine);
     REQUIRE(turbine->connection == nullptr);
     REQUIRE(turbine->intentConnected);
-    REQUIRE(turbine->status == IEC_LINK_RECONNECTING);
+    REQUIRE(turbine->status.load() == IEC_LINK_RECONNECTING);
     REQUIRE(turbine->nextReconnectAttempt == sc::ports::Clock::SteadyTimePoint{});
     REQUIRE(turbine->reconnectDelay == 100ms);
 }
@@ -157,7 +157,7 @@ TEST_CASE("IEC reconnect attempts are time-gated and capped")
     REQUIRE_FALSE(manager.readFloat(1, "LD0/MMXU1.TotW.mag.f", 1));
     REQUIRE(turbine->nextReconnectAttempt == clock.steadyNow() + 400ms);
     REQUIRE(turbine->reconnectDelay == 400ms);
-    REQUIRE(turbine->status == IEC_LINK_RECONNECTING);
+    REQUIRE(turbine->status.load() == IEC_LINK_RECONNECTING);
 }
 
 TEST_CASE("IEC reconnect state is independent for each turbine")
@@ -182,7 +182,7 @@ TEST_CASE("IEC reconnect state is independent for each turbine")
     REQUIRE(second->reconnectDelay == 200ms);
 }
 
-TEST_CASE("IEC turbine operations use independent locks")
+TEST_CASE("IEC status queries do not wait for turbine network operations")
 {
     FakeClock clock;
     IEC61850Manager manager(clock);
@@ -194,12 +194,12 @@ TEST_CASE("IEC turbine operations use independent locks")
     auto firstStatus = std::async(std::launch::async, [&manager]() { return manager.status(1); });
     auto secondStatus = std::async(std::launch::async, [&manager]() { return manager.status(2); });
 
-    const bool secondCompleted = secondStatus.wait_for(1s) == std::future_status::ready;
-    const bool firstWaited = firstStatus.wait_for(20ms) == std::future_status::timeout;
+    const bool firstCompleted = firstStatus.wait_for(500ms) == std::future_status::ready;
+    const bool secondCompleted = secondStatus.wait_for(500ms) == std::future_status::ready;
     firstLock.unlock();
 
+    REQUIRE(firstCompleted);
     REQUIRE(secondCompleted);
-    REQUIRE(firstWaited);
     REQUIRE(secondStatus.get() == IEC_LINK_CLOSED);
     REQUIRE(firstStatus.get() == IEC_LINK_CLOSED);
 }
