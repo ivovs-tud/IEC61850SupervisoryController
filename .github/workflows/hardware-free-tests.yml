@@ -75,13 +75,17 @@ jobs:
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             echo "value=${ImageOS:-Windows}-${ImageVersion:-unknown}" >> "${GITHUB_OUTPUT}"
           else
             echo "value=stable" >> "${GITHUB_OUTPUT}"
           fi
-          if [[ "${GITHUB_REF_NAME}" == "${DEFAULT_BRANCH}" && ( "${GITHUB_EVENT_NAME}" == "push" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ) ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]] ||
+             [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_NAME}" == "${DEFAULT_BRANCH}" ]] ||
+             [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${PR_HEAD_REPOSITORY}" == "${REPOSITORY}" ]]; then
             echo "write-enabled=true" >> "${GITHUB_OUTPUT}"
           else
             echo "write-enabled=false" >> "${GITHUB_OUTPUT}"
