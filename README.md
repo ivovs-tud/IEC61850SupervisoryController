@@ -1,36 +1,63 @@
-Implementation of a wind farm supervisory controller in C++, based on the IEC61850-7 communication protocol, with IEC61400-25 data information model. Intended to interface with https://github.com/ivovs-tud/IEC61850ServerPLC due to custom entries in the IEC61400-25 data information model.
+# Wind Farm SCADA
 
-The controller exposes operator, HMI, attack/test, and historian interfaces
-alongside its IEC 61850 communication. The external interfaces are documented
-under [docs/protocols](docs/protocols).
+Wind Farm SCADA is a C++ supervisory controller based on IEC 61850-7 and the
+IEC 61400-25 wind-power information model. It is intended to communicate with
+the turbine servers from
+[IEC61850ServerPLC](https://github.com/ivovs-tud/IEC61850ServerPLC), which
+provide the project-specific IEC 61400-25 data objects.
 
-This repository has been developed as part of the EU Horizon program [SUDOCO](https://sudoco.eu/).
+This repository was developed as part of the EU Horizon
+[SUDOCO](https://sudoco.eu/) project.
 
 ## Building from source
 
-The hardware-free tests do not require libiec61850:
+The build requires:
+
+- CMake 3.21 or newer;
+- a C++17 compiler;
+- libiec61850;
+- Boost, ZeroMQ, cppzmq, and MsgPack.
+
+The dependencies listed in `vcpkg.json` can be installed by CMake through
+vcpkg. libiec61850 must currently be built or installed separately. Set
+`VCPKG_ROOT` to the vcpkg directory and configure a release build with:
 
 ```sh
-cmake --preset hardware-free-tests
-cmake --build --preset hardware-free-tests
-ctest --preset hardware-free-tests
-```
-
-Contributor formatting and naming conventions are documented in
-[docs/development/cpp-style.md](docs/development/cpp-style.md). The formatter
-is pinned to clang-format 18.1.8 and can be checked with
-`cmake -DSC_FORMAT_MODE=check -P cmake/RunClangFormat.cmake`.
-
-A controller build first looks for a CMake package that provides the target
-`libiec61850::iec61850`. When using an existing libiec61850 source build, pass
-its location explicitly instead of relying on a machine-specific path:
-
-```sh
-cmake -S . -B build/controller \
-  -DSC_BUILD_CONTROLLER=ON \
+cmake -S . -B build/release \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
   -DSC_LIBIEC61850_ROOT=/path/to/libiec61850
-cmake --build build/controller
+cmake --build build/release --config Release
 ```
+
+If the other dependencies are already installed and discoverable by CMake,
+omit `CMAKE_TOOLCHAIN_FILE`. `SC_LIBIEC61850_ROOT` may point to either a
+libiec61850 installation prefix or its source tree containing an existing
+build. It may be omitted when an installed CMake package already provides
+`libiec61850::iec61850`.
+
+Use `-DCMAKE_BUILD_TYPE=Debug` and `--config Debug` for a debug build. A normal
+build includes the `wind_farm_scada` controller executable. Tests are disabled
+unless explicitly enabled.
+
+## Building and running the tests
+
+The complete test suite includes C++, Python, and local network integration
+tests. It does not require live IEC 61850 equipment, but it does compile and
+link the controller's IEC 61850 integration.
+
+Install the auxiliary Python attack client, set `VCPKG_ROOT`, and use the test
+preset:
+
+```sh
+python -m pip install ./python
+cmake --preset vcpkg-hardware-free-tests -DSC_LIBIEC61850_ROOT=/path/to/libiec61850
+cmake --build --preset vcpkg-hardware-free-tests
+ctest --preset vcpkg-hardware-free-tests
+```
+
+When all dependencies are already installed and discoverable, use the
+`hardware-free-tests` preset instead.
 
 ## License
 
