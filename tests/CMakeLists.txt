@@ -225,6 +225,21 @@ catch_discover_tests(
     DISCOVERY_MODE PRE_TEST
 )
 
+add_executable(sc_console_tests
+    unit/ConsoleTests.cpp
+)
+
+target_link_libraries(sc_console_tests PRIVATE
+    Catch2::Catch2WithMain
+    sc_runtime
+)
+
+catch_discover_tests(
+    sc_console_tests
+    TEST_PREFIX "sc.console."
+    DISCOVERY_MODE PRE_TEST
+)
+
 add_executable(sc_data_historian_tests
     unit/DataHistorianTests.cpp
 )

@@ -245,20 +245,20 @@ void HmiInterface::onStart()
         if (!pubIpcPath.empty()) {
             // Allow subscribers running as a different user (e.g., non-sudo HMI).
             if (::chmod(pubIpcPath.c_str(), 0666) != 0) {
-                std::cerr << "[HmiInterface] Warning: failed to chmod IPC socket " << pubIpcPath << '\n';
+                sc::runtime::writeConsoleLine(std::cerr, "[HmiInterface] Warning: failed to chmod IPC socket ", pubIpcPath);
             }
         }
 
         if (!cmdIpcPath.empty()) {
             if (::chmod(cmdIpcPath.c_str(), 0666) != 0) {
-                std::cerr << "[HmiInterface] Warning: failed to chmod command IPC socket " << cmdIpcPath << '\n';
+                sc::runtime::writeConsoleLine(std::cerr, "[HmiInterface] Warning: failed to chmod command IPC socket ", cmdIpcPath);
             }
         }
 #endif
-        std::cout << "[HmiInterface] Publishing on " << config_.publisherEndpoint << " | Command input on " << config_.commandEndpoint
-                  << '\n';
+        sc::runtime::writeConsoleLine(std::cout, "[HmiInterface] Publishing on ", config_.publisherEndpoint, " | Command input on ",
+                                      config_.commandEndpoint);
     } catch (const std::exception& e) {
-        std::cerr << "[HmiInterface] Failed to bind publisher: " << e.what() << '\n';
+        sc::runtime::writeConsoleLine(std::cerr, "[HmiInterface] Failed to bind publisher: ", e.what());
         pubSocket_.reset();
         cmdSocket_.reset();
         throw;

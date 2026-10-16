@@ -1,4 +1,5 @@
 add_library(sc_runtime STATIC
+    Console.cpp
     DataHistorian.cpp
     PeriodicTask.cpp
     RuntimeConfig.cpp

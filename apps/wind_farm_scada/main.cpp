@@ -104,8 +104,8 @@ CliOptions parseArguments(int argc, char* argv[])
 
 void printUsage(const char* executable)
 {
-    std::cout << "Usage: " << executable << " [--config runtime.json] [--yaw-lut yaw_lut.csv]\n"
-              << "       " << executable << " [yaw_lut.csv]\n";
+    sc::runtime::writeConsoleLine(std::cout, "Usage: ", executable, " [--config runtime.json] [--yaw-lut yaw_lut.csv]\n       ", executable,
+                                  " [yaw_lut.csv]");
 }
 
 } // namespace
@@ -169,7 +169,7 @@ int main(int argc, char* argv[])
         std::atomic<bool> criticalFailureOccurred{false};
         auto criticalFailureHandler = [&](std::string taskName) {
             return [&, taskName = std::move(taskName)](const std::string& message) {
-                std::cerr << "Critical " << taskName << " failure: " << message << '\n';
+                sc::runtime::writeConsoleLine(std::cerr, "Critical ", taskName, " failure: ", message);
                 criticalFailureOccurred.store(true);
                 shutdownRequested.store(true);
             };
@@ -218,7 +218,7 @@ int main(int argc, char* argv[])
             throw;
         }
 
-        std::cout << "SCADA system running with " << numTurbines << " turbines. Press Enter to stop.\n";
+        sc::runtime::writeConsoleLine(std::cout, "SCADA system running with ", numTurbines, " turbines. Press Enter to stop.");
         while (!shutdownRequested.load() && signalShutdownRequested == 0) {
             if (consoleStopRequested()) {
                 shutdownRequested.store(true);
@@ -226,12 +226,12 @@ int main(int argc, char* argv[])
             }
             std::this_thread::sleep_for(50ms);
         }
-        std::cout << "Stop requested. Shutting down...\n";
+        sc::runtime::writeConsoleLine(std::cout, "Stop requested. Shutting down...");
 
         auto stopStep = [](const char* name, auto&& stopFn) {
-            std::cout << "  stopping " << name << "..." << std::flush;
+            sc::runtime::writeConsoleLine(std::cout, "  stopping ", name, "...");
             stopFn();
-            std::cout << " done\n";
+            sc::runtime::writeConsoleLine(std::cout, "  stopped ", name);
         };
 
         controlTask.requestStop();
@@ -244,10 +244,10 @@ int main(int argc, char* argv[])
         stopStep("communication", [&]() { commTask.stop(); });
         stopStep("data historian", [&]() { DataHistorian::instance().stopRun(); });
 
-        std::cout << "Shutdown complete.\n";
+        sc::runtime::writeConsoleLine(std::cout, "Shutdown complete.");
         return criticalFailureOccurred.load() ? 1 : 0;
     } catch (const std::exception& ex) {
-        std::cerr << "Failed to start supervisory controller: " << ex.what() << '\n';
+        sc::runtime::writeConsoleLine(std::cerr, "Failed to start supervisory controller: ", ex.what());
         printUsage(argv[0]);
         return 1;
     }

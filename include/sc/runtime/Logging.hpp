@@ -1,8 +1,10 @@
 #pragma once
 
+#include "sc/runtime/Console.hpp"
 #include "sc/runtime/Time.hpp"
 
 #include <iostream>
+#include <sstream>
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PLATFORM_WINDOWS
@@ -121,12 +123,16 @@
 // -----------------------------------------------------------------------------
 #define SC_LOG_EMIT(stream, tag, msg)                                                                                                      \
     do {                                                                                                                                   \
-        stream << "(" << getCurrentTimeFormatted() << ")" << tag << msg << "\n";                                                           \
+        std::ostringstream scLogBuffer;                                                                                                    \
+        scLogBuffer << "(" << getCurrentTimeFormatted() << ")" << tag << msg;                                                              \
+        ::sc::runtime::writeConsoleText(stream, scLogBuffer.str());                                                                        \
     } while (0)
 
 #define SC_LOG_EMIT_COLOR(stream, color, tag, msg)                                                                                         \
     do {                                                                                                                                   \
-        stream << color << "(" << getCurrentTimeFormatted() << ")" << tag << msg << SC_LOG_COLOR_RESET << "\n";                            \
+        std::ostringstream scLogBuffer;                                                                                                    \
+        scLogBuffer << color << "(" << getCurrentTimeFormatted() << ")" << tag << msg << SC_LOG_COLOR_RESET;                               \
+        ::sc::runtime::writeConsoleText(stream, scLogBuffer.str());                                                                        \
     } while (0)
 
 // -----------------------------------------------------------------------------
