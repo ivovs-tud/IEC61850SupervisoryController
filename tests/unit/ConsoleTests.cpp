@@ -15,7 +15,7 @@ TEST_CASE("console output keeps concurrent lines intact")
     std::vector<std::thread> threads;
 
     for (int thread = 0; thread < threadCount; ++thread) {
-        threads.emplace_back([&output, thread]() {
+        threads.emplace_back([&output, thread, linesPerThread]() {
             for (int line = 0; line < linesPerThread; ++line) {
                 sc::runtime::writeConsoleLine(output, "thread=", thread, ";line=", line);
             }
