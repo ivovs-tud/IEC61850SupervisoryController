@@ -1,5 +1,5 @@
 {
-  "name": "supervisorycontroller",
+  "name": "wind-farm-scada",
   "version": "0.1.0",
   "dependencies": [
     "zeromq",
