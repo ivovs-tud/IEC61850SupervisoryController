@@ -97,6 +97,28 @@ WIND_GLOBAL_COLORS = {
     "wind direction": (34, 213, 238),
 }
 
+ROUNDED_BUTTON_STYLE = (
+    "QPushButton {"
+    "border-radius: 12px;"
+    "border: 2px solid #2a3340;"
+    "background-color: #232a35;"
+    "color: #f0f3f8;"
+    "font-size: 14px;"
+    "font-weight: 700;"
+    "padding: 10px;"
+    "}"
+    "QPushButton:checked {"
+    "background-color: #2f80ed;"
+    "border: 2px solid #96c0ff;"
+    "}"
+    "QPushButton:hover {"
+    "background-color: #2a3342;"
+    "}"
+    "QPushButton:pressed {"
+    "background-color: #1d2430;"
+    "}"
+)
+
 # ---------------------------------------------------------------------------
 # ZMQ subscriber (non-blocking)
 # ---------------------------------------------------------------------------
@@ -148,6 +170,13 @@ def _qt_cursor_enum(name: str):
     cursor_shape_enum = getattr(QtCore.Qt, "CursorShape", None)
     if cursor_shape_enum is not None and hasattr(cursor_shape_enum, name):
         return getattr(cursor_shape_enum, name)
+    return getattr(QtCore.Qt, name)
+
+
+def _qt_alignment_enum(name: str):
+    alignment_flag_enum = getattr(QtCore.Qt, "AlignmentFlag", None)
+    if alignment_flag_enum is not None and hasattr(alignment_flag_enum, name):
+        return getattr(alignment_flag_enum, name)
     return getattr(QtCore.Qt, name)
 
 
@@ -268,27 +297,7 @@ class OffOnButton(QtWidgets.QPushButton):
         self.setCheckable(True)
         self.setChecked(bool(checked))
         self.setMinimumSize(120, 60)
-        self.setStyleSheet(
-            "QPushButton {"
-            "border-radius: 12px;"
-            "border: 2px solid #2a3340;"
-            "background-color: #232a35;"
-            "color: #f0f3f8;"
-            "font-size: 14px;"
-            "font-weight: 700;"
-            "padding: 10px;"
-            "}"
-            "QPushButton:checked {"
-            "background-color: #2f80ed;"
-            "border: 2px solid #96c0ff;"
-            "}"
-            "QPushButton:hover {"
-            "background-color: #2a3342;"
-            "}"
-            "QPushButton:pressed {"
-            "background-color: #1d2430;"
-            "}"
-        )
+        self.setStyleSheet(ROUNDED_BUTTON_STYLE)
         self.toggled.connect(self._update_label)
 
     def _update_label(self, checked: bool) -> None:
@@ -1265,10 +1274,20 @@ def update_alarm_acknowledgement(payload) -> None:
     if alarm_acknowledge_button is not None:
         return
 
-    alarm_acknowledge_button = QtWidgets.QPushButton("Acknowledge\nAlarms")
+    alarm_acknowledge_button = QtWidgets.QPushButton("ACK Alarms")
+    alarm_acknowledge_button.setFixedSize(120, 60)
+    alarm_acknowledge_button.setStyleSheet(ROUNDED_BUTTON_STYLE)
     alarm_acknowledge_button.setCursor(_qt_cursor_enum("PointingHandCursor"))
     alarm_acknowledge_button.clicked.connect(send_alarm_acknowledgement)
-    buttons_box.addWidget(alarm_acknowledge_button)
+    alarm_column = (len(leds) + max_rows - 1) // max_rows
+    lights_box.addWidget(
+        alarm_acknowledge_button,
+        0,
+        alarm_column,
+        max_rows,
+        1,
+        _qt_alignment_enum("AlignVCenter"),
+    )
 
 
 def update_sample_period(payload) -> None:
