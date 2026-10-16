@@ -1,13 +1,19 @@
 {
-  "name": "supervisorycontroller",
+  "name": "wind-farm-scada",
   "version": "0.1.0",
   "dependencies": [
     "zeromq",
     "cppzmq",
     "msgpack",
     "boost-circular-buffer",
-    "boost-headers",
-    "boost-predef",
-    "boost"
-  ]
+    "boost-property-tree"
+  ],
+  "features": {
+    "tests": {
+      "description": "Build the Catch2 and CTest test suite",
+      "dependencies": [
+        "catch2"
+      ]
+    }
+  }
 }

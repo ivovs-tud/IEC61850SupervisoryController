@@ -1,0 +1,191 @@
+#include "sc/application/ControlCalculation.hpp"
+#include "support/TemporaryCsv.hpp"
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <limits>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+sc::application::YawLut testYawLut()
+{
+    const sc::test::TemporaryCsv file("ws,wd,WT1,WT2\n"
+                                      "0,0,0.5,-0.5\n"
+                                      "0,20,0.5,-0.5\n"
+                                      "10,0,0.5,-0.5\n"
+                                      "10,20,0.5,-0.5\n");
+    return sc::application::YawLut(file.path());
+}
+
+sc::application::ControlInputs defaultInputs()
+{
+    sc::application::ControlInputs inputs;
+    inputs.turbineCount = 2;
+    inputs.requestedReferencePower = 100.0F;
+    inputs.windSpeed = 5.0F;
+    inputs.windDirection = 0.0F;
+    inputs.yawSteeringEnabled = false;
+    return inputs;
+}
+
+} // namespace
+
+TEST_CASE("control calculation divides requested power equally")
+{
+    const auto lut = testYawLut();
+    const auto setpoints = sc::application::calculateControlSetpoints(defaultInputs(), lut);
+
+    REQUIRE(setpoints.turbinePower.size() == 2);
+    REQUIRE(setpoints.turbinePower[0] == Catch::Approx(50.0F));
+    REQUIRE(setpoints.turbinePower[1] == Catch::Approx(50.0F));
+}
+
+TEST_CASE("control calculation shares power in proportion to available power")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
+    inputs.availablePower = {25.0, 75.0};
+
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(setpoints.turbinePower == std::vector<float>{25.0F, 75.0F});
+
+    inputs.availablePower = {0.0, 100.0};
+    const auto unavailableTurbineSetpoints = sc::application::calculateControlSetpoints(inputs, lut);
+    REQUIRE(unavailableTurbineSetpoints.turbinePower == std::vector<float>{0.0F, 100.0F});
+}
+
+TEST_CASE("adaptive power sharing falls back to equal sharing before estimates exist")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
+    inputs.availablePower = {0.0, 0.0};
+
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(setpoints.turbinePower == std::vector<float>{50.0F, 50.0F});
+}
+
+TEST_CASE("control calculation broadcasts negative reference power to every turbine")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.requestedReferencePower = -1.0F;
+    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
+    inputs.availablePower = {25.0, 75.0};
+
+    const auto sentinelSetpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(sentinelSetpoints.turbinePower.size() == 2);
+    REQUIRE(sentinelSetpoints.turbinePower[0] == Catch::Approx(-1.0F));
+    REQUIRE(sentinelSetpoints.turbinePower[1] == Catch::Approx(-1.0F));
+
+    inputs.requestedReferencePower = -300.0F;
+    const auto negativeSetpoints = sc::application::calculateControlSetpoints(inputs, lut);
+    REQUIRE(negativeSetpoints.turbinePower[0] == Catch::Approx(-300.0F));
+    REQUIRE(negativeSetpoints.turbinePower[1] == Catch::Approx(-300.0F));
+}
+
+TEST_CASE("control calculation rounds wind direction when yaw steering is disabled")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.windDirection = 12.9F;
+
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(setpoints.turbineYaw.size() == 2);
+    REQUIRE(setpoints.turbineYaw[0] == Catch::Approx(13.0F));
+    REQUIRE(setpoints.turbineYaw[1] == Catch::Approx(13.0F));
+}
+
+TEST_CASE("control calculation applies LUT offsets with nearest-integer rounding")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.yawSteeringEnabled = true;
+
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(setpoints.turbineYaw.size() == 2);
+    REQUIRE(setpoints.turbineYaw[0] == Catch::Approx(359.0F));
+    REQUIRE(setpoints.turbineYaw[1] == Catch::Approx(1.0F));
+}
+
+TEST_CASE("control calculation normalizes rounded orientation to one rotation")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+
+    inputs.windDirection = 359.6F;
+    auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+    REQUIRE(setpoints.turbineYaw[0] == Catch::Approx(0.0F));
+    REQUIRE(setpoints.turbineYaw[1] == Catch::Approx(0.0F));
+
+    inputs.windDirection = -0.6F;
+    setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+    REQUIRE(setpoints.turbineYaw[0] == Catch::Approx(359.0F));
+    REQUIRE(setpoints.turbineYaw[1] == Catch::Approx(359.0F));
+}
+
+TEST_CASE("control calculation preserves LUT and turbine count mismatch")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.turbineCount = 3;
+    inputs.yawSteeringEnabled = true;
+
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(setpoints.turbinePower.size() == 3);
+    REQUIRE(setpoints.turbineYaw.size() == 2);
+}
+
+TEST_CASE("control calculation returns no setpoints for zero turbines")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+    inputs.turbineCount = 0;
+    inputs.yawSteeringEnabled = true;
+
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
+
+    REQUIRE(setpoints.turbinePower.empty());
+    REQUIRE(setpoints.turbineYaw.empty());
+}
+
+TEST_CASE("control calculation validates counts and finite numeric inputs")
+{
+    const auto lut = testYawLut();
+    auto inputs = defaultInputs();
+
+    inputs.turbineCount = -1;
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.windDirection = std::numeric_limits<float>::quiet_NaN();
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.requestedReferencePower = std::numeric_limits<float>::infinity();
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
+    inputs.availablePower = {1.0};
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs.availablePower = {1.0, std::numeric_limits<double>::quiet_NaN()};
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs.availablePower = {1.0, -1.0};
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.powerSharingMode = static_cast<sc::application::PowerSharingMode>(-1);
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+}
