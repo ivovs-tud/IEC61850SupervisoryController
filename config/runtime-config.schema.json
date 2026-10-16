@@ -40,7 +40,7 @@
     "monitoring": {
       "type": "object",
       "properties": {
-        "alarm_acknowledgement_enabled": {"type": "boolean"}
+        "alarm_ack": {"type": "boolean"}
       },
       "additionalProperties": true
     },

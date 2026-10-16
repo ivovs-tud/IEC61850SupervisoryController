@@ -133,7 +133,7 @@ RuntimeConfig loadRuntimeConfig(const std::filesystem::path& jsonPath)
         }
 
         config.monitoring.alarmAcknowledgementEnabled =
-            root.get<bool>("monitoring.alarm_acknowledgement_enabled", config.monitoring.alarmAcknowledgementEnabled);
+            root.get<bool>("monitoring.alarm_ack", config.monitoring.alarmAcknowledgementEnabled);
 
         loadMilliseconds(root, "hmi.period_ms", config.hmi.period);
         config.hmi.windowSize = root.get<int>("hmi.window_size", config.hmi.windowSize);

@@ -107,7 +107,7 @@ TEST_CASE("runtime JSON overrides defaults and resolves configured paths")
         "  \"tasks\": {\"control_period_ms\": 25},\n"
         "  \"control\": {\"yaw_lut_csv\": \"lut.csv\", \"power_sharing_mode\": \"available_power\"},\n"
         "  \"signal_processing\": {\"wind_speed_sample_count\": 2},\n"
-        "  \"monitoring\": {\"alarm_acknowledgement_enabled\": true},\n"
+        "  \"monitoring\": {\"alarm_ack\": true},\n"
         "  \"hmi\": {\"window_size\": 42},\n"
         "  \"historian\": {\"output_directory\": \"logs\"},\n"
         "  \"communication\": {\n"

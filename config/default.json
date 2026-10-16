@@ -25,7 +25,7 @@
     "wind_speed_sample_count": 3
   },
   "monitoring": {
-    "alarm_acknowledgement_enabled": true
+    "alarm_ack": true
   },
   "hmi": {
     "period_ms": 500,
