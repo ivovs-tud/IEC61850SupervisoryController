@@ -2,6 +2,10 @@
 
 #include "sc/model/SharedData.hpp"
 #include "sc/runtime/Time.hpp"
+#include "sc/runtime/DataHistorian.hpp"
+
+#include <array>
+#include <sstream>
 
 #include <stdexcept>
 #include <vector>
@@ -108,7 +112,7 @@ void MonitoringTask::execute()
     }
     const auto result = detectors_.evaluate(copyMonitoringInput(data, numTurbines_, currentTimeMs));
 
-    std::lock_guard<std::mutex> lock(data.monitoring.mutex);
+    std::unique_lock<std::mutex> lock(data.monitoring.mutex);
     auto& alarms = data.monitoring;
     if (alarmAcknowledgementEnabled_) {
         if (acknowledgementRequested)
@@ -125,34 +129,70 @@ void MonitoringTask::execute()
         alarms.alarmDrivetrainUnderResponse = alarmStates_.visible(sc::application::AlarmType::DrivetrainUnderResponse);
         alarms.alarmStaticBounds = alarmStates_.visible(sc::application::AlarmType::StaticTelemetryBounds);
         alarms.alarmFleetPeerOutlier = alarmStates_.visible(sc::application::AlarmType::FleetPeerOutlier);
-        return;
+    } else {
+
+        // Preserve the legacy clear interval until operator acknowledgement semantics are chosen.
+        if (currentTimeMs - lastAlarmResetMs_ >= 3000) {
+            alarms.alarmWRecMeas = false;
+            alarms.alarmPowerExpected = false;
+            alarms.alarmOrientationMisalign = false;
+            alarms.alarmWTorqueRotSpd = false;
+            alarms.alarmHorWdDir = false;
+            alarms.alarmHorWdDirChg = false;
+            alarms.alarmHorWdSpdChg = false;
+            alarms.alarmTelemetryFreezeReplay = false;
+            alarms.alarmDrivetrainUnderResponse = false;
+            alarms.alarmStaticBounds = false;
+            alarms.alarmFleetPeerOutlier = false;
+            lastAlarmResetMs_ = currentTimeMs;
+        }
+
+        alarms.alarmWRecMeas |= result.isActive(sc::application::AlarmType::PowerGeneratedVsReceived);
+        alarms.alarmPowerExpected |= result.isActive(sc::application::AlarmType::MeasuredPowerVsExpected);
+        alarms.alarmOrientationMisalign |= result.isActive(sc::application::AlarmType::OrientationMisalignment);
+        alarms.alarmWTorqueRotSpd |= result.isActive(sc::application::AlarmType::PowerTorqueRotorSpeed);
+        alarms.alarmHorWdDir |= result.isActive(sc::application::AlarmType::WindDirection);
+        alarms.alarmHorWdDirChg |= result.isActive(sc::application::AlarmType::WindDirectionChange);
+        alarms.alarmHorWdSpdChg |= result.isActive(sc::application::AlarmType::WindSpeedChange);
+        alarms.alarmTelemetryFreezeReplay |= result.isActive(sc::application::AlarmType::TelemetryFreeze);
+        alarms.alarmDrivetrainUnderResponse |= result.isActive(sc::application::AlarmType::DrivetrainUnderResponse);
+        alarms.alarmStaticBounds |= result.isActive(sc::application::AlarmType::StaticTelemetryBounds);
+        alarms.alarmFleetPeerOutlier |= result.isActive(sc::application::AlarmType::FleetPeerOutlier);
     }
 
-    // Preserve the legacy clear interval until operator acknowledgement semantics are chosen.
-    if (currentTimeMs - lastAlarmResetMs_ >= 3000) {
-        alarms.alarmWRecMeas = false;
-        alarms.alarmPowerExpected = false;
-        alarms.alarmOrientationMisalign = false;
-        alarms.alarmWTorqueRotSpd = false;
-        alarms.alarmHorWdDir = false;
-        alarms.alarmHorWdDirChg = false;
-        alarms.alarmHorWdSpdChg = false;
-        alarms.alarmTelemetryFreezeReplay = false;
-        alarms.alarmDrivetrainUnderResponse = false;
-        alarms.alarmStaticBounds = false;
-        alarms.alarmFleetPeerOutlier = false;
-        lastAlarmResetMs_ = currentTimeMs;
-    }
+    // Snapshot displayed alarms before releasing shared data; historian I/O must not hold its mutex.
+    const std::array<bool, static_cast<std::size_t>(sc::application::AlarmType::Count)> visible{
+        alarms.alarmWRecMeas, alarms.alarmPowerExpected, alarms.alarmOrientationMisalign,
+        alarms.alarmWTorqueRotSpd, alarms.alarmHorWdDir, alarms.alarmHorWdDirChg,
+        alarms.alarmHorWdSpdChg, alarms.alarmTelemetryFreezeReplay, alarms.alarmDrivetrainUnderResponse,
+        alarms.alarmStaticBounds, alarms.alarmFleetPeerOutlier};
+    lock.unlock();
 
-    alarms.alarmWRecMeas |= result.isActive(sc::application::AlarmType::PowerGeneratedVsReceived);
-    alarms.alarmPowerExpected |= result.isActive(sc::application::AlarmType::MeasuredPowerVsExpected);
-    alarms.alarmOrientationMisalign |= result.isActive(sc::application::AlarmType::OrientationMisalignment);
-    alarms.alarmWTorqueRotSpd |= result.isActive(sc::application::AlarmType::PowerTorqueRotorSpeed);
-    alarms.alarmHorWdDir |= result.isActive(sc::application::AlarmType::WindDirection);
-    alarms.alarmHorWdDirChg |= result.isActive(sc::application::AlarmType::WindDirectionChange);
-    alarms.alarmHorWdSpdChg |= result.isActive(sc::application::AlarmType::WindSpeedChange);
-    alarms.alarmTelemetryFreezeReplay |= result.isActive(sc::application::AlarmType::TelemetryFreeze);
-    alarms.alarmDrivetrainUnderResponse |= result.isActive(sc::application::AlarmType::DrivetrainUnderResponse);
-    alarms.alarmStaticBounds |= result.isActive(sc::application::AlarmType::StaticTelemetryBounds);
-    alarms.alarmFleetPeerOutlier |= result.isActive(sc::application::AlarmType::FleetPeerOutlier);
+    // Names follow AlarmType order. Log inactive states too, so runs and clears can be reconstructed.
+    static constexpr std::array<const char*, static_cast<std::size_t>(sc::application::AlarmType::Count)> names{
+        "PowerGeneratedVsReceived", "MeasuredPowerVsExpected", "OrientationMisalignment",
+        "PowerTorqueRotorSpeed", "WindDirection", "WindDirectionChange", "WindSpeedChange",
+        "TelemetryFreeze", "DrivetrainUnderResponse", "StaticTelemetryBounds", "FleetPeerOutlier"};
+    std::ostringstream record;
+    record << "[MON]" << currentTimeMs << ";AcknowledgementEnabled=" << alarmAcknowledgementEnabled_
+           << ";AcknowledgementRequested=" << acknowledgementRequested;
+    for (std::size_t index = 0; index < names.size(); ++index) {
+        record << ';' << names[index] << ".Active=" << result.active[index]
+               << ';' << names[index] << ".Visible=" << visible[index];
+        if (alarmAcknowledgementEnabled_) {
+            const auto& state = alarmStates_.state(static_cast<sc::application::AlarmType>(index));
+            record << ';' << names[index] << ".Latched=" << state.latched
+                   << ';' << names[index] << ".Acknowledged=" << state.acknowledged;
+        }
+    }
+    DataHistorian::instance().log(record.str());
+    for (const auto& evidence : result.evidence) {
+        std::ostringstream detail;
+        detail.precision(5);
+        detail << "[MON_EVIDENCE]" << evidence.timestampMs
+               << ";Detector=" << names[static_cast<std::size_t>(evidence.alarm)]
+               << ";TurbineId=" << evidence.turbineId << ";Measured=" << evidence.measured
+               << ";Expected=" << evidence.expected << ";Threshold=" << evidence.threshold;
+        DataHistorian::instance().log(detail.str());
+    }
 }
