@@ -1,0 +1,11 @@
+add_library(sc_project_warnings INTERFACE)
+add_library(sc::project_warnings ALIAS sc_project_warnings)
+
+if(MSVC)
+    target_compile_options(sc_project_warnings INTERFACE /W4 /permissive-)
+else()
+    target_compile_options(sc_project_warnings INTERFACE -Wall -Wextra -Wpedantic)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(sc_project_warnings INTERFACE -fabi-version=18)
+    endif()
+endif()
