@@ -335,7 +335,9 @@ class RawAttackLoopbackTests(unittest.TestCase):
                     )
                     client.sendall(payload)
                     if name == "truncated-message":
-                        client.close()
+                        # Keep the read side open so Winsock delivers the queued
+                        # bytes and FIN instead of resetting the connection.
+                        client.shutdown(socket.SHUT_WR)
                     output, errors = server.communicate(timeout=5.0)
                 finally:
                     if client.fileno() >= 0:
