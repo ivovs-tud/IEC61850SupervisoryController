@@ -1,10 +1,10 @@
 #include "HmiInterface.hpp"
 #include "SocketPlatform.hpp"
 #include "sc/communication/hmi/HmiConfig.hpp"
+#include "sc/model/TurbineParameters.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
-#include <cmath>
 #include <msgpack.hpp>
 #include <string>
 #include <thread>
@@ -79,7 +79,7 @@ TEST_CASE("HMI data collection reads each shared-data section")
     }
     {
         std::lock_guard<std::mutex> lock(shared.control.mutex);
-        shared.control.powerSetpoints = {4.0F, -1.0F};
+        shared.control.powerSetpoints = {4.0F, ControlData::turbineRatedPower};
         shared.control.turbineController = {ControlData::controllerDownregulation, ControlData::controllerDownregulation};
     }
     {
@@ -96,7 +96,7 @@ TEST_CASE("HMI data collection reads each shared-data section")
 
     REQUIRE(data.turbinePower == std::vector<double>{1.0, 2.0});
     REQUIRE(data.turbineWindSpeed == std::vector<double>{7.0, 8.0});
-    REQUIRE(data.powerSetpoints == std::vector<float>{4.0F, -1.0F});
+    REQUIRE(data.powerSetpoints == std::vector<float>{4.0F, ControlData::turbineRatedPower});
     REQUIRE(data.measuredTotalPower == 3.0);
     REQUIRE(data.farmWindSpeed == 7.5);
     REQUIRE(data.connectedTurbines == 2);
@@ -111,7 +111,7 @@ TEST_CASE("HMI signal accessors use the collected display data")
     const HmiConfig config = defaultHmiConfig(2);
     HmiData data;
     data.turbinePower = {1.0, 2.0};
-    data.powerSetpoints = {3.0F, -1.0F};
+    data.powerSetpoints = {3.0F, ControlData::turbineRatedPower};
 
     const std::vector<double> values = config.signals.front().accessor(data);
 
@@ -119,7 +119,7 @@ TEST_CASE("HMI signal accessors use the collected display data")
     REQUIRE(values[0] == 1.0);
     REQUIRE(values[1] == 3.0);
     REQUIRE(values[2] == 2.0);
-    REQUIRE(std::isnan(values[3]));
+    REQUIRE(values[3] == sc::TurbineParameters::ratedPower);
 }
 
 TEST_CASE("HMI drains command bursts and publishes the configured snapshot shape")

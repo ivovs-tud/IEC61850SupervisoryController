@@ -13,6 +13,7 @@ class OperatorServer final : public PeriodicTask {
     struct Config {
         int port{9001};
         std::chrono::milliseconds pollPeriod{10};
+        float maximumReferencePower{0.0F};
     };
 
     using CommandHandler = std::function<void(const OperatorCommand&)>;

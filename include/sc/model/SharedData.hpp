@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sc/model/TurbineParameters.hpp"
+
 #include <boost/circular_buffer.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -67,12 +69,13 @@ struct ControlData {
     static constexpr uint32_t controllerKomega2 = 1;
     static constexpr uint32_t controllerDownregulation = 2;
     static constexpr uint32_t controllerShutdown = 3;
+    static constexpr float turbineRatedPower = static_cast<float>(sc::TurbineParameters::ratedPower);
 
     mutable std::mutex mutex;
-    float requestedPower{-1.0f};
+    float requestedPower{static_cast<float>(DEFAULT_TURBINE_COUNT) * turbineRatedPower};
     bool yawSteeringEnabled{false};
     std::string yawSteeringCommandName{"Yaw Steering"};
-    std::vector<float> powerSetpoints = std::vector<float>(DEFAULT_TURBINE_COUNT, -1.0f);
+    std::vector<float> powerSetpoints = std::vector<float>(DEFAULT_TURBINE_COUNT, turbineRatedPower);
     std::vector<float> yawSetpoints = std::vector<float>(DEFAULT_TURBINE_COUNT, 0.0f);
     std::vector<uint32_t> turbineEnabled = std::vector<uint32_t>(DEFAULT_TURBINE_COUNT, 1);
     std::vector<uint32_t> turbineController = std::vector<uint32_t>(DEFAULT_TURBINE_COUNT, controllerKomega2);
@@ -153,7 +156,8 @@ struct SharedData {
         processed.filteredWindSpeeds.assign(turbineCount, 0.0);
         processed.filteredWindSpeedTimeMs.assign(turbineCount, 0);
 
-        control.powerSetpoints.assign(turbineCount, -1.0f);
+        control.requestedPower = static_cast<float>(turbineCount) * ControlData::turbineRatedPower;
+        control.powerSetpoints.assign(turbineCount, ControlData::turbineRatedPower);
         control.yawSetpoints.assign(turbineCount, 0.0f);
         control.turbineEnabled.assign(turbineCount, 1);
         control.turbineController.assign(turbineCount, ControlData::controllerKomega2);

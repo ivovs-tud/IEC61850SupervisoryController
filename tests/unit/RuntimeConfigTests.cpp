@@ -1,6 +1,7 @@
 #include "sc/application/YawLut.hpp"
 #include "sc/communication/attack/AttackProtocol.hpp"
 #include "sc/model/SharedData.hpp"
+#include "sc/model/TurbineParameters.hpp"
 #include "sc/runtime/RuntimeConfig.hpp"
 #include "support/TemporaryCsv.hpp"
 
@@ -346,7 +347,8 @@ TEST_CASE("shared task data can be sized from runtime configuration")
     REQUIRE(data.control.yawSetpoints.size() == 4);
     REQUIRE(data.control.turbineEnabled.size() == 4);
     REQUIRE(data.control.turbineController.size() == 4);
-    REQUIRE(data.control.powerSetpoints[0] == -1.0F);
+    REQUIRE(data.control.requestedPower == 4.0F * sc::TurbineParameters::ratedPower);
+    REQUIRE(data.control.powerSetpoints[0] == sc::TurbineParameters::ratedPower);
     REQUIRE(data.control.turbineController[0] == ControlData::controllerKomega2);
 }
 

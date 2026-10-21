@@ -2,6 +2,7 @@
 
 #include "sc/communication/attack/AttackInterface.hpp"
 #include "sc/communication/iec61850/IECCommunicator.hpp"
+#include "sc/model/TurbineParameters.hpp"
 #include "sc/runtime/Logging.hpp"
 #include "sc/runtime/Time.hpp"
 
@@ -51,7 +52,9 @@ AttackChannelZMQ::Config makeZmqAttackConfig(const CommunicationConfig& config)
 
 OperatorServer::Config makeOperatorConfig(const CommunicationConfig& config)
 {
-    return {config.operatorServer.port, config.operatorServer.pollPeriod};
+    const float maximumReferencePower =
+        static_cast<float>(sc::TurbineParameters::ratedPower * static_cast<double>(config.mms.turbines.size()));
+    return {config.operatorServer.port, config.operatorServer.pollPeriod, maximumReferencePower};
 }
 
 DataHistorianServer::Config makeDataHistorianConfig(const CommunicationConfig& config)

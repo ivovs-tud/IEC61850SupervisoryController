@@ -47,8 +47,11 @@ ControlSetpoints calculateControlSetpoints(const ControlInputs& inputs, const Ya
     if (!std::isfinite(inputs.requestedReferencePower) || !std::isfinite(inputs.windSpeed) || !std::isfinite(inputs.windDirection)) {
         throw std::invalid_argument("control calculation inputs must be finite");
     }
+    if (inputs.requestedReferencePower < 0.0F) {
+        throw std::invalid_argument("requested reference power must be non-negative");
+    }
 
-    ControlSetpoints setpoints{std::vector<float>(turbineCount, -1.0F),
+    ControlSetpoints setpoints{std::vector<float>(turbineCount, 0.0F),
                                std::vector<float>(turbineCount, sc::util::roundAngleDegrees(inputs.windDirection))};
 
     if (inputs.yawSteeringEnabled) {
@@ -59,12 +62,6 @@ ControlSetpoints calculateControlSetpoints(const ControlInputs& inputs, const Ya
         for (const float offset : yawOffsets) {
             setpoints.turbineYaw.push_back(sc::util::roundAngleDegrees(inputs.windDirection - offset));
         }
-    }
-
-    if (inputs.requestedReferencePower < 0.0F) {
-        // Negative references are per-turbine commands/sentinels, not farm totals.
-        setpoints.turbinePower.assign(turbineCount, inputs.requestedReferencePower);
-        return setpoints;
     }
 
     switch (inputs.powerSharingMode) {

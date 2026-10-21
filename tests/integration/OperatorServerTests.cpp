@@ -1,6 +1,7 @@
 #include "OperatorCommand.hpp"
 #include "OperatorServer.hpp"
 #include "SocketPlatform.hpp"
+#include "sc/model/TurbineParameters.hpp"
 
 #include <array>
 #include <catch2/catch_approx.hpp>
@@ -44,13 +45,14 @@ int reserveLoopbackPort()
 
 } // namespace
 
-TEST_CASE("operator server decodes commands and rejects invalid reference power")
+TEST_CASE("operator server decodes commands, maps legacy maximum power, and rejects invalid reference power")
 {
     REQUIRE(socket_init());
     const int port = reserveLoopbackPort();
     REQUIRE(port > 0);
 
-    OperatorServer server({port, std::chrono::milliseconds(1)});
+    const float maximumReferencePower = static_cast<float>(2.0 * sc::TurbineParameters::ratedPower);
+    OperatorServer server({port, std::chrono::milliseconds(1), maximumReferencePower});
     std::mutex mutex;
     std::condition_variable changed;
     std::vector<OperatorCommand> received;
@@ -75,6 +77,15 @@ TEST_CASE("operator server decodes commands and rejects invalid reference power"
         REQUIRE(std::get<RequestedPowerCommand>(received[0]).value == Catch::Approx(reference));
     }
 
+    const float legacyMaximumReference = -1.0F;
+    REQUIRE(client.send(zmq::buffer(&legacyMaximumReference, sizeof(legacyMaximumReference)), zmq::send_flags::none).has_value());
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        REQUIRE(changed.wait_for(lock, std::chrono::seconds(2), [&]() { return received.size() == 2; }));
+        REQUIRE(std::holds_alternative<RequestedPowerCommand>(received[1]));
+        REQUIRE(std::get<RequestedPowerCommand>(received[1]).value == Catch::Approx(maximumReferencePower));
+    }
+
     std::array<uint8_t, 5> simulation{};
     const uint32_t marker = 0x01010101;
     std::memcpy(simulation.data(), &marker, sizeof(marker));
@@ -82,9 +93,9 @@ TEST_CASE("operator server decodes commands and rejects invalid reference power"
     REQUIRE(client.send(zmq::buffer(simulation), zmq::send_flags::none).has_value());
     {
         std::unique_lock<std::mutex> lock(mutex);
-        REQUIRE(changed.wait_for(lock, std::chrono::seconds(2), [&]() { return received.size() == 2; }));
-        REQUIRE(std::holds_alternative<SimulationStateCommand>(received[1]));
-        REQUIRE(std::get<SimulationStateCommand>(received[1]).running);
+        REQUIRE(changed.wait_for(lock, std::chrono::seconds(2), [&]() { return received.size() == 3; }));
+        REQUIRE(std::holds_alternative<SimulationStateCommand>(received[2]));
+        REQUIRE(std::get<SimulationStateCommand>(received[2]).running);
     }
 
     const float invalidReference = std::numeric_limits<float>::infinity();
@@ -94,7 +105,7 @@ TEST_CASE("operator server decodes commands and rejects invalid reference power"
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     {
         std::lock_guard<std::mutex> lock(mutex);
-        REQUIRE(received.size() == 2);
+        REQUIRE(received.size() == 3);
     }
 
     server.stop();

@@ -1,4 +1,5 @@
 #include "sc/application/ControlCalculation.hpp"
+#include "sc/model/TurbineParameters.hpp"
 #include "support/TemporaryCsv.hpp"
 
 #include <catch2/catch_approx.hpp>
@@ -70,24 +71,17 @@ TEST_CASE("adaptive power sharing falls back to equal sharing before estimates e
     REQUIRE(setpoints.turbinePower == std::vector<float>{50.0F, 50.0F});
 }
 
-TEST_CASE("control calculation broadcasts negative reference power to every turbine")
+TEST_CASE("control calculation uses the explicit rated farm power for maximum generation")
 {
     const auto lut = testYawLut();
     auto inputs = defaultInputs();
-    inputs.requestedReferencePower = -1.0F;
-    inputs.powerSharingMode = sc::application::PowerSharingMode::AVAILABLE_POWER;
-    inputs.availablePower = {25.0, 75.0};
+    inputs.requestedReferencePower = static_cast<float>(2.0 * sc::TurbineParameters::ratedPower);
 
-    const auto sentinelSetpoints = sc::application::calculateControlSetpoints(inputs, lut);
+    const auto setpoints = sc::application::calculateControlSetpoints(inputs, lut);
 
-    REQUIRE(sentinelSetpoints.turbinePower.size() == 2);
-    REQUIRE(sentinelSetpoints.turbinePower[0] == Catch::Approx(-1.0F));
-    REQUIRE(sentinelSetpoints.turbinePower[1] == Catch::Approx(-1.0F));
-
-    inputs.requestedReferencePower = -300.0F;
-    const auto negativeSetpoints = sc::application::calculateControlSetpoints(inputs, lut);
-    REQUIRE(negativeSetpoints.turbinePower[0] == Catch::Approx(-300.0F));
-    REQUIRE(negativeSetpoints.turbinePower[1] == Catch::Approx(-300.0F));
+    REQUIRE(setpoints.turbinePower.size() == 2);
+    REQUIRE(setpoints.turbinePower[0] == Catch::Approx(sc::TurbineParameters::ratedPower));
+    REQUIRE(setpoints.turbinePower[1] == Catch::Approx(sc::TurbineParameters::ratedPower));
 }
 
 TEST_CASE("control calculation rounds wind direction when yaw steering is disabled")
@@ -172,6 +166,10 @@ TEST_CASE("control calculation validates counts and finite numeric inputs")
 
     inputs = defaultInputs();
     inputs.requestedReferencePower = std::numeric_limits<float>::infinity();
+    REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
+
+    inputs = defaultInputs();
+    inputs.requestedReferencePower = -1.0F;
     REQUIRE_THROWS_AS(sc::application::calculateControlSetpoints(inputs, lut), std::invalid_argument);
 
     inputs = defaultInputs();

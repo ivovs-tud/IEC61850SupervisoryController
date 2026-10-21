@@ -6,7 +6,6 @@
 #include <array>
 #include <filesystem>
 #include <iostream>
-#include <limits>
 #include <msgpack.hpp>
 #include <mutex>
 #include <string>
@@ -131,12 +130,7 @@ HmiConfig defaultHmiConfig(int numTurbines)
              v.reserve(static_cast<std::size_t>(n * 2));
              for (int i = 0; i < n; ++i) {
                  v.push_back(data.turbinePower[i]);
-                 if (data.powerSetpoints[i] < 0.0f) {
-                     // This means, maximize power generation -> We push back NaN to indicate this
-                     v.push_back(std::numeric_limits<double>::quiet_NaN());
-                 } else {
-                     v.push_back(static_cast<double>(data.powerSetpoints[i]));
-                 }
+                 v.push_back(static_cast<double>(data.powerSetpoints[i]));
              }
              return v;
          },

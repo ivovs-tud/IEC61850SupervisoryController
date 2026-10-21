@@ -10,7 +10,7 @@
 
 namespace {
 
-OperatorCommand decodeOperatorCommand(const uint8_t* data, std::size_t size)
+OperatorCommand decodeOperatorCommand(const uint8_t* data, std::size_t size, float maximumReferencePower)
 {
     if (size == sizeof(float)) {
         float value = 0.0F;
@@ -18,7 +18,8 @@ OperatorCommand decodeOperatorCommand(const uint8_t* data, std::size_t size)
         if (!std::isfinite(value)) {
             throw std::runtime_error("requested power must be finite");
         }
-        return RequestedPowerCommand{value};
+        // Legacy clients use a negative reference to request maximum farm output.
+        return RequestedPowerCommand{value < 0.0F ? maximumReferencePower : value};
     }
 
     if (size >= sizeof(uint32_t) + sizeof(uint8_t)) {
@@ -38,6 +39,9 @@ OperatorServer::OperatorServer(Config config) : PeriodicTask(config.pollPeriod),
 {
     if (config_.port < 1024 || config_.port > 65535) {
         throw std::invalid_argument("invalid operator server port");
+    }
+    if (!std::isfinite(config_.maximumReferencePower) || config_.maximumReferencePower <= 0.0F) {
+        throw std::invalid_argument("operator server maximum reference power must be finite and positive");
     }
 }
 
@@ -70,7 +74,8 @@ void OperatorServer::execute()
     SOCKET_OP_LOG_V2("Received a message of size " << message.size() << " bytes");
 
     try {
-        const auto command = decodeOperatorCommand(static_cast<const uint8_t*>(message.data()), message.size());
+        const auto command =
+            decodeOperatorCommand(static_cast<const uint8_t*>(message.data()), message.size(), config_.maximumReferencePower);
         if (commandHandler_)
             commandHandler_(command);
     } catch (const std::exception& error) {
