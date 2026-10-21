@@ -1,6 +1,6 @@
 #include "sc/model/SharedData.hpp"
-#include "sc/runtime/Time.hpp"
 #include "sc/runtime/DataHistorian.hpp"
+#include "sc/runtime/Time.hpp"
 #include "sc/tasks/MonitoringTask.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -44,12 +44,18 @@ TEST_CASE("legacy alarm reset does not hide an alarm active in the current cycle
     }
 
     bool acknowledgement = false;
-    SECTION("legacy alarms") {}
-    SECTION("acknowledged alarms") { acknowledgement = true; }
+    SECTION("legacy alarms")
+    {
+    }
+    SECTION("acknowledged alarms")
+    {
+        acknowledgement = true;
+    }
     struct HistorianRun {
-        std::filesystem::path directory = std::filesystem::temp_directory_path() /
-            ("sc-monitoring-test-" + std::to_string(std::random_device{}()));
-        ~HistorianRun() {
+        std::filesystem::path directory =
+            std::filesystem::temp_directory_path() / ("sc-monitoring-test-" + std::to_string(std::random_device{}()));
+        ~HistorianRun()
+        {
             DataHistorian::instance().stopRun();
             std::filesystem::remove_all(directory);
         }
@@ -71,7 +77,6 @@ TEST_CASE("legacy alarm reset does not hide an alarm active in the current cycle
     if (acknowledgement) {
         REQUIRE(contents.find(";StaticTelemetryBounds.Latched=1;StaticTelemetryBounds.Acknowledged=0") != std::string::npos);
     }
-
 
     {
         std::lock_guard<std::mutex> lock(data.monitoring.mutex);

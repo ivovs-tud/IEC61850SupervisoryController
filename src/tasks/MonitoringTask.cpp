@@ -1,12 +1,11 @@
 #include "sc/tasks/MonitoringTask.hpp"
 
 #include "sc/model/SharedData.hpp"
-#include "sc/runtime/Time.hpp"
 #include "sc/runtime/DataHistorian.hpp"
+#include "sc/runtime/Time.hpp"
 
 #include <array>
 #include <sstream>
-
 #include <stdexcept>
 #include <vector>
 
@@ -130,7 +129,6 @@ void MonitoringTask::execute()
         alarms.alarmStaticBounds = alarmStates_.visible(sc::application::AlarmType::StaticTelemetryBounds);
         alarms.alarmFleetPeerOutlier = alarmStates_.visible(sc::application::AlarmType::FleetPeerOutlier);
     } else {
-
         // Preserve the legacy clear interval until operator acknowledgement semantics are chosen.
         if (currentTimeMs - lastAlarmResetMs_ >= 3000) {
             alarms.alarmWRecMeas = false;
@@ -161,38 +159,42 @@ void MonitoringTask::execute()
     }
 
     // Snapshot displayed alarms before releasing shared data; historian I/O must not hold its mutex.
-    const std::array<bool, static_cast<std::size_t>(sc::application::AlarmType::Count)> visible{
-        alarms.alarmWRecMeas, alarms.alarmPowerExpected, alarms.alarmOrientationMisalign,
-        alarms.alarmWTorqueRotSpd, alarms.alarmHorWdDir, alarms.alarmHorWdDirChg,
-        alarms.alarmHorWdSpdChg, alarms.alarmTelemetryFreezeReplay, alarms.alarmDrivetrainUnderResponse,
-        alarms.alarmStaticBounds, alarms.alarmFleetPeerOutlier};
+    const std::array<bool, static_cast<std::size_t>(sc::application::AlarmType::Count)> visible{alarms.alarmWRecMeas,
+                                                                                                alarms.alarmPowerExpected,
+                                                                                                alarms.alarmOrientationMisalign,
+                                                                                                alarms.alarmWTorqueRotSpd,
+                                                                                                alarms.alarmHorWdDir,
+                                                                                                alarms.alarmHorWdDirChg,
+                                                                                                alarms.alarmHorWdSpdChg,
+                                                                                                alarms.alarmTelemetryFreezeReplay,
+                                                                                                alarms.alarmDrivetrainUnderResponse,
+                                                                                                alarms.alarmStaticBounds,
+                                                                                                alarms.alarmFleetPeerOutlier};
     lock.unlock();
 
     // Names follow AlarmType order. Log inactive states too, so runs and clears can be reconstructed.
     static constexpr std::array<const char*, static_cast<std::size_t>(sc::application::AlarmType::Count)> names{
         "PowerGeneratedVsReceived", "MeasuredPowerVsExpected", "OrientationMisalignment",
-        "PowerTorqueRotorSpeed", "WindDirection", "WindDirectionChange", "WindSpeedChange",
-        "TelemetryFreeze", "DrivetrainUnderResponse", "StaticTelemetryBounds", "FleetPeerOutlier"};
+        "PowerTorqueRotorSpeed",    "WindDirection",           "WindDirectionChange",
+        "WindSpeedChange",          "TelemetryFreeze",         "DrivetrainUnderResponse",
+        "StaticTelemetryBounds",    "FleetPeerOutlier"};
     std::ostringstream record;
     record << "[MON]" << currentTimeMs << ";AcknowledgementEnabled=" << alarmAcknowledgementEnabled_
            << ";AcknowledgementRequested=" << acknowledgementRequested;
     for (std::size_t index = 0; index < names.size(); ++index) {
-        record << ';' << names[index] << ".Active=" << result.active[index]
-               << ';' << names[index] << ".Visible=" << visible[index];
+        record << ';' << names[index] << ".Active=" << result.active[index] << ';' << names[index] << ".Visible=" << visible[index];
         if (alarmAcknowledgementEnabled_) {
             const auto& state = alarmStates_.state(static_cast<sc::application::AlarmType>(index));
-            record << ';' << names[index] << ".Latched=" << state.latched
-                   << ';' << names[index] << ".Acknowledged=" << state.acknowledged;
+            record << ';' << names[index] << ".Latched=" << state.latched << ';' << names[index] << ".Acknowledged=" << state.acknowledged;
         }
     }
     DataHistorian::instance().log(record.str());
     for (const auto& evidence : result.evidence) {
         std::ostringstream detail;
         detail.precision(5);
-        detail << "[MON_EVIDENCE]" << evidence.timestampMs
-               << ";Detector=" << names[static_cast<std::size_t>(evidence.alarm)]
-               << ";TurbineId=" << evidence.turbineId << ";Measured=" << evidence.measured
-               << ";Expected=" << evidence.expected << ";Threshold=" << evidence.threshold;
+        detail << "[MON_EVIDENCE]" << evidence.timestampMs << ";Detector=" << names[static_cast<std::size_t>(evidence.alarm)]
+               << ";TurbineId=" << evidence.turbineId << ";Measured=" << evidence.measured << ";Expected=" << evidence.expected
+               << ";Threshold=" << evidence.threshold;
         DataHistorian::instance().log(detail.str());
     }
 }
