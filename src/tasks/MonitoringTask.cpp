@@ -60,11 +60,17 @@ sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int
         input.farmWindSpeed = data.processed.windSpeed;
         input.farmWindDirection = data.processed.windDirection;
         input.measuredTotalPowerHistory = copyHistory(data.processed.measuredTotalPowerHistory);
+        if (data.processed.filteredPowers.size() != input.turbines.size() ||
+            data.processed.filteredPowerTimeMs.size() != input.turbines.size()) {
+            throw std::logic_error("processed power count does not match configured turbines");
+        }
         if (data.processed.filteredWindSpeeds.size() != input.turbines.size() ||
             data.processed.filteredWindSpeedTimeMs.size() != input.turbines.size()) {
             throw std::logic_error("processed wind-speed count does not match configured turbines");
         }
         for (std::size_t index = 0; index < input.turbines.size(); ++index) {
+            input.turbines[index].filteredPower = data.processed.filteredPowers[index];
+            input.turbines[index].filteredPowerTimeMs = data.processed.filteredPowerTimeMs[index];
             input.turbines[index].filteredWindSpeed = data.processed.filteredWindSpeeds[index];
             input.turbines[index].filteredWindSpeedTimeMs = data.processed.filteredWindSpeedTimeMs[index];
         }

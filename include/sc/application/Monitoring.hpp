@@ -18,6 +18,8 @@ struct TurbineMonitoringInput {
     uint64_t yawTimeMs{0};
     double rotorSpeed{0.0};
     uint64_t rotorSpeedTimeMs{0};
+    double filteredPower{0.0};
+    uint64_t filteredPowerTimeMs{0};
     double power{0.0};
     uint64_t powerTimeMs{0};
     double generatorTorque{0.0};
@@ -120,7 +122,6 @@ class MonitoringDetectors {
     std::vector<float> orientation_;
     std::vector<uint64_t> powerMismatchStartTime_;
     std::vector<double> lastExpectedPower_;
-    std::vector<std::vector<double>> expectedPowerHistory_;
     std::vector<int> windSpeedChangeStrikes_;
     std::vector<int> windDirectionChangeStrikes_;
     std::vector<std::array<uint64_t, 5>> freezeStartTime_;

@@ -38,7 +38,8 @@ SignalProcessingResult processSignals(const SignalProcessingInput& input, const 
     if (!std::isfinite(input.previousWindSpeed) || !std::isfinite(input.previousWindDirection) ||
         !std::isfinite(config.windSpeedUpdateWeight) || !std::isfinite(config.windDirectionUpdateWeight) ||
         config.windSpeedUpdateWeight < 0.0F || config.windSpeedUpdateWeight > 1.0F || config.windDirectionUpdateWeight < 0.0F ||
-        config.windDirectionUpdateWeight > 1.0F || config.windSpeedSampleCount == 0) {
+        config.windDirectionUpdateWeight > 1.0F || config.windSpeedSampleCount == 0 || !std::isfinite(config.powerUpdateWeight) ||
+        config.powerUpdateWeight <= 0.0F || config.powerUpdateWeight > 1.0F) {
         throw std::invalid_argument("signal-processing state and configuration must be valid");
     }
     const bool hasPreviousTurbineWind = !input.previousFilteredWindSpeeds.empty() || !input.previousFilteredWindSpeedTimeMs.empty();
@@ -46,7 +47,14 @@ SignalProcessingResult processSignals(const SignalProcessingInput& input, const 
                                    input.previousFilteredWindSpeedTimeMs.size() != input.turbines.size())) {
         throw std::invalid_argument("previous turbine wind-speed state does not match turbine count");
     }
+    const bool hasPreviousPower = !input.previousFilteredPowers.empty() || !input.previousFilteredPowerTimeMs.empty();
+    if (hasPreviousPower && (input.previousFilteredPowers.size() != input.turbines.size() ||
+                               input.previousFilteredPowerTimeMs.size() != input.turbines.size())) {
+        throw std::invalid_argument("previous turbine power state does not match turbine count");
+    }
     SignalProcessingResult result;
+    result.filteredPowers = hasPreviousPower ? input.previousFilteredPowers : std::vector<double>(input.turbines.size(), 0.0);
+    result.filteredPowerTimeMs = hasPreviousPower ? input.previousFilteredPowerTimeMs : std::vector<uint64_t>(input.turbines.size(), 0);
     result.availablePower.reserve(input.turbines.size());
     result.filteredWindSpeeds.assign(input.turbines.size(), 0.0);
     result.filteredWindSpeedTimeMs.assign(input.turbines.size(), 0);
@@ -79,6 +87,17 @@ SignalProcessingResult processSignals(const SignalProcessingInput& input, const 
         }
         if (powerFresh && std::isfinite(turbine.receivedPower)) {
             result.totalReceivedPower += turbine.receivedPower;
+            // Filter received turbine telemetry, including any attack-interface overrides.
+            const bool previousIsFresh =
+                std::isfinite(result.filteredPowers[index]) &&
+                sc::util::isTimestampRecent(result.filteredPowerTimeMs[index], input.currentTimeMs, config.measurementTimeoutMs);
+            if (!previousIsFresh) {
+                result.filteredPowers[index] = turbine.receivedPower;
+                result.filteredPowerTimeMs[index] = turbine.powerTimeMs;
+            } else if (turbine.powerTimeMs > result.filteredPowerTimeMs[index]) {
+                result.filteredPowers[index] += config.powerUpdateWeight * (turbine.receivedPower - result.filteredPowers[index]);
+                result.filteredPowerTimeMs[index] = turbine.powerTimeMs;
+            }
         }
         if (powerFresh && std::isfinite(turbine.measuredPower)) {
             result.totalMeasuredPower += turbine.measuredPower;

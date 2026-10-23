@@ -51,13 +51,15 @@ struct CollectedData {
     std::vector<double> measuredPower = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
 };
 
-// Farm-level values produced by SignalProcessingTask
+// Filtered turbine and farm-level values produced by SignalProcessingTask
 struct ProcessedData {
     mutable std::mutex mutex;
     int connectedTurbines{0};
     std::vector<double> availablePower = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
     std::vector<double> filteredWindSpeeds = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
     std::vector<uint64_t> filteredWindSpeedTimeMs = std::vector<uint64_t>(DEFAULT_TURBINE_COUNT, 0);
+    std::vector<double> filteredPowers = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
+    std::vector<uint64_t> filteredPowerTimeMs = std::vector<uint64_t>(DEFAULT_TURBINE_COUNT, 0);
     double totalReceivedPower{0.0};
     float windSpeed{0.0f};
     float windDirection{270.0f};
@@ -153,6 +155,8 @@ struct SharedData {
         collected.measuredPower.assign(turbineCount, 0.0);
 
         processed.availablePower.assign(turbineCount, 0.0);
+        processed.filteredPowers.assign(turbineCount, 0.0);
+        processed.filteredPowerTimeMs.assign(turbineCount, 0);
         processed.filteredWindSpeeds.assign(turbineCount, 0.0);
         processed.filteredWindSpeedTimeMs.assign(turbineCount, 0);
 

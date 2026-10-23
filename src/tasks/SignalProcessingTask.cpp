@@ -38,6 +38,8 @@ void SignalProcessingTask::execute()
 
     {
         std::lock_guard<std::mutex> lock(data.processed.mutex);
+        input.previousFilteredPowers = data.processed.filteredPowers;
+        input.previousFilteredPowerTimeMs = data.processed.filteredPowerTimeMs;
         input.previousWindSpeed = data.processed.windSpeed;
         input.previousWindDirection = data.processed.windDirection;
         input.previousFilteredWindSpeeds = data.processed.filteredWindSpeeds;
@@ -50,6 +52,8 @@ void SignalProcessingTask::execute()
         if (result.availablePower.size() != data.processed.availablePower.size()) {
             throw std::logic_error("signal-processing result count does not match configured turbines");
         }
+        data.processed.filteredPowers = result.filteredPowers;
+        data.processed.filteredPowerTimeMs = result.filteredPowerTimeMs;
         data.processed.connectedTurbines = result.connectedTurbines;
         data.processed.availablePower = result.availablePower;
         data.processed.filteredWindSpeeds = result.filteredWindSpeeds;

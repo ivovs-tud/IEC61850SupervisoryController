@@ -176,3 +176,55 @@ TEST_CASE("signal processing excludes non-finite telemetry and validates filter 
     config.windSpeedUpdateWeight = 1.5F;
     REQUIRE_THROWS_AS(sc::application::processSignals(input, config), std::invalid_argument);
 }
+
+TEST_CASE("power filter retains history and only incorporates new telemetry")
+{
+    sc::application::SignalProcessingInput input;
+    input.currentTimeMs = 1000;
+    input.turbines.push_back(turbine(10.0, 0.0, 1000));
+    auto config = immediateUpdates();
+    config.powerUpdateWeight = 0.5F;
+    auto result = sc::application::processSignals(input, config);
+    REQUIRE(result.filteredPowers == std::vector<double>{100.0});
+    REQUIRE(result.filteredPowerTimeMs == std::vector<uint64_t>{1000});
+
+    input.previousFilteredPowers = result.filteredPowers;
+    input.previousFilteredPowerTimeMs = result.filteredPowerTimeMs;
+    input.currentTimeMs = 1500;
+    input.turbines[0].receivedPower = 0.0;
+    input.turbines[0].powerTimeMs = 1500;
+    result = sc::application::processSignals(input, config);
+    REQUIRE(result.filteredPowers == std::vector<double>{50.0});
+    input.previousFilteredPowers = result.filteredPowers;
+    input.previousFilteredPowerTimeMs = result.filteredPowerTimeMs;
+    result = sc::application::processSignals(input, config);
+    REQUIRE(result.filteredPowers == std::vector<double>{50.0});
+
+    input.currentTimeMs = 4000;
+    result = sc::application::processSignals(input, config);
+    REQUIRE(result.filteredPowerTimeMs == std::vector<uint64_t>{1500});
+    input.turbines[0].powerTimeMs = 4000;
+    input.turbines[0].receivedPower = 80.0;
+    result = sc::application::processSignals(input, config);
+    REQUIRE(result.filteredPowers == std::vector<double>{80.0});
+    REQUIRE(result.filteredPowerTimeMs == std::vector<uint64_t>{4000});
+}
+
+TEST_CASE("power filter validates state and ignores invalid telemetry")
+{
+    sc::application::SignalProcessingInput input;
+    input.currentTimeMs = 1000;
+    input.turbines.push_back(turbine(10.0, 0.0, 1000));
+    input.previousFilteredPowers = {80.0};
+    input.previousFilteredPowerTimeMs = {900};
+    input.turbines[0].receivedPower = std::numeric_limits<double>::quiet_NaN();
+    const auto result = sc::application::processSignals(input);
+    REQUIRE(result.filteredPowers == std::vector<double>{80.0});
+    REQUIRE(result.filteredPowerTimeMs == std::vector<uint64_t>{900});
+    input.previousFilteredPowerTimeMs.clear();
+    REQUIRE_THROWS_AS(sc::application::processSignals(input), std::invalid_argument);
+    input.previousFilteredPowers.clear();
+    sc::application::SignalProcessingConfig config;
+    config.powerUpdateWeight = 0.0F;
+    REQUIRE_THROWS_AS(sc::application::processSignals(input, config), std::invalid_argument);
+}

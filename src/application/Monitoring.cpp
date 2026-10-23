@@ -15,10 +15,9 @@ namespace sc::application {
 namespace {
 
 constexpr double pi = 3.14159265358979323846;
-constexpr std::size_t expectedPowerHistoryCapacity = 20;
 constexpr uint64_t powerMeasurementTimeoutMs = 20000;
 constexpr uint64_t powerTrackingGracePeriodMs = 5000;
-constexpr double powerTrackingAbsoluteToleranceW = 2e6;
+constexpr double powerTrackingAbsoluteToleranceW = 1e5;
 constexpr double powerTrackingRelativeTolerance = 0.1;
 constexpr float orientationThresholdDeg = 8.0F;
 constexpr float orientationObserverGain = 0.5F;
@@ -66,13 +65,6 @@ void triggerAlarm(MonitoringResult& result, AlarmType alarm, int turbineId, doub
 {
     result.active[static_cast<std::size_t>(alarm)] = true;
     result.evidence.push_back({alarm, turbineId, measured, expected, threshold, timestampMs});
-}
-
-void appendHistory(std::vector<double>& history, double value)
-{
-    if (history.size() == expectedPowerHistoryCapacity)
-        history.erase(history.begin());
-    history.push_back(value);
 }
 
 bool hasOnlyFiniteValues(const std::vector<double>& values)
@@ -244,7 +236,6 @@ void MonitoringDetectors::reset()
     orientation_.assign(turbineCount_, 0.0F);
     powerMismatchStartTime_.assign(turbineCount_, 0);
     lastExpectedPower_.assign(turbineCount_, -1.0);
-    expectedPowerHistory_.assign(turbineCount_, {});
     windSpeedChangeStrikes_.assign(turbineCount_, 0);
     windDirectionChangeStrikes_.assign(turbineCount_, 0);
     freezeStartTime_.assign(turbineCount_, {});
@@ -350,8 +341,7 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
 {
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& turbine = input.turbines[index];
-        if (!isRecentFinite(turbine.power, turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
-            turbine.powerHistory.empty() || !hasOnlyFiniteValues(turbine.powerHistory)) {
+        if (!isRecentFinite(turbine.filteredPower, turbine.filteredPowerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)) {
             powerMismatchStartTime_[index] = 0;
             continue;
         }
@@ -360,20 +350,17 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
         if (!expectedPowerForController(turbine, input, expectedPower, availablePower)) {
             powerMismatchStartTime_[index] = 0;
             lastExpectedPower_[index] = -1.0;
-            expectedPowerHistory_[index].clear();
             continue;
         }
 
-        appendHistory(expectedPowerHistory_[index], expectedPower);
-        const double expectedAverage = sc::util::mean(expectedPowerHistory_[index]);
-        const double tolerance = std::max(powerTrackingAbsoluteToleranceW, powerTrackingRelativeTolerance * std::max(expectedAverage, 0.0));
-        if (lastExpectedPower_[index] < 0.0 || std::abs(expectedAverage - lastExpectedPower_[index]) > tolerance) {
+        // Signal processing smooths power across new telemetry samples; persistence rejects longer transients.
+        const double tolerance = std::max(powerTrackingAbsoluteToleranceW, powerTrackingRelativeTolerance * std::max(expectedPower, 0.0));
+        if (lastExpectedPower_[index] < 0.0 || std::abs(expectedPower - lastExpectedPower_[index]) > tolerance) {
             powerMismatchStartTime_[index] = 0;
-            lastExpectedPower_[index] = expectedAverage;
+            lastExpectedPower_[index] = expectedPower;
         }
 
-        const double measuredAverage = sc::util::mean(turbine.powerHistory);
-        if (std::abs(measuredAverage - expectedAverage) <= tolerance) {
+        if (std::abs(turbine.filteredPower - expectedPower) <= tolerance) {
             powerMismatchStartTime_[index] = 0;
             continue;
         }
@@ -382,7 +369,7 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
             continue;
         }
         if (input.currentTimeMs - powerMismatchStartTime_[index] >= powerTrackingGracePeriodMs) {
-            triggerAlarm(result, AlarmType::MeasuredPowerVsExpected, static_cast<int>(index + 1), measuredAverage, expectedAverage,
+            triggerAlarm(result, AlarmType::MeasuredPowerVsExpected, static_cast<int>(index + 1), turbine.filteredPower, expectedPower,
                          tolerance, input.currentTimeMs);
         }
     }

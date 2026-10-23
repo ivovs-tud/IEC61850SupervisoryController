@@ -23,6 +23,8 @@ struct SignalProcessingInput {
     float previousWindDirection{0.0F};
     std::vector<double> previousFilteredWindSpeeds;
     std::vector<uint64_t> previousFilteredWindSpeedTimeMs;
+    std::vector<double> previousFilteredPowers;
+    std::vector<uint64_t> previousFilteredPowerTimeMs;
     std::vector<TurbineSignalInput> turbines;
 };
 
@@ -31,6 +33,8 @@ struct SignalProcessingConfig {
     float windSpeedUpdateWeight{0.1F};
     float windDirectionUpdateWeight{0.05F};
     std::size_t windSpeedSampleCount{3};
+    // Weight of each new turbine power sample in the exponential moving average.
+    float powerUpdateWeight{0.2F};
 };
 
 struct SignalProcessingResult {
@@ -40,6 +44,8 @@ struct SignalProcessingResult {
     double totalMeasuredPower{0.0};
     float windSpeed{0.0F};
     float windDirection{0.0F};
+    std::vector<double> filteredPowers;
+    std::vector<uint64_t> filteredPowerTimeMs;
     std::vector<double> filteredWindSpeeds;
     std::vector<uint64_t> filteredWindSpeedTimeMs;
 };
