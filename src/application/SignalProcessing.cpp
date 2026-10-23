@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <functional>
 #include <numeric>
+#include <limits>
 #include <stdexcept>
 
 namespace sc::application {
@@ -31,6 +32,26 @@ double calculateAvailablePower(double windSpeed)
     const double aerodynamicPower = 0.5 * sc::TurbineParameters::airDensity * sweptArea * sc::TurbineParameters::optimalPowerCoefficient *
                                     windSpeed * windSpeed * windSpeed;
     return std::clamp(aerodynamicPower, 0.0, sc::TurbineParameters::ratedPower);
+}
+
+double calculateExpectedPower(double windSpeed, double windDirection, double yaw, float powerSetpoint,
+                              bool maximumPowerMode, bool commandedOff)
+{
+    if (commandedOff)
+        return 0.0;
+    if (!std::isfinite(windSpeed) || !std::isfinite(windDirection) || !std::isfinite(yaw) ||
+        !std::isfinite(powerSetpoint) || (!maximumPowerMode && powerSetpoint < 0.0F))
+        return std::numeric_limits<double>::quiet_NaN();
+    if (windSpeed < sc::TurbineParameters::cutInWindSpeed || windSpeed >= sc::TurbineParameters::cutOutWindSpeed)
+        return 0.0;
+    const double radius = sc::TurbineParameters::rotorDiameter / 2.0;
+    const double aerodynamicPower = 0.5 * sc::TurbineParameters::generatorEfficiency * sc::TurbineParameters::airDensity *
+                                    pi * radius * radius * sc::TurbineParameters::optimalPowerCoefficient *
+                                    windSpeed * windSpeed * windSpeed;
+    const double yawError = sc::util::angularDistanceDegrees(static_cast<float>(windDirection), static_cast<float>(yaw));
+    const double cosine = std::max(0.0, std::cos(yawError * pi / 180.0));
+    const double available = std::min(aerodynamicPower * cosine * cosine * cosine, sc::TurbineParameters::ratedPower);
+    return maximumPowerMode ? available : std::min(static_cast<double>(powerSetpoint), available);
 }
 
 SignalProcessingResult processSignals(const SignalProcessingInput& input, const SignalProcessingConfig& config)
@@ -146,6 +167,23 @@ SignalProcessingResult processSignals(const SignalProcessingInput& input, const 
             sc::util::normalizeAngleDegrees(static_cast<float>(std::atan2(directionSinSum, directionCosSum) * 180.0 / pi));
         result.windDirection =
             sc::util::blendAnglesDegrees(input.previousWindDirection, measuredDirection, config.windDirectionUpdateWeight);
+    }
+
+    // Compute after updating farm wind so all consumers receive the same expectation.
+    constexpr uint64_t expectedPowerMeasurementTimeoutMs = 20000;
+    result.expectedPowers.assign(input.turbines.size(), 0.0);
+    result.expectedPowerTimeMs.assign(input.turbines.size(), 0);
+    for (std::size_t index = 0; index < input.turbines.size(); ++index) {
+        const auto& turbine = input.turbines[index];
+        const double windSpeed = sc::util::isTimestampRecent(result.filteredWindSpeedTimeMs[index], input.currentTimeMs,
+                                                             expectedPowerMeasurementTimeoutMs)
+                                     ? result.filteredWindSpeeds[index] : static_cast<double>(result.windSpeed);
+        const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, expectedPowerMeasurementTimeoutMs)
+                               ? turbine.yaw : static_cast<double>(turbine.yawSetpoint);
+        result.expectedPowers[index] = calculateExpectedPower(windSpeed, result.windDirection, yaw, turbine.powerSetpoint,
+                                                             turbine.maximumPowerMode, turbine.commandedOff);
+        if (std::isfinite(result.expectedPowers[index]))
+            result.expectedPowerTimeMs[index] = input.currentTimeMs;
     }
 
     return result;

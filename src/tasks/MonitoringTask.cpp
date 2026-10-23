@@ -60,6 +60,10 @@ sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int
         input.farmWindSpeed = data.processed.windSpeed;
         input.farmWindDirection = data.processed.windDirection;
         input.measuredTotalPowerHistory = copyHistory(data.processed.measuredTotalPowerHistory);
+        if (data.processed.expectedPowers.size() != input.turbines.size() ||
+            data.processed.expectedPowerTimeMs.size() != input.turbines.size()) {
+            throw std::logic_error("processed expected-power count does not match configured turbines");
+        }
         if (data.processed.filteredPowers.size() != input.turbines.size() ||
             data.processed.filteredPowerTimeMs.size() != input.turbines.size()) {
             throw std::logic_error("processed power count does not match configured turbines");
@@ -69,6 +73,8 @@ sc::application::MonitoringInput copyMonitoringInput(const SharedData& data, int
             throw std::logic_error("processed wind-speed count does not match configured turbines");
         }
         for (std::size_t index = 0; index < input.turbines.size(); ++index) {
+            input.turbines[index].expectedPower = data.processed.expectedPowers[index];
+            input.turbines[index].expectedPowerTimeMs = data.processed.expectedPowerTimeMs[index];
             input.turbines[index].filteredPower = data.processed.filteredPowers[index];
             input.turbines[index].filteredPowerTimeMs = data.processed.filteredPowerTimeMs[index];
             input.turbines[index].filteredWindSpeed = data.processed.filteredWindSpeeds[index];

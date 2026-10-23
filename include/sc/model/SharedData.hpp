@@ -60,6 +60,9 @@ struct ProcessedData {
     std::vector<uint64_t> filteredWindSpeedTimeMs = std::vector<uint64_t>(DEFAULT_TURBINE_COUNT, 0);
     std::vector<double> filteredPowers = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
     std::vector<uint64_t> filteredPowerTimeMs = std::vector<uint64_t>(DEFAULT_TURBINE_COUNT, 0);
+    // Expected electrical power in watts, produced by SignalProcessingTask.
+    std::vector<double> expectedPowers = std::vector<double>(DEFAULT_TURBINE_COUNT, 0.0);
+    std::vector<uint64_t> expectedPowerTimeMs = std::vector<uint64_t>(DEFAULT_TURBINE_COUNT, 0);
     double totalReceivedPower{0.0};
     float windSpeed{0.0f};
     float windDirection{270.0f};
@@ -155,6 +158,8 @@ struct SharedData {
         collected.measuredPower.assign(turbineCount, 0.0);
 
         processed.availablePower.assign(turbineCount, 0.0);
+        processed.expectedPowers.assign(turbineCount, 0.0);
+        processed.expectedPowerTimeMs.assign(turbineCount, 0);
         processed.filteredPowers.assign(turbineCount, 0.0);
         processed.filteredPowerTimeMs.assign(turbineCount, 0);
         processed.filteredWindSpeeds.assign(turbineCount, 0.0);

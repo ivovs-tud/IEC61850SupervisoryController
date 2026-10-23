@@ -4,6 +4,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <limits>
+#include <cmath>
 #include <stdexcept>
 
 namespace {
@@ -227,4 +228,44 @@ TEST_CASE("power filter validates state and ignores invalid telemetry")
     sc::application::SignalProcessingConfig config;
     config.powerUpdateWeight = 0.0F;
     REQUIRE_THROWS_AS(sc::application::processSignals(input, config), std::invalid_argument);
+}
+
+TEST_CASE("signal processing publishes expected power from filtered wind and controller commands")
+{
+    sc::application::SignalProcessingInput input;
+    input.currentTimeMs = 1000;
+    input.previousWindDirection = 0.0F;
+    input.previousFilteredWindSpeeds = {6.0};
+    input.previousFilteredWindSpeedTimeMs = {900};
+    input.turbines.push_back(turbine(10.0, 0.0, 1000));
+    auto config = immediateUpdates();
+    config.windSpeedUpdateWeight = 0.5F;
+    const auto result = sc::application::processSignals(input, config);
+    const double expected = sc::application::calculateExpectedPower(8.0, 0.0, 0.0, -1.0F, true, false);
+    REQUIRE(result.expectedPowers[0] == Catch::Approx(expected));
+    REQUIRE(result.expectedPowerTimeMs == std::vector<uint64_t>{1000});
+
+    input.turbines[0].maximumPowerMode = false;
+    input.turbines[0].powerSetpoint = 1.0e5F;
+    REQUIRE(sc::application::processSignals(input, config).expectedPowers[0] == Catch::Approx(1.0e5));
+    input.turbines[0].commandedOff = true;
+    REQUIRE(sc::application::processSignals(input, config).expectedPowers[0] == 0.0);
+}
+
+TEST_CASE("expected power accounts for yaw and rejects invalid commands")
+{
+    sc::application::SignalProcessingInput input;
+    input.currentTimeMs = 1000;
+    input.turbines.push_back(turbine(10.0, 0.0, 1000));
+    auto config = immediateUpdates();
+    input.turbines[0].yawSetpoint = 60.0F;
+    const double aligned = sc::application::calculateExpectedPower(10.0, 0.0, 0.0, -1.0F, true, false);
+    REQUIRE(sc::application::processSignals(input, config).expectedPowers[0] == Catch::Approx(aligned * 0.125));
+    input.turbines[0].yaw = 0.0;
+    input.turbines[0].yawTimeMs = 1000;
+    REQUIRE(sc::application::processSignals(input, config).expectedPowers[0] == Catch::Approx(aligned));
+    input.turbines[0].maximumPowerMode = false;
+    const auto invalid = sc::application::processSignals(input, config);
+    REQUIRE_FALSE(std::isfinite(invalid.expectedPowers[0]));
+    REQUIRE(invalid.expectedPowerTimeMs[0] == 0);
 }

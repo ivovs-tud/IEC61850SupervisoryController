@@ -15,6 +15,12 @@ struct TurbineSignalInput {
     double measuredPower{0.0};
     uint64_t powerTimeMs{0};
     uint64_t newestMeasurementTimeMs{0};
+    double yaw{0.0};
+    uint64_t yawTimeMs{0};
+    float yawSetpoint{0.0F};
+    float powerSetpoint{-1.0F};
+    bool maximumPowerMode{true};
+    bool commandedOff{false};
 };
 
 struct SignalProcessingInput {
@@ -40,6 +46,8 @@ struct SignalProcessingConfig {
 struct SignalProcessingResult {
     int connectedTurbines{0};
     std::vector<double> availablePower;
+    std::vector<double> expectedPowers;
+    std::vector<uint64_t> expectedPowerTimeMs;
     double totalReceivedPower{0.0};
     double totalMeasuredPower{0.0};
     float windSpeed{0.0F};
@@ -51,5 +59,8 @@ struct SignalProcessingResult {
 };
 
 double calculateAvailablePower(double windSpeed);
+// Returns NaN for invalid inputs; zero when commanded off. Power is electrical watts.
+double calculateExpectedPower(double windSpeed, double windDirection, double yaw, float powerSetpoint,
+                              bool maximumPowerMode, bool commandedOff);
 SignalProcessingResult processSignals(const SignalProcessingInput& input, const SignalProcessingConfig& config = {});
 } // namespace sc::application

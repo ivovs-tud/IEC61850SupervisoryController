@@ -33,6 +33,20 @@ void SignalProcessingTask::execute()
             input.turbines.push_back({data.collected.lastWS[i], data.collected.lastWS_t[i], data.collected.lastWD[i],
                                       data.collected.lastWD_t[i], data.collected.lastPower[i], data.collected.measuredPower[i],
                                       data.collected.lastPower_t[i], *std::max_element(timestamps.begin(), timestamps.end())});
+            input.turbines.back().yaw = data.collected.lastYawOffset[i];
+            input.turbines.back().yawTimeMs = data.collected.lastYawOffset_t[i];
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(data.control.mutex);
+        for (std::size_t i = 0; i < input.turbines.size(); ++i) {
+            auto& turbine = input.turbines[i];
+            turbine.powerSetpoint = data.control.powerSetpoints[i];
+            turbine.yawSetpoint = data.control.yawSetpoints[i];
+            turbine.maximumPowerMode = data.control.turbineController[i] == ControlData::controllerKomega2;
+            turbine.commandedOff = data.control.turbineEnabled[i] == 0 ||
+                                   data.control.turbineController[i] == ControlData::controllerShutdown;
         }
     }
 
@@ -52,6 +66,8 @@ void SignalProcessingTask::execute()
         if (result.availablePower.size() != data.processed.availablePower.size()) {
             throw std::logic_error("signal-processing result count does not match configured turbines");
         }
+        data.processed.expectedPowers = result.expectedPowers;
+        data.processed.expectedPowerTimeMs = result.expectedPowerTimeMs;
         data.processed.filteredPowers = result.filteredPowers;
         data.processed.filteredPowerTimeMs = result.filteredPowerTimeMs;
         data.processed.connectedTurbines = result.connectedTurbines;

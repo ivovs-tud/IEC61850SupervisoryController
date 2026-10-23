@@ -18,6 +18,8 @@ struct TurbineMonitoringInput {
     uint64_t yawTimeMs{0};
     double rotorSpeed{0.0};
     uint64_t rotorSpeedTimeMs{0};
+    double expectedPower{0.0};
+    uint64_t expectedPowerTimeMs{0};
     double filteredPower{0.0};
     uint64_t filteredPowerTimeMs{0};
     double power{0.0};
@@ -97,7 +99,8 @@ class AlarmStateTracker {
 // Owns detector history; input and output contain no shared-state references.
 class MonitoringDetectors {
     public:
-    explicit MonitoringDetectors(std::size_t turbineCount);
+    // Alarm after more than this many consecutive mismatching filtered power samples.
+    explicit MonitoringDetectors(std::size_t turbineCount, std::size_t powerMismatchSampleLimit = 5);
 
     MonitoringResult evaluate(const MonitoringInput& input);
     MonitoringResult evaluateDetector(AlarmType alarm, const MonitoringInput& input);
@@ -120,8 +123,9 @@ class MonitoringDetectors {
     std::vector<uint64_t> lastYawMeasurementTime_;
     std::vector<uint64_t> lastOrientationPredictionTime_;
     std::vector<float> orientation_;
-    std::vector<uint64_t> powerMismatchStartTime_;
-    std::vector<double> lastExpectedPower_;
+    std::size_t powerMismatchSampleLimit_;
+    std::vector<std::size_t> powerMismatchSamples_;
+    std::vector<uint64_t> lastPowerSampleTime_;
     std::vector<int> windSpeedChangeStrikes_;
     std::vector<int> windDirectionChangeStrikes_;
     std::vector<std::array<uint64_t, 5>> freezeStartTime_;
