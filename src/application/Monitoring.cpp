@@ -1,5 +1,6 @@
 #include "sc/application/Monitoring.hpp"
 
+#include "sc/application/SignalProcessing.hpp"
 #include "sc/model/TurbineParameters.hpp"
 #include "sc/util/Angles.hpp"
 #include "sc/util/Statistics.hpp"
@@ -15,10 +16,8 @@ namespace sc::application {
 namespace {
 
 constexpr double pi = 3.14159265358979323846;
-constexpr std::size_t expectedPowerHistoryCapacity = 20;
 constexpr uint64_t powerMeasurementTimeoutMs = 20000;
-constexpr uint64_t powerTrackingGracePeriodMs = 5000;
-constexpr double powerTrackingAbsoluteToleranceW = 2e6;
+constexpr double powerTrackingAbsoluteToleranceW = 1e5;
 constexpr double powerTrackingRelativeTolerance = 0.1;
 constexpr float orientationThresholdDeg = 8.0F;
 constexpr float orientationObserverGain = 0.5F;
@@ -68,13 +67,6 @@ void triggerAlarm(MonitoringResult& result, AlarmType alarm, int turbineId, doub
     result.evidence.push_back({alarm, turbineId, measured, expected, threshold, timestampMs});
 }
 
-void appendHistory(std::vector<double>& history, double value)
-{
-    if (history.size() == expectedPowerHistoryCapacity)
-        history.erase(history.begin());
-    history.push_back(value);
-}
-
 bool hasOnlyFiniteValues(const std::vector<double>& values)
 {
     return std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); });
@@ -94,19 +86,8 @@ double yawAdjustedAvailablePower(const TurbineMonitoringInput& turbine, const Mo
     const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)
                            ? turbine.yaw
                            : static_cast<double>(turbine.yawSetpoint);
-    if (!std::isfinite(windSpeed) || !std::isfinite(windDirection) || !std::isfinite(yaw))
-        return 0.0;
-    if (windSpeed < sc::TurbineParameters::cutInWindSpeed || windSpeed >= sc::TurbineParameters::cutOutWindSpeed) {
-        return 0.0;
-    }
-
-    const double rotorRadius = sc::TurbineParameters::rotorDiameter / 2.0;
-    const double sweptArea = pi * rotorRadius * rotorRadius;
-    const double aerodynamicPower = 0.5 * sc::TurbineParameters::generatorEfficiency * sc::TurbineParameters::airDensity * sweptArea *
-                                    sc::TurbineParameters::optimalPowerCoefficient * windSpeed * windSpeed * windSpeed;
-    const double yawErrorDeg = sc::util::angularDistanceDegrees(static_cast<float>(windDirection), static_cast<float>(yaw));
-    const double yawCosine = std::max(0.0, std::cos(yawErrorDeg * pi / 180.0));
-    return std::min(aerodynamicPower * yawCosine * yawCosine * yawCosine, sc::TurbineParameters::ratedPower);
+    const double available = calculateExpectedPower(windSpeed, windDirection, yaw, -1.0F, true, false);
+    return std::isfinite(available) ? available : 0.0;
 }
 
 double effectiveYawAdjustedWindSpeed(const TurbineMonitoringInput& turbine, const MonitoringInput& input)
@@ -227,13 +208,16 @@ bool AlarmStateTracker::visible(AlarmType alarm) const
     return alarmState.active || alarmState.latched;
 }
 
-MonitoringDetectors::MonitoringDetectors(std::size_t turbineCount) : turbineCount_(turbineCount)
+MonitoringDetectors::MonitoringDetectors(std::size_t turbineCount, std::size_t powerMismatchSampleLimit) :
+    turbineCount_(turbineCount), powerMismatchSampleLimit_(powerMismatchSampleLimit)
 {
     if (turbineCount_ == 0)
         throw std::invalid_argument("MonitoringDetectors requires at least one turbine");
     if (turbineCount_ > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
         throw std::invalid_argument("MonitoringDetectors turbine count exceeds supported range");
     }
+    if (powerMismatchSampleLimit_ == std::numeric_limits<std::size_t>::max())
+        throw std::invalid_argument("power mismatch sample limit must allow one additional sample");
     reset();
 }
 
@@ -242,9 +226,8 @@ void MonitoringDetectors::reset()
     lastYawMeasurementTime_.assign(turbineCount_, 0);
     lastOrientationPredictionTime_.assign(turbineCount_, 0);
     orientation_.assign(turbineCount_, 0.0F);
-    powerMismatchStartTime_.assign(turbineCount_, 0);
-    lastExpectedPower_.assign(turbineCount_, -1.0);
-    expectedPowerHistory_.assign(turbineCount_, {});
+    powerMismatchSamples_.assign(turbineCount_, 0);
+    lastPowerSampleTime_.assign(turbineCount_, 0);
     windSpeedChangeStrikes_.assign(turbineCount_, 0);
     windDirectionChangeStrikes_.assign(turbineCount_, 0);
     freezeStartTime_.assign(turbineCount_, {});
@@ -350,39 +333,27 @@ void MonitoringDetectors::checkPowerTracking(const MonitoringInput& input, Monit
 {
     for (std::size_t index = 0; index < turbineCount_; ++index) {
         const auto& turbine = input.turbines[index];
-        if (!isRecentFinite(turbine.power, turbine.powerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
-            turbine.powerHistory.empty() || !hasOnlyFiniteValues(turbine.powerHistory)) {
-            powerMismatchStartTime_[index] = 0;
-            continue;
-        }
-        double expectedPower = 0.0;
-        double availablePower = 0.0;
-        if (!expectedPowerForController(turbine, input, expectedPower, availablePower)) {
-            powerMismatchStartTime_[index] = 0;
-            lastExpectedPower_[index] = -1.0;
-            expectedPowerHistory_[index].clear();
+        const double expectedPower = turbine.expectedPower;
+        if (!isRecentFinite(turbine.filteredPower, turbine.filteredPowerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs) ||
+            !isRecentFinite(expectedPower, turbine.expectedPowerTimeMs, input.currentTimeMs, powerMeasurementTimeoutMs)) {
+            powerMismatchSamples_[index] = 0;
             continue;
         }
 
-        appendHistory(expectedPowerHistory_[index], expectedPower);
-        const double expectedAverage = sc::util::mean(expectedPowerHistory_[index]);
-        const double tolerance = std::max(powerTrackingAbsoluteToleranceW, powerTrackingRelativeTolerance * std::max(expectedAverage, 0.0));
-        if (lastExpectedPower_[index] < 0.0 || std::abs(expectedAverage - lastExpectedPower_[index]) > tolerance) {
-            powerMismatchStartTime_[index] = 0;
-            lastExpectedPower_[index] = expectedAverage;
-        }
-
-        const double measuredAverage = sc::util::mean(turbine.powerHistory);
-        if (std::abs(measuredAverage - expectedAverage) <= tolerance) {
-            powerMismatchStartTime_[index] = 0;
+        const double tolerance = std::max(powerTrackingAbsoluteToleranceW, powerTrackingRelativeTolerance * std::max(expectedPower, 0.0));
+        if (std::abs(turbine.filteredPower - expectedPower) <= tolerance) {
+            powerMismatchSamples_[index] = 0;
+            lastPowerSampleTime_[index] = turbine.filteredPowerTimeMs;
             continue;
         }
-        if (powerMismatchStartTime_[index] == 0) {
-            powerMismatchStartTime_[index] = input.currentTimeMs;
-            continue;
+        // Monitoring can run faster than filtering: count each new filtered sample once.
+        if (turbine.filteredPowerTimeMs > lastPowerSampleTime_[index]) {
+            lastPowerSampleTime_[index] = turbine.filteredPowerTimeMs;
+            if (powerMismatchSamples_[index] <= powerMismatchSampleLimit_)
+                ++powerMismatchSamples_[index];
         }
-        if (input.currentTimeMs - powerMismatchStartTime_[index] >= powerTrackingGracePeriodMs) {
-            triggerAlarm(result, AlarmType::MeasuredPowerVsExpected, static_cast<int>(index + 1), measuredAverage, expectedAverage,
+        if (powerMismatchSamples_[index] > powerMismatchSampleLimit_) {
+            triggerAlarm(result, AlarmType::MeasuredPowerVsExpected, static_cast<int>(index + 1), turbine.filteredPower, expectedPower,
                          tolerance, input.currentTimeMs);
         }
     }
