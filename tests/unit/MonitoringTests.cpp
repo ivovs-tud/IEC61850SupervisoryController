@@ -1,8 +1,8 @@
 #include "catch2/catch_test_macros.hpp"
 #include "sc/application/Monitoring.hpp"
 #include "sc/application/SignalProcessing.hpp"
-#include "sc/util/Time.hpp"
 #include "sc/model/TurbineParameters.hpp"
+#include "sc/util/Time.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -32,11 +32,11 @@ sc::application::MonitoringResult evaluatePowerTracking(sc::application::Monitor
 {
     for (auto& turbine : input.turbines) {
         const double wind = sc::util::isTimestampRecent(turbine.filteredWindSpeedTimeMs, input.currentTimeMs, 20000)
-                                ? turbine.filteredWindSpeed : input.farmWindSpeed;
-        const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, 20000)
-                               ? turbine.yaw : turbine.yawSetpoint;
-        turbine.expectedPower = sc::application::calculateExpectedPower(wind, input.farmWindDirection, yaw,
-            turbine.powerSetpoint, turbine.maximumPowerMode, turbine.commandedOff);
+                                ? turbine.filteredWindSpeed
+                                : input.farmWindSpeed;
+        const double yaw = sc::util::isTimestampRecent(turbine.yawTimeMs, input.currentTimeMs, 20000) ? turbine.yaw : turbine.yawSetpoint;
+        turbine.expectedPower = sc::application::calculateExpectedPower(wind, input.farmWindDirection, yaw, turbine.powerSetpoint,
+                                                                        turbine.maximumPowerMode, turbine.commandedOff);
         turbine.expectedPowerTimeMs = input.currentTimeMs;
     }
     return detectors.evaluateDetector(sc::application::AlarmType::MeasuredPowerVsExpected, input);
@@ -110,8 +110,7 @@ TEST_CASE("power tracking requires more than N consecutive mismatching samples")
     input.turbines[0].powerTimeMs = 1000;
     input.turbines[0].filteredPowerTimeMs = 1000;
     input.turbines[0].powerHistory = {0.0};
-    REQUIRE_FALSE(evaluatePowerTracking(detectors, input)
-                      .isActive(sc::application::AlarmType::MeasuredPowerVsExpected));
+    REQUIRE_FALSE(evaluatePowerTracking(detectors, input).isActive(sc::application::AlarmType::MeasuredPowerVsExpected));
 
     input.currentTimeMs = 6000;
     input.turbines[0].powerTimeMs = 6000;
@@ -304,12 +303,10 @@ TEST_CASE("persistent detectors reset rather than alarming on stale telemetry")
     turbine.powerHistory = {0.0};
     turbine.powerTimeMs = 1000;
     turbine.filteredPowerTimeMs = 1000;
-    REQUIRE_FALSE(evaluatePowerTracking(detectors, input)
-                      .isActive(sc::application::AlarmType::MeasuredPowerVsExpected));
+    REQUIRE_FALSE(evaluatePowerTracking(detectors, input).isActive(sc::application::AlarmType::MeasuredPowerVsExpected));
 
     input.currentTimeMs = 30000;
-    REQUIRE_FALSE(evaluatePowerTracking(detectors, input)
-                      .isActive(sc::application::AlarmType::MeasuredPowerVsExpected));
+    REQUIRE_FALSE(evaluatePowerTracking(detectors, input).isActive(sc::application::AlarmType::MeasuredPowerVsExpected));
 
     input.currentTimeMs = 1000;
     turbine.rotorSpeed = 0.0;

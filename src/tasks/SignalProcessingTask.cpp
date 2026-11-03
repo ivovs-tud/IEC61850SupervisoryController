@@ -45,8 +45,8 @@ void SignalProcessingTask::execute()
             turbine.powerSetpoint = data.control.powerSetpoints[i];
             turbine.yawSetpoint = data.control.yawSetpoints[i];
             turbine.maximumPowerMode = data.control.turbineController[i] == ControlData::controllerKomega2;
-            turbine.commandedOff = data.control.turbineEnabled[i] == 0 ||
-                                   data.control.turbineController[i] == ControlData::controllerShutdown;
+            turbine.commandedOff =
+                data.control.turbineEnabled[i] == 0 || data.control.turbineController[i] == ControlData::controllerShutdown;
         }
     }
 

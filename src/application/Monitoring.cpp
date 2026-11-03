@@ -1,6 +1,6 @@
 #include "sc/application/Monitoring.hpp"
-#include "sc/application/SignalProcessing.hpp"
 
+#include "sc/application/SignalProcessing.hpp"
 #include "sc/model/TurbineParameters.hpp"
 #include "sc/util/Angles.hpp"
 #include "sc/util/Statistics.hpp"

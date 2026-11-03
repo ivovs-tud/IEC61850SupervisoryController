@@ -60,7 +60,7 @@ struct SignalProcessingResult {
 
 double calculateAvailablePower(double windSpeed);
 // Returns NaN for invalid inputs; zero when commanded off. Power is electrical watts.
-double calculateExpectedPower(double windSpeed, double windDirection, double yaw, float powerSetpoint,
-                              bool maximumPowerMode, bool commandedOff);
+double calculateExpectedPower(double windSpeed, double windDirection, double yaw, float powerSetpoint, bool maximumPowerMode,
+                              bool commandedOff);
 SignalProcessingResult processSignals(const SignalProcessingInput& input, const SignalProcessingConfig& config = {});
 } // namespace sc::application
