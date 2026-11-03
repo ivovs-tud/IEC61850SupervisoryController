@@ -1,0 +1,66 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+namespace sc::application {
+
+struct TurbineSignalInput {
+    double windSpeed{0.0};
+    uint64_t windSpeedTimeMs{0};
+    double windDirection{0.0};
+    uint64_t windDirectionTimeMs{0};
+    double receivedPower{0.0};
+    double measuredPower{0.0};
+    uint64_t powerTimeMs{0};
+    uint64_t newestMeasurementTimeMs{0};
+    double yaw{0.0};
+    uint64_t yawTimeMs{0};
+    float yawSetpoint{0.0F};
+    float powerSetpoint{-1.0F};
+    bool maximumPowerMode{true};
+    bool commandedOff{false};
+};
+
+struct SignalProcessingInput {
+    uint64_t currentTimeMs{0};
+    float previousWindSpeed{0.0F};
+    float previousWindDirection{0.0F};
+    std::vector<double> previousFilteredWindSpeeds;
+    std::vector<uint64_t> previousFilteredWindSpeedTimeMs;
+    std::vector<double> previousFilteredPowers;
+    std::vector<uint64_t> previousFilteredPowerTimeMs;
+    std::vector<TurbineSignalInput> turbines;
+};
+
+struct SignalProcessingConfig {
+    uint64_t measurementTimeoutMs{2000};
+    float windSpeedUpdateWeight{0.1F};
+    float windDirectionUpdateWeight{0.05F};
+    std::size_t windSpeedSampleCount{3};
+    // Weight of each new turbine power sample in the exponential moving average.
+    float powerUpdateWeight{0.2F};
+};
+
+struct SignalProcessingResult {
+    int connectedTurbines{0};
+    std::vector<double> availablePower;
+    std::vector<double> expectedPowers;
+    std::vector<uint64_t> expectedPowerTimeMs;
+    double totalReceivedPower{0.0};
+    double totalMeasuredPower{0.0};
+    float windSpeed{0.0F};
+    float windDirection{0.0F};
+    std::vector<double> filteredPowers;
+    std::vector<uint64_t> filteredPowerTimeMs;
+    std::vector<double> filteredWindSpeeds;
+    std::vector<uint64_t> filteredWindSpeedTimeMs;
+};
+
+double calculateAvailablePower(double windSpeed);
+// Returns NaN for invalid inputs; zero when commanded off. Power is electrical watts.
+double calculateExpectedPower(double windSpeed, double windDirection, double yaw, float powerSetpoint, bool maximumPowerMode,
+                              bool commandedOff);
+SignalProcessingResult processSignals(const SignalProcessingInput& input, const SignalProcessingConfig& config = {});
+} // namespace sc::application
